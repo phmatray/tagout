@@ -12,7 +12,7 @@
 # (ADR 0017); this suite pins the runtime caller that was left.
 #
 # The staging contract has three halves, and the teardown's own promise is the subtle one: "Only
-# links this created are removed. A real directory, or a link somebody else put there, is left
+# what this created is removed. A real directory, or a link somebody else put there, is left
 # exactly as found." A copy-based teardown that forgot it would delete a contributor's real
 # .claude/skills/<name>, so that promise is asserted here rather than trusted.
 set -euo pipefail
