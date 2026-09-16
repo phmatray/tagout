@@ -60,6 +60,9 @@ import sys
 from functools import lru_cache
 from pathlib import Path
 
+sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+sys.stderr.reconfigure(encoding="utf-8", newline="\n")
+
 ROOT = Path(__file__).resolve().parents[2]
 SHARED_DIR_REL = "skills/_shared"
 
