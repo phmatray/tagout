@@ -17,6 +17,8 @@
 #
 # Usage: scripts/run-all-tests.sh [--quick] [--with-network] [--list]
 #   --quick        skip the dotnet fixture build/test (samples/LegacyShop) — everything else runs.
+#                  Also skips the prerequisites declared `for: run-all-tests` (the .NET 6 runtime,
+#                  #642), since that fixture is the only thing on this list that needs it.
 #   --with-network adds the renovate.json acceptance gate, which shells out to `npx`, and the
 #                  parse sweep under a real bash 3.2, which pulls `bash:3.2` through Docker (#144);
 #                  both need network access, so both are skipped by default and this script also
@@ -28,7 +30,10 @@
 # Exit codes:
 #   0  everything CI checks passed locally (or --list printed the plan)
 #   1  a real failure — the failing item is named, with its last ~25 lines of output
-#   2  a prerequisite is missing — nothing was judged, see scripts/preflight.sh's own output
+#   2  a prerequisite is missing — nothing was judged, see scripts/preflight.sh's own output. A
+#      full run also checks the prerequisites declared `for: run-all-tests` (the .NET 6 runtime
+#      samples/LegacyShop needs to RUN, not just build, #642); --quick checks neither those nor
+#      anything else this script's own gates/suites need beyond what preflight.sh always checks.
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -322,8 +327,14 @@ if [ "$LIST" -eq 1 ]; then
 fi
 
 # --- The prerequisite guard: refuse before any gate or suite runs. A missing prerequisite is not a
-# test failure and must never be reported as one (the incident this whole script exists for).
-if ! preflight_out=$("$HERE/preflight.sh" 2>&1); then
+# test failure and must never be reported as one (the incident this whole script exists for). A full
+# run also asks for the prerequisites scoped `for: run-all-tests` (the .NET 6 runtime samples/
+# LegacyShop needs to RUN, not just build, #642); --quick already skips that one gate, so it asks for
+# none of them. $preflight_for is deliberately unquoted below — empty expands to no argument at all,
+# which is bash-3.2 safe (#131) and avoids passing preflight.sh a stray empty argument.
+preflight_for="--for run-all-tests"
+[ "$QUICK" -eq 1 ] && preflight_for=""
+if ! preflight_out=$("$HERE/preflight.sh" $preflight_for 2>&1); then
   printf 'PREREQUISITE — nothing was judged. %s\n' "$HERE/preflight.sh reported:" >&2
   printf '%s\n' "$preflight_out" >&2
   exit 2

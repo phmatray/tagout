@@ -2,14 +2,32 @@
 # preflight.sh — verifies the required/recommended tooling before any migration (phase 0).
 # The prerequisite list lives in requirements.json at the kit root (single source):
 # this script reads and evaluates it, it embeds no hard-coded list.
+# Usage: preflight.sh [--json] [--for <name>]
 # Output: a status table, or structured JSON with --json (to store in migration/report.json).
+# --for <name> also checks the entries scoped to that ONE caller (the manifest's `for` field, #642)
+# — omitted, every `for`-scoped entry is skipped, which is every consumer's phase 0 and CI.
 # Exit code 1 if a REQUIRED item is missing, 0 otherwise.
 # Session capabilities (the manifest's sessionSkills) cannot be checked from bash:
 # the agent confirms them itself against its skill list (SKILL.md, phase 0, step 2).
 set -uo pipefail
 
 JSON=0
-[ "${1:-}" = "--json" ] && JSON=1
+FOR=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) JSON=1; shift ;;
+    --for)
+      shift
+      if [ $# -eq 0 ]; then
+        echo "usage: preflight.sh [--json] [--for <name>]" >&2
+        exit 2
+      fi
+      FOR="$1"
+      shift
+      ;;
+    *) shift ;;
+  esac
+done
 
 KIT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REQ="$KIT_DIR/requirements.json"
@@ -32,6 +50,15 @@ record() { RESULTS+=("$1$TAB$2$TAB$3$TAB$4"); }
 sdk_ok() {
   command -v dotnet >/dev/null 2>&1 &&
   dotnet --list-sdks 2>/dev/null | awk -F. '($1+0)>=8{f=1} END{exit f?0:1}'
+}
+# Runtime: numeric comparison of the major only (no patch enumeration to rot) — `dotnet --list-sdks`
+# proves a version can be BUILT, not that it can be RUN; `dotnet test` launches the test host on the
+# target's runtime, so a fixture pinned to an old TargetFramework (samples/LegacyShop, net6.0) needs
+# this probe, not sdk_ok (#642).
+runtime_ok() {
+  local major="$1"
+  command -v dotnet >/dev/null 2>&1 &&
+  dotnet --list-runtimes 2>/dev/null | awk -v m="$major" '$1=="Microsoft.NETCore.App" && ($2+0)==m {f=1} END{exit f?0:1}'
 }
 # jq: numeric comparison of major.minor (>= 1.6, the floor tick-plan.sh's --rawfile round-trip
 # check needs, #199) — same "no version enumeration that rots" shape as sdk_ok.
@@ -112,13 +139,14 @@ launcher_note() {
 }
 
 # requirements.json → one tab-separated line per entry: kind, level, name, test/match, requiredBy,
-# requiresSdk, launcher, hint, tracker. "-" placeholder where a field is empty: an empty field would
-# be swallowed by read (tab = IFS whitespace) and shift every field after it left — hint gained a
-# `tracker` neighbour, so it now takes the same "-" placeholder as every other optional field rather
-# than "", the empty string that was harmless only while hint was itself the trailing column. Every
+# requiresSdk, launcher, hint, for, tracker. "-" placeholder where a field is empty: an empty field
+# would be swallowed by read (tab = IFS whitespace) and shift every field after it left — hint
+# gained a `for` neighbour, so it now takes the same "-" placeholder as every other optional field
+# rather than "", the empty string that was harmless only while hint was itself second-to-last. Every
 # kind prints the SAME number of columns, including the ones that can never carry the field, so the
-# `read` below binds the same name to the same position on every line. tracker stays LAST because
-# `read` gives the trailing field the remainder.
+# `read` below binds the same name to the same position on every line. `for` (#642) names the one
+# caller this entry is scoped to (e.g. "run-all-tests") — sits right before tracker, which stays
+# LAST because `read` gives the trailing field the remainder.
 manifest() {
 python3 - "$REQ" <<'PY'
 import json, sys
@@ -126,14 +154,14 @@ req = json.load(open(sys.argv[1]))
 def reqby(e): return ", ".join(e.get("requiredBy", [])) or "-"
 for t in req.get("tools", []):
     print("\t".join(["tool", t["level"], t["name"], t["test"], reqby(t), "-", "-",
-                     t.get("hint") or "-", t.get("tracker") or "-"]))
+                     t.get("hint") or "-", t.get("for") or "-", t.get("tracker") or "-"]))
 for m in req.get("mcps", []):
     print("\t".join(["mcp", m["level"], m["name"], m["match"], reqby(m),
                      str(m.get("requiresSdk") or "-"), str(m.get("launcher") or "-"),
-                     m.get("hint") or "-", m.get("tracker") or "-"]))
+                     m.get("hint") or "-", m.get("for") or "-", m.get("tracker") or "-"]))
 for s in req.get("sessionSkills", []):
     print("\t".join(["skill", s["level"], "skill " + s["name"], "-", reqby(s), "-", "-",
-                     s.get("when") or "-", s.get("tracker") or "-"]))
+                     s.get("when") or "-", s.get("for") or "-", s.get("tracker") or "-"]))
 PY
 }
 
@@ -148,7 +176,13 @@ PROFILE_TRACKER=""
 _pt_out="$("$KIT_DIR/skills/profile-repo/scripts/repo-profile.sh" tracker 2>/dev/null)" \
   && PROFILE_TRACKER="${_pt_out%% *}"
 
-while IFS=$'\t' read -r kind level name test reqby floor launcher hint tracker; do
+while IFS=$'\t' read -r kind level name test reqby floor launcher hint entry_for tracker; do
+  # Skip an entry scoped to a caller (#642) unless THIS call names that same caller with --for —
+  # never on "no verdict" either side: an entry with no `for` at all is unaffected, checked on
+  # every call exactly as before.
+  if [ "$entry_for" != "-" ] && [ "$entry_for" != "$FOR" ]; then
+    continue
+  fi
   # Skip an entry whose declared tracker isn't the profile's — never on "no verdict" either side.
   if [ "$tracker" != "-" ] && [ -n "$PROFILE_TRACKER" ] && [ "$tracker" != "$PROFILE_TRACKER" ]; then
     continue
