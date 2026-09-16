@@ -54,7 +54,8 @@ commit) along **three axes, run in parallel and never merged**:
 
   Anything exit `1` or `2` surfaces is an **unauthorized write** — you did not ask for an edit, and `--fix` was not
   passed. It is not yours and it is not automatically correct. Do **not** fold it into your next
-  commit. Read it in full, check it against the findings the review actually reported (a change
+  commit. Read it in full — exit `1`'s own printed `diff --stat` is a summary, not the changed
+  lines, so run `git -C "$WORKTREE" diff` yourself for those — check it against the findings the review actually reported (a change
   matching no reported finding is the strongest signal it should be discarded), and re-run the
   task's tests over it. Only then either take deliberate ownership of it in its own commit, saying
   in the Step 10 recap that the review wrote it and why you kept it — or discard it and say that
