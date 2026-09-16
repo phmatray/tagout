@@ -26,7 +26,7 @@ record is emitted and the tally's last-but-one line says so.
 A record:
     {"kind", "skill", "session", "path", "ts", "excerpt", "tool", "detail", "count"}
 
-kind ∈ tool-error      a tool_result flagged is_error whose tool_use named a kit path or script
+kind ∈ tool-error      a Bash tool_result flagged is_error — not a harness `<tool_use_error>` — whose command named a kit path or script
        hook-deny       a PreToolUse deny from one of the kit's two gates (its reason prefix)
        forbidden-wait  an assistant turn in the never-wait shape a worker must never end on
        worker-report   a worker's final report line with STATUS PARTIAL | BLOCKED | FAILED
@@ -81,10 +81,12 @@ HOOK_DENY_PREFIXES = (
     "Blocked by the git write-gate",
     "Blocked by the roseline gate",
 )
-# A main session's wording, then a sub-agent's — both the harness, never the kit.
+# A main session's wording, then a sub-agent's, then a bare permission rejection — all the harness
+# (or the person at the keyboard), never the kit.
 HARNESS_REFUSAL_PREFIXES = (
     "This session is isolated in the worktree",
     "This agent is isolated in the worktree",
+    "The user doesn't want to proceed with this tool use",
 )
 # The harness wraps some of its own synthetic errors — this refusal and its "Blocked by the …
 # gate" denials included — in a `<tool_use_error>` tag (confirmed on real transcripts: 4 of 608
@@ -338,7 +340,12 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                     if sf and names_kit_path(body, in_kit_repo, kit_names):
                         emit("suite-fail", excerpt_of(sf.group(0)), tool, "FAIL")
                         continue
-                    if is_error and names_kit_path(touched, in_kit_repo, kit_names):
+                    if (
+                        is_error
+                        and tool == "Bash"
+                        and not body.startswith(TOOL_USE_ERROR_WRAP)
+                        and names_kit_path(touched, in_kit_repo, kit_names)
+                    ):
                         emit("tool-error", excerpt_of(body), tool, excerpt_of(touched, width=100))
     # Collapse a polled command into one record with a count.
     collapsed = {}

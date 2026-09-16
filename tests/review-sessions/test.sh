@@ -98,6 +98,33 @@ write_line "$T" user "$D" "$(tool_result t5c '<tool_use_error>This agent is isol
 # and the same wrap on a hook-deny — must still be RECOGNIZED as one (not dropped, not tool-error).
 write_line "$T" assistant "$D" "$(tool_use t3b Bash '{"command":"git commit -m x"}')"
 write_line "$T" user "$D" "$(tool_result t3b '<tool_use_error>Blocked by the git write-gate: `git commit -m x` is one of the writes that produced #26 and #280 in a shared checkout.</tool_use_error>' true)"
+# decoys (#645): a harness/dispatch tool failure is not a kit tool-error — only a Bash call's own
+# failure is. Each below is is_error and its tool_use touches a skills/ path, so it counts as a
+# tool-error today; after the fix, none of them may.
+# decoy: Agent — a host dispatch-depth ceiling, not the kit.
+write_line "$T" assistant "$D" "$(tool_use t30 Agent '{"prompt":"run skills/implement-issue/SKILL.md"}')"
+write_line "$T" user "$D" "$(tool_result t30 'Subagent nesting limit reached (depth 3 of 3)' true)"
+# decoy: Agent — fork unavailable inside a forked worker (same host ceiling).
+write_line "$T" assistant "$D" "$(tool_use t31 Agent '{"prompt":"run skills/implement-issue/SKILL.md"}')"
+write_line "$T" user "$D" "$(tool_result t31 'Fork is not available inside a forked worker' true)"
+# decoy: Edit — a harness tool_use_error, wrapped.
+write_line "$T" assistant "$D" "$(tool_use t32 Edit '{"file_path":"skills/x/SKILL.md"}')"
+write_line "$T" user "$D" "$(tool_result t32 '<tool_use_error>String to replace not found in file.</tool_use_error>' true)"
+# decoy: Read — a missing kit prose link, not a script failing.
+write_line "$T" assistant "$D" "$(tool_use t33 Read '{"file_path":"skills/_shared/github-mechanics.md"}')"
+write_line "$T" user "$D" "$(tool_result t33 'File does not exist.' true)"
+# decoy: Grep — the harness's own tool-availability error, wrapped.
+write_line "$T" assistant "$D" "$(tool_use t34 Grep '{"path":"skills/"}')"
+write_line "$T" user "$D" "$(tool_result t34 '<tool_use_error>Error: No such tool available: Grep</tool_use_error>' true)"
+# decoy: Bash — the harness blocking a sleep, wrapped (the tool ran, the harness refused it).
+write_line "$T" assistant "$D" "$(tool_use t35 Bash '{"command":"sleep 45; skills/auto-dev/scripts/wait-ci.sh 598"}')"
+write_line "$T" user "$D" "$(tool_result t35 '<tool_use_error>Blocked: sleep 45 followed by: skills/auto-dev/scripts/wait-ci.sh 598</tool_use_error>' true)"
+# decoy: an MCP tool — a browser session conflict, not a kit script.
+write_line "$T" assistant "$D" "$(tool_use t36 mcp__plugin_chrome-devtools-mcp_chrome-devtools__new_page '{"url":"http://localhost:4174/tagout/"}')"
+write_line "$T" user "$D" "$(tool_result t36 'The browser is already running for /x/chrome-profile' true)"
+# decoy: Bash — a permission rejection, no structural tell (the one literal prefix this task adds).
+write_line "$T" assistant "$D" "$(tool_use t37 Bash '{"command":"skills/auto-dev/scripts/wait-ci.sh 598"}')"
+write_line "$T" user "$D" "$(tool_result t37 'The user doesn'\''t want to proceed with this tool use. The tool use was rejected.' true)"
 # 3. forbidden-wait.
 write_line "$T" assistant "$D" "$(text "The suite is running. I'll pause here and wait for the code-review report before continuing.")"
 # 4. worker-report.
