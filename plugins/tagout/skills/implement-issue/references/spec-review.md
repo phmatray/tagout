@@ -26,7 +26,7 @@ report them under two headings, verbatim:
 
 | Axis | Question | Who runs it |
 |---|---|---|
-| **Standards** | does this follow the repo's conventions and read as good code? | the `code-review` skill, over `main...HEAD` |
+| **Standards** | does this follow the repo's conventions and read as good code? | the `code-review` skill, over `origin/main...HEAD` |
 | **Spec** | does this implement what the issue's 📋 Spec asked for, and nothing else? | one sub-agent, this brief |
 
 **Do not merge or rerank across the axes.** One ordered list lets a Standards nit ("possible Feature
@@ -39,9 +39,10 @@ worst item *within* each — never a single winner across both.
 Two **file paths** — never the worktree path, never the diff pasted into the prompt. A reviewer
 that knows two files and no checkout has nothing to edit, commit or push (#477):
 
-1. **The diff, staged once to a file** — `git -C "$WORKTREE" diff main...HEAD > "/tmp/issue-$ISSUE.diff"`
-   (three-dot, so the comparison is against the merge-base); the commit list
-   `git -C "$WORKTREE" log main..HEAD --oneline` goes inline. Confirm the file is non-empty before
+1. **The diff, staged once to a file** — `git -C "$WORKTREE" fetch origin main --quiet && git -C "$WORKTREE" diff origin/main...HEAD > "/tmp/issue-$ISSUE.diff"`
+   (three-dot, so the comparison is against the merge-base; fetched first, so the ref is current
+   rather than merely correct); the commit list
+   `git -C "$WORKTREE" log origin/main..HEAD --oneline` goes inline. Confirm the file is non-empty before
    dispatching: a bad ref should fail here, not inside a sub-agent that then reviews nothing and
    reports nothing wrong.
 2. **The Spec, fetched from the issue body to a file:**
