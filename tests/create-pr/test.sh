@@ -65,4 +65,18 @@ if [ -s "$bare" ]; then
 fi
 echo "ok   (c) no bare git push or git commit under skills/create-pr/"
 
+# (e) the issue number Step 2 reads from a branch name — the sed script is read out of the step and
+# run, so a dropped -n/p (the whole branch name becomes $ISSUE, issue-view fails, the PR silently
+# links no issue) turns this red.
+LOCATE="skills/create-pr/references/steps/02-locate-the-work.md"
+parse=$(grep -F '"$BRANCH" | sed -nE' "$KIT/$LOCATE" | sed -nE "s/.*sed -nE '([^']*)'.*/\1/p") || true
+[ -n "$parse" ] || { echo "FAIL: no branch-name sed script found in $LOCATE"; exit 1; }
+for case in 'fix/88-null-header 88' 'feat/1234-x 1234' 'main -' 'fix/88 -' 'release/2.0 -'; do
+  branch=${case% *}; want=${case##* }
+  [ "$want" != - ] || want=
+  got=$(printf '%s\n' "$branch" | sed -nE "$parse")
+  [ "$got" = "$want" ] || { echo "FAIL: (e) '$branch' parsed to '$got', want '$want'"; exit 1; }
+done
+echo "ok   (e) $LOCATE reads <type>/<N>-<slug> as N, and anything else as no issue"
+
 echo "create-pr golden test OK"

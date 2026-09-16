@@ -137,6 +137,38 @@ verdict colon-and-tight-spacing.json 42 '70 71' \
 verdict null-body.json 42 '81' \
   'a null-body PR does not crash the guard and a real neighbor still matches'
 
+# ------------------------------------------------------- 3. no pointer at the guard's old home (#635)
+#
+# The guard moved out of implement-issue's github-mechanics.md §5. A prose pointer still sending a
+# reader there reaches a section with no program in it — and every check above stays green.
+rc=0
+grep -rnE 'PR-existence guard.*github-mechanics\.md|github-mechanics\.md.*PR-existence guard|§5.s own .*Residual limitation' \
+  "$KIT_ROOT/skills" "$KIT_ROOT/commands" > "$WORK/stale-pointers" || rc=$?
+if [ "$rc" -gt 1 ]; then
+  note_fail "could not scan skills/ and commands/ for stale guard pointers (grep exit $rc)"
+elif [ -s "$WORK/stale-pointers" ]; then
+  note_fail "a pointer still sends the issue-scoped guard to github-mechanics.md §5 — point it at skills/_shared/open-pr.md:
+$(sed 's/^/      /' "$WORK/stale-pointers")"
+else
+  echo "ok: no pointer sends the guard to its old home in github-mechanics.md §5"
+fi
+
+# ---------------------------------------------- 4. the branch-name lookup is silent on no match (#635)
+#
+# §1 reads ANY output of the `gh pr list --head` lookup as "a PR is already open". `.[0]` alone
+# prints `null` for a no-match `[]` — the #286 shape — and every caller would then stop forever.
+# The filter is read out of the recipe and run as gh's --jq runs it (raw output).
+lookup=$(grep -F 'gh pr list --head "$BRANCH"' "$RECIPE" | sed -nE "s/.*--jq '([^']*)'.*/\1/p") || true
+if [ -z "$lookup" ]; then
+  note_fail "no --jq filter found on the branch-name lookup in $RECIPE"
+elif [ -n "$(printf '[]' | jq -r "$lookup")" ]; then
+  note_fail "the branch-name lookup ('$lookup') prints output for no open PR — §1 would read it as a PR"
+elif [ -z "$(printf '[{"number":7}]' | jq -r "$lookup")" ]; then
+  note_fail "the branch-name lookup ('$lookup') prints nothing for an open PR"
+else
+  echo "ok: the branch-name lookup prints nothing on no match and the PR on a match"
+fi
+
 # ---------------------------------------------------------------------------------------- verdict
 if [ "$FAILED" -ne 0 ]; then
   echo
