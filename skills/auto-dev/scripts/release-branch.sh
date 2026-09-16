@@ -48,10 +48,12 @@
 #
 # On RELEASED, the #469 record `kit.worktree.<branch>.path` that make-worktree.sh writes is gone if
 # it named the holder: it is unset BEFORE the detach and put back if the detach fails, so RELEASED
-# always means both. Left behind, assert_worktree_live (_assert-branch.sh) would refuse the adopting
-# tree's first guarded write as a tree "destroyed mid-run". A record naming any other path is left
-# alone. The read-back, not git's exit status, decides RELEASED: `git switch` reports a failing
-# post-checkout hook's status after it has already moved HEAD.
+# always means both. The unset keeps RELEASED meaning "no record names the holder" — since #644,
+# assert_worktree_live (_assert-branch.sh) would re-record it on the adopting tree's first guarded
+# write anyway, so a left-behind record is no longer a refusal, only a stale value the guard heals
+# in passing. A record naming any other path is left alone. The read-back, not git's exit status,
+# decides RELEASED: `git switch` reports a failing post-checkout hook's status after it has already
+# moved HEAD.
 #
 # "Pushed" is judged against the LOCAL remote-tracking ref refs/remotes/origin/<branch>. Nothing is
 # fetched, because a raw fetch can be sandbox-blocked. A stale ref can only produce a false
