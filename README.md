@@ -165,7 +165,9 @@ Full reference — the `dnx` version floor, the `Edit` escape hatch for what ros
   trust, and the command proceeds. `GIT_GATE=off` (also `0|false|no|disabled`) disables it outright
   — as a prefix on the one command (`GIT_GATE=off git …` or `GIT_GATE=off gh …`), or set where
   Claude is launched for the whole session; an `export` typed into a Bash call never reaches the
-  hook (#372). `GIT_GATE=on` forces it past the profile probe, and `off` still wins.
+  hook (#372). The prefix is not offered to, or honoured for, a sub-agent (its payload carries
+  `agent_id`), which has nobody to approve it. `GIT_GATE=on` forces it past the profile probe, and
+  `off` still wins.
 - **The probe follows `cd`** — `cd /tmp/shop && git init && git commit` is that repository's commit,
   not the cwd's, so a literal, resolvable `cd` moves the profile lookup the way `-C <path>` does;
   a `git init` marks what follows as a brand-new, guard-less repository (#372). And the arms read
@@ -442,9 +444,10 @@ omarchy plugin add https://github.com/Atypical-Consulting/omarchy-aikit.git --en
 - That gate is **inert** in any repository without a `.claude/skills/repo-profile.md`, and
   it **fails open** on every internal error — the decision recorded in
   [ADR 0002](docs/adr/0002-the-roseline-gate-fails-open-always.md).
-- A `GIT_GATE=off` prefix lets one command through; launching Claude with `GIT_GATE=off` in its
-  environment disables the gate for the session (an `export` inside a Bash call never reaches the
-  hook). `GIT_GATE=on` forces it past the profile probe.
+- A `GIT_GATE=off` prefix lets one command through — not offered to, or honoured for, a sub-agent
+  (its payload carries `agent_id`), which has nobody to approve it; launching Claude with
+  `GIT_GATE=off` in its environment disables the gate for the session (an `export` inside a Bash
+  call never reaches the hook). `GIT_GATE=on` forces it past the profile probe.
 - The guards also refuse a write from a worktree that was destroyed mid-run: `make-worktree.sh`
   records each worktree's path in the repo config, and `guarded-commit/push/merge.sh` compare it to
   where they actually stand before touching the branch (#469).

@@ -582,7 +582,7 @@ run_shared_refs_case() {
   python3 -c "$mutator" "$ROOT"
   local out rc
   set +e
-  out=$(python3 "$ROOT/tests/skills/check-shared-refs.py" 2>&1)
+  out=$(env ${SHARED_REFS_PYIOENC:+PYTHONIOENCODING=$SHARED_REFS_PYIOENC} python3 "$ROOT/tests/skills/check-shared-refs.py" 2>&1)
   rc=$?
   set -e
   if [ "$expect" = fail ]; then
@@ -652,6 +652,19 @@ t = p.read_text(encoding="utf-8")
 t = t.replace("](../../_shared/untrusted-input-boundary.md)", "](../_shared/untrusted-input-boundary.md)")
 p.write_text(t, encoding="utf-8")
 '
+
+SHARED_REFS_PYIOENC=cp1252
+run_shared_refs_case "B4w a broken link on a cp1252 stdout " fail "BROKEN LINK:" "UnicodeEncodeError" '
+import pathlib, sys
+# The regression a substring test cannot see: every character of a correct link is present, and it
+# resolves to skills/migrate-legacy/_shared/… — a path that does not exist. The reminder reads
+# fine and is unreachable, which is the guard emptied of meaning while looking green.
+p = pathlib.Path(sys.argv[1]) / "skills/migrate-legacy/references/phase-1-assess.md"
+t = p.read_text(encoding="utf-8")
+t = t.replace("](../../_shared/untrusted-input-boundary.md)", "](../_shared/untrusted-input-boundary.md)")
+p.write_text(t, encoding="utf-8")
+'
+SHARED_REFS_PYIOENC=""
 
 # B5 and B6 used to be FAIL cases (NO CONSUMERS SECTION / NO BOUNDARY FILE): the single-document
 # checker treated the boundary as mandatory, so losing its section or the file itself was a hard
