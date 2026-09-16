@@ -214,10 +214,12 @@ QUOTE_CHARS = ('"', "'", "`", "“", "‘")
 
 def quoted(text, i):
     """True when `text[i:]` is being CITED, not asserted: walk left from `i - 1`, skipping `*`/`_`
-    emphasis markers, and check whether the next character is a quote mark. False at the start of
-    `text` or on any other character. An escaped `\\"` ends in `"` and counts the same as a bare one."""
+    emphasis markers and ASCII space/tab padding, and check whether the next character is a quote
+    mark. False at the start of `text` or on any other character. An escaped `\\"` ends in `"` and
+    counts the same as a bare one. Deliberately not `.isspace()`: a newline is never skipped, so the
+    walk cannot cross into a preceding line's unrelated quote mark."""
     j = i - 1
-    while j >= 0 and text[j] in "*_":
+    while j >= 0 and text[j] in "*_ \t":
         j -= 1
     return j >= 0 and text[j] in QUOTE_CHARS
 
