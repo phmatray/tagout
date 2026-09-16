@@ -2476,19 +2476,25 @@ fi
 # replacement text alone would pass even if the old, now-false claim were left in place alongside
 # it, so both halves are pinned: the unconditional claim is gone, AND the actual guarantee plus what
 # to do when nesting is not refused are stated.
+#
+# The absence check is anchored to the exact original sentence ("second one, it will be refused"),
+# not a bare 'will be refused' — a file-wide substring match would false-fail on an unrelated future
+# sentence elsewhere in this file that happens to use the same three words (verification-gap review,
+# #656). No other sentence in this file pairs "second one" with an unconditional refusal claim.
 echo "== auto-dev-worker.md states the make-worktree.sh nesting guarantee conditionally (#656) =="
 AUTO_DEV_WORKER="$KIT_ROOT/commands/auto-dev-worker.md"
 if [ ! -f "$AUTO_DEV_WORKER" ]; then
   echo "FAIL: [nesting guarantee] $AUTO_DEV_WORKER missing"
   fails=$((fails + 1))
-elif grep -q 'will be refused' "$AUTO_DEV_WORKER"; then
+elif grep -q 'second one, it will be refused' "$AUTO_DEV_WORKER"; then
   echo "FAIL: [nesting guarantee] $AUTO_DEV_WORKER still claims a second make-worktree.sh call"
   echo "      'will be refused' — that guarantee does not hold under isolation (#656)"
   fails=$((fails + 1))
 elif ! grep -q 'will not be refused' "$AUTO_DEV_WORKER" \
-    || ! grep -q 'refuses every git operation run in a tree outside the one you were given' "$AUTO_DEV_WORKER"; then
+    || ! grep -q 'refuses every git operation run in a tree outside the one you were given' "$AUTO_DEV_WORKER" \
+    || ! grep -q 'Work inside the tree you woke up in' "$AUTO_DEV_WORKER"; then
   echo "FAIL: [nesting guarantee] $AUTO_DEV_WORKER does not state the actual guarantee and what"
-  echo "      happens when a second make-worktree.sh call is not refused (#656)"
+  echo "      to do when a second make-worktree.sh call is not refused (#656)"
   fails=$((fails + 1))
 else
   echo "ok   [nesting guarantee] $AUTO_DEV_WORKER states the guarantee conditionally, with the fallout"
