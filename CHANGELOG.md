@@ -8,6 +8,36 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [3.1.0](https://github.com/phmatray/tagout/compare/v3.0.1...v3.1.0) (2026-09-16)
+
+
+### Features
+
+* **create-pr:** open a pull request for a finished branch through one shared recipe ([#635](https://github.com/phmatray/tagout/issues/635)) ([#638](https://github.com/phmatray/tagout/issues/638)) ([b1ca260](https://github.com/phmatray/tagout/commit/b1ca26003ce6e6377024f4b43326e3910f91fa9d))
+
+
+### Bug Fixes
+
+* **auto-dev:** pin the nesting-guarantee wording and add a landed-edit self-check ([#656](https://github.com/phmatray/tagout/issues/656)) ([#663](https://github.com/phmatray/tagout/issues/663)) ([e9fd277](https://github.com/phmatray/tagout/commit/e9fd2777a1801744fbb32ac5a6fe102a30abde15))
+* **evals:** stage skills by copy so the eval runner starts on a Windows checkout ([#624](https://github.com/phmatray/tagout/issues/624)) ([#633](https://github.com/phmatray/tagout/issues/633)) ([aeb216f](https://github.com/phmatray/tagout/commit/aeb216f18025e88bfdb88d09e9ee5ad83b6c8cd4))
+* **hooks:** the write-gate honours GIT_GATE=off only from the main thread ([#643](https://github.com/phmatray/tagout/issues/643)) ([#646](https://github.com/phmatray/tagout/issues/646)) ([3fb74ac](https://github.com/phmatray/tagout/commit/3fb74acde887e16cdc8363a1baeee2ff9ec753e4))
+* **hooks:** the write-gate judges a shell's -c string and eval's argument ([#658](https://github.com/phmatray/tagout/issues/658)) ([#662](https://github.com/phmatray/tagout/issues/662)) ([0219a9f](https://github.com/phmatray/tagout/commit/0219a9f2a191b58854457f7e67b988c96e817d0c))
+* **implement-issue:** filter a rename's pending target through looks_like_path ([#599](https://github.com/phmatray/tagout/issues/599)) ([#626](https://github.com/phmatray/tagout/issues/626)) ([108bedb](https://github.com/phmatray/tagout/commit/108bedb2377177e195220d4551e1f52cae69c454))
+* **implement-issue:** let the liveness guard follow a branch into the worktree that holds it ([#644](https://github.com/phmatray/tagout/issues/644)) ([#657](https://github.com/phmatray/tagout/issues/657)) ([9f2479f](https://github.com/phmatray/tagout/commit/9f2479f7c84a58035e880e883144fac022e26894))
+* **implement-issue:** name the code-review dispatch's write risk and require a post-review diff check ([#578](https://github.com/phmatray/tagout/issues/578)) ([#629](https://github.com/phmatray/tagout/issues/629)) ([e3411e5](https://github.com/phmatray/tagout/commit/e3411e5fff0a85c0f6e6f72cf3dc437f7eb38b35))
+* **implement-issue:** post-review-check.sh proves whether a code-review dispatch wrote past its own report ([#659](https://github.com/phmatray/tagout/issues/659)) ([#664](https://github.com/phmatray/tagout/issues/664)) ([485f0be](https://github.com/phmatray/tagout/commit/485f0be9158965f80f96d406514a7f504bee17de))
+* **implement-issue:** read a path an earlier task creates as SKIP, not MISSING ([#640](https://github.com/phmatray/tagout/issues/640)) ([#651](https://github.com/phmatray/tagout/issues/651)) ([df474c7](https://github.com/phmatray/tagout/commit/df474c72738e9ffb38865941c997c914aed9ef8d))
+* **implement-issue:** resolve every review diff range against a fetched origin/main ([#601](https://github.com/phmatray/tagout/issues/601)) ([#627](https://github.com/phmatray/tagout/issues/627)) ([d782842](https://github.com/phmatray/tagout/commit/d7828429feb5683a49d7be30ba762f40745b8ec3))
+* **implement-issue:** resolve plan paths through cat-file stdin so Git Bash cannot rewrite them ([#647](https://github.com/phmatray/tagout/issues/647)) ([#660](https://github.com/phmatray/tagout/issues/660)) ([7d0313f](https://github.com/phmatray/tagout/commit/7d0313f47d297694c99a55b243c755dc8ca07e95))
+* **merge-pr:** name needs-approval in the post-merge base-run report ([#586](https://github.com/phmatray/tagout/issues/586)) ([#632](https://github.com/phmatray/tagout/issues/632)) ([244012b](https://github.com/phmatray/tagout/commit/244012be31707a7163944e0665e5f3418372456e))
+* **merge-pr:** recognise this repo's own release automation so approve-runs can land the release PR ([#622](https://github.com/phmatray/tagout/issues/622)) ([#628](https://github.com/phmatray/tagout/issues/628)) ([aa9d41b](https://github.com/phmatray/tagout/commit/aa9d41b144cc4ff91528dbea091c7930108f1e67))
+* **review-sessions:** harvest.py counts a signal only when the kit was invoked, not merely mentioned ([#645](https://github.com/phmatray/tagout/issues/645)) ([#655](https://github.com/phmatray/tagout/issues/655)) ([6faad13](https://github.com/phmatray/tagout/commit/6faad13913faee9a32207a11081ab0f8cb2dd3c8))
+* **scripts:** refuse a missing .NET 6 runtime as a prerequisite instead of failing run-all-tests' LegacyShop gate ([#642](https://github.com/phmatray/tagout/issues/642)) ([#661](https://github.com/phmatray/tagout/issues/661)) ([d4e710c](https://github.com/phmatray/tagout/commit/d4e710c77d14d1ce9b643d326690520ff64502bd))
+* **scripts:** resolve bash through which() so decision-check reaches a verdict on Windows ([#623](https://github.com/phmatray/tagout/issues/623)) ([#625](https://github.com/phmatray/tagout/issues/625)) ([4c3ce7e](https://github.com/phmatray/tagout/commit/4c3ce7e5648c2988cf0d686f1866f6baa175785d))
+* **tests:** check-shared-refs.py prints its refusal on a non-UTF-8 stdout ([#648](https://github.com/phmatray/tagout/issues/648)) ([#649](https://github.com/phmatray/tagout/issues/649)) ([56669bd](https://github.com/phmatray/tagout/commit/56669bd979fb0ceedd135ee34d3ffe2c2fc00431))
+* **tests:** run-all-tests' drift guard fails a coincidental first-line match instead of passing on it ([#579](https://github.com/phmatray/tagout/issues/579)) ([#631](https://github.com/phmatray/tagout/issues/631)) ([5ac1f42](https://github.com/phmatray/tagout/commit/5ac1f42792858ce21ae93247d72bc534612dc96b))
+* **tracker:** repoint a stale origin so issue and PR searches stop returning empty ([#637](https://github.com/phmatray/tagout/issues/637)) ([#650](https://github.com/phmatray/tagout/issues/650)) ([5318d89](https://github.com/phmatray/tagout/commit/5318d89131e24a47504fa944869ed8945df43c81))
+
 ## [3.0.1](https://github.com/phmatray/tagout/compare/v3.0.0...v3.0.1) (2026-09-15)
 
 

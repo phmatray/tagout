@@ -1,6 +1,6 @@
 {
   "name": "tagout",
-  "version": "3.0.1",
+  "version": "3.1.0",
   "description": "Tagout — the gate-verified issue → PR lifecycle for coding agents (create-issue, implement-issue, merge-pr, auto-dev), with a .NET migration add-on powered by RoselineMCP.",
   "contextFileName": "AGENTS.md",
   "mcpServers": {
