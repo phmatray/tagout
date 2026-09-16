@@ -150,4 +150,48 @@ if missing:
 print(f"  ok: drift — each of {len(reproducible)} reproducible ci.yml steps matches exactly one --list entry")
 PY
 
+# ---------------------------------------------------------------- 4. --for is forwarded, --quick omits it (#642)
+#
+# A full run must ask preflight.sh for the run-all-tests-scoped prerequisites (the .NET 6 runtime,
+# #642) and --quick must not, since --quick already skips the one gate that needs it. The stub
+# preflight.sh below records the arguments IT received rather than exercising the real preflight.sh
+# (case 1 already covers that script's own refusal path against a genuine PREREQUISITE), so this
+# proves only what run-all-tests.sh forwards.
+stub4=$(kit_scratch)
+mkdir -p "$stub4/scripts"
+cp "$KIT/scripts/run-all-tests.sh" "$stub4/scripts/run-all-tests.sh"
+cat > "$stub4/scripts/preflight.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$(dirname "$0")/../args.log"
+case " $* " in
+  *" --for run-all-tests "*) exit 1 ;;
+  *) exit 0 ;;
+esac
+EOF
+chmod +x "$stub4/scripts/run-all-tests.sh" "$stub4/scripts/preflight.sh"
+
+rc=0
+full_out=$(bash "$stub4/scripts/run-all-tests.sh" 2>"$stub4/stderr.log") || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL [for-forward/full]: expected exit 2, got $rc"; cat "$stub4/stderr.log"; exit 1; }
+grep -qF 'PREREQUISITE' "$stub4/stderr.log" || {
+  echo "FAIL [for-forward/full]: stderr did not mention PREREQUISITE:"; cat "$stub4/stderr.log"; exit 1; }
+grep -qF -- '--for run-all-tests' "$stub4/args.log" || {
+  echo "FAIL [for-forward/full]: preflight.sh was not called with --for run-all-tests:"; cat "$stub4/args.log"; exit 1; }
+if printf '%s' "$full_out" | grep -qE '^(ok|FAIL) '; then
+  echo "FAIL [for-forward/full]: a gate/suite line was printed despite the missing prerequisite:"
+  echo "$full_out"; exit 1
+fi
+
+rm -f "$stub4/args.log"
+rc=0
+quick_out=$(bash "$stub4/scripts/run-all-tests.sh" --quick 2>"$stub4/quick-stderr.log") || rc=$?
+[ "$rc" -ne 2 ] || {
+  echo "FAIL [for-forward/quick]: --quick must not refuse over the run-all-tests-scoped prerequisite"
+  cat "$stub4/quick-stderr.log"; exit 1; }
+if grep -qF -- '--for' "$stub4/args.log"; then
+  echo "FAIL [for-forward/quick]: --quick must not ask preflight.sh for the scoped prerequisites:"
+  cat "$stub4/args.log"; exit 1
+fi
+echo "  ok: --for — a full run asks preflight.sh for run-all-tests' own prerequisites, --quick does not"
+
 echo "run-all-tests golden test OK"
