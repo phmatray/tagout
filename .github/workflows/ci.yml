@@ -492,6 +492,9 @@ jobs:
       - name: Guarded git golden test (a commit cannot land on the wrong branch)
         run: ./tests/guarded-git/test.sh
 
+      - name: Post-review-check golden test (a code-review dispatch cannot write past its own report undetected)
+        run: ./tests/post-review-check/test.sh
+
       - name: Finish-task golden test (one call closes a task through the three guards, in order)
         run: ./tests/finish-task/test.sh
 
@@ -624,6 +627,9 @@ jobs:
 
       - name: Deliver-issue golden test (dispatches the two worker command files, never a copied template; its three decisions, #396)
         run: ./tests/deliver-issue/test.sh
+
+      - name: Create-pr golden test (gh pr create has one home in skills/_shared/open-pr.md, and no bare git push or commit) (#635)
+        run: ./tests/create-pr/test.sh
 
       - name: Session-retro golden test (the weekly harvest trigger — harvest's footer is not a signal, install resolves the main checkout)
         run: ./tests/session-retro/test.sh

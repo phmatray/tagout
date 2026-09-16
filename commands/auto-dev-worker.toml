@@ -13,11 +13,12 @@ code-review and apply its findings yourself, sync the default branch, format, an
 **The worktree you were given is the worktree.** You were very likely dispatched with the Agent
 tool's `isolation: "worktree"` option, which already put you in a git worktree of your own before
 this prompt ever ran — that IS `implement-issue`'s "own git worktree" above; do not call
-`make-worktree.sh` for a second one, it will be refused (nesting a worktree inside an isolated one is
-pinned shut for the same reason the isolation exists). Work inside the tree you woke up in, start
-there, and never touch a path outside it — that is what keeps this worker's area disjoint from every
-other worker's, and a stray write outside it is exactly the failure `isolation: "worktree"` exists to
-prevent (#412).
+`make-worktree.sh` for a second one. It will not be refused — `make-worktree.sh` has no way to tell
+an isolated session from a legitimate caller and will create the nested tree — but the harness then
+refuses every git operation run in a tree outside the one you were given, so a second worktree just
+leaves you stuck with one you cannot use. Work inside the tree you woke up in, start there, and never
+touch a path outside it — that is what keeps this worker's area disjoint from every other worker's,
+and a stray write outside it is exactly the failure `isolation: "worktree"` exists to prevent (#412).
 
 **Your first act, before you touch anything else: verify it actually worked.** Run
 `git rev-parse --show-toplevel` and compare it to the `SUPERVISOR_TOPLEVEL` value in this prompt,
@@ -68,9 +69,10 @@ sub-agent: one writer per worktree, and that writer is you.
 confined to a worktree, invoking a guard whose path can resolve outside it. Follow that fallback
 (copy the guards plus `_assert-branch.sh` into a scratch dir inside your own worktree, run them
 from there, delete it before finishing) and **report that you did** in your final line's `DETAIL:`
-field. Never fall back to a bare `git commit`, `git push` or `git merge` — that is the exact failure
-the guards exist to prevent, and improvising around it is not a decision a background worker gets to
-make alone.
+field. Never fall back to a bare — or `GIT_GATE=off`-prefixed, a prefix the gate does not honour
+for a sub-agent — `git commit`, `git push` or `git merge`; that is the exact failure the guards
+exist to prevent, and improvising around it is not a decision a background worker gets to make
+alone.
 
 ## Never wait — you are a background sub-agent
 

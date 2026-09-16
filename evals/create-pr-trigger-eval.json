@@ -1,0 +1,21 @@
+[
+  {"query": "open a PR for this branch", "should_trigger": true, "note": "'open a PR for this branch'"},
+  {"query": "create a pull request for my fix", "should_trigger": true, "note": "'create a pull request for my fix'"},
+  {"query": "turn this branch into a PR", "should_trigger": true, "note": "'turn this branch into a PR'"},
+  {"query": "ouvre une PR pour ce correctif", "should_trigger": true, "note": "FR 'ouvre une PR'"},
+  {"query": "crée la pull request pour fix/88-null-header", "should_trigger": true, "note": "FR 'crée la pull request' + branch name"},
+  {"query": "my commits on fix/212-csv-culture are done — push it and open the PR against #212", "should_trigger": true, "note": "finished branch + issue"},
+  {"query": "open a draft PR for the branch I'm on, the tests aren't passing yet", "should_trigger": true, "note": "--draft"},
+  {"query": "I fixed it by hand on this branch, can you raise a pull request for it", "should_trigger": true, "note": "a hand-built fix, no plan"},
+  {"query": "put up a PR for feat/301-export-json so I can merge it later", "should_trigger": true, "note": "open now, merge later"},
+
+  {"query": "merge PR 281", "should_trigger": false, "note": "→ merge-pr"},
+  {"query": "implement issue 47", "should_trigger": false, "note": "→ implement-issue"},
+  {"query": "file an issue for this bug", "should_trigger": false, "note": "→ create-issue"},
+  {"query": "review PR 281 but don't merge it", "should_trigger": false, "note": "→ code-review"},
+  {"query": "build the feature from issue 129 and open the PR", "should_trigger": false, "note": "a planned issue to build → implement-issue"},
+  {"query": "land #281 once CI is green", "should_trigger": false, "note": "→ merge-pr"},
+  {"query": "the test suite is failing on my branch, find out why", "should_trigger": false, "note": "→ debug-issue"},
+  {"query": "take issue 47 all the way to a merged PR", "should_trigger": false, "note": "→ deliver-issue"},
+  {"query": "what does our PR title convention require?", "should_trigger": false, "note": "doc question — no lifecycle skill"}
+]

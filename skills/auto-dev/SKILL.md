@@ -381,7 +381,7 @@ started supervisor sessions share the same blind spot, since nothing pins the st
 contended path.
 
 So before spawning issue `#$ISSUE`'s worker — first batch or refill — run the **exact** issue-scoped
-PR-existence guard from `skills/implement-issue/references/github-mechanics.md` §5 against `$ISSUE`:
+PR-existence guard from `skills/_shared/open-pr.md` §1 against `$ISSUE`:
 its `case "$ISSUE" in ''|*[!0-9]*)` validation, the `gh pr list --search … > /tmp/issue-$ISSUE-mentions.json`
 fetch, its `[ -s … ] || { … REFUSED …; exit 1; }` empty-fetch check, then the marked `jq` filter
 (`>>> issue-scoped PR-existence guard`). Paste that block verbatim, not a paraphrase — one home for
@@ -392,7 +392,7 @@ Read its verdict the same way that section does: `0` → clear to dispatch. `1`+
 closes this issue (another worker's, or a leftover the state file forgot) — skip it, drop it from the
 queue with a one-line note in the state file, and dispatch the next eligible issue instead. `REFUSED`
 (empty fetch, or a non-digit `$ISSUE`) → a transient failure, not a verdict — retry the check, never
-read it as "0 found" and never drop the issue from the queue on it. §5's own `⚠️ Residual limitation`
+read it as "0 found" and never drop the issue from the queue on it. §1's own `⚠️ Residual limitation`
 note applies here unchanged (the Search API is eventually consistent — a PR opened seconds ago by a
 racing session can still search as absent), so this narrows the #195-shaped race, it does not close it
 to zero. This is defense-in-depth alongside the state file, not a replacement for it: it closes the
@@ -419,7 +419,9 @@ and runs this exact block:
 and nothing about the rest of the run. A worktree destroyed mid-run is covered elsewhere, by the
 shared git guard (#469): `make-worktree.sh` records each tree's path in the common `.git/config`
 and `assert_worktree_live` in `_assert-branch.sh` refuses every guarded commit, push or merge whose
-live toplevel is not that record — so a relocated worker is stopped at its next write, by name.
+live toplevel is not that record — unless that toplevel is another linked worktree holding the same
+branch, which re-records it instead (#644) — so a relocated worker is stopped at its next write, by
+name.
 
 ```bash
 # >>> worker-toplevel guard

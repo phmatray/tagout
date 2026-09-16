@@ -57,15 +57,16 @@
   list omits a gate script `run-all-tests.sh --list` runs (#388) — it went stale once already.
 - **Prerequisites / caveats:** `python3` with `PyYAML` — declared in `requirements.json` and
   enforced by `./scripts/preflight.sh` (#170; CI also pip-installs it as a setup step), a `dotnet`
-  SDK for the `samples/LegacyShop` fixture only, and `gh` authenticated for anything issue/PR shaped.
-  `samples/` is a **frozen fixture** — several suites assert its immutability, so a change there
-  fails tests by design.
+  SDK and the .NET 6 runtime for the `samples/LegacyShop` fixture only, and `gh` authenticated for
+  anything issue/PR shaped. `samples/` is a **frozen fixture** — several suites assert its
+  immutability, so a change there fails tests by design.
 - **The fixture needs the .NET 6 *runtime*, not just an SDK.** `samples/LegacyShop` targets `net6.0`
   on purpose (it is the legacy specimen), and CI's `setup-dotnet` installs `6.0.x` alongside `10.0.x`
-  for exactly that. A machine with only newer runtimes **builds** it fine and then aborts the test
-  run with `framework_version=6.0.0 … app-launch-failed`. That is a missing local prerequisite, not a
-  regression: when it happens, run `dotnet build samples/LegacyShop --nologo` plus the bash suites,
-  and say in the report that `dotnet test` was not executed locally.
+  for exactly that. `requirements.json` declares that runtime `for: run-all-tests` (#642), so a full
+  `./scripts/run-all-tests.sh` on a host without it refuses with exit 2 (`PREREQUISITE`, naming
+  `.NET 6 runtime`) before any gate runs — it is a missing local prerequisite, never reported as a
+  regression. `--quick` skips the prerequisite and the fixture gate together; say in the report that
+  `dotnet test` was not run locally.
 
 ## CI gates (the exact commands CI fails on — satisfy these locally before ready/merge)
 Run them all at once with `./scripts/run-all-tests.sh` (#170) — it mirrors `.github/workflows/ci.yml`'s
@@ -131,7 +132,7 @@ hand-copying it further.
   | `area: create-issue` | `skills/create-issue/`, `skills/triage-backlog/` |
   | `area: migrate` | `skills/migrate-legacy/`, `skills/review-followups/`, `commands/migrate-*.md` |
   | `area: repo-setup` | `skills/setup-repo/`, `skills/profile-repo/`, `.claude/skills/repo-profile.md` |
-  | `area: skills` | `skills/_shared/`, `skills/debug-issue/`, `skills/deliver-issue/`, `skills/review-sessions/`, cross-skill conventions |
+  | `area: skills` | `skills/_shared/`, `skills/create-pr/`, `skills/debug-issue/`, `skills/deliver-issue/`, `skills/review-sessions/`, cross-skill conventions |
   | `area: scripts` | `scripts/` |
   | `area: tests` | `tests/`, `evals/`, the frozen `samples/` fixture |
   | `area: templates` | `templates/` |

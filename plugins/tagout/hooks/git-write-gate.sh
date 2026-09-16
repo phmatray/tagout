@@ -34,6 +34,8 @@
 #   * a `GIT_GATE=off git commit …` PREFIX used to be stepped over by the same walk that skips
 #     `TZ=UTC git …`, so the one-command escape the deny text advertised did nothing. The walk now
 #     reads the assignment it steps over: a segment prefixed with the off value is allowed whole.
+#     The prefix is honoured only for the main thread; a sub-agent's (a payload carrying `agent_id`)
+#     is judged like the bare command, since it has nobody to ask before using the escape (#643).
 # And the probe follows `cd` (#372): `cd /tmp/shop && git commit` is that repository's commit, not
 # the cwd's — a literal, resolvable `cd` in an earlier segment moves the directory the profile is
 # looked up in, exactly as `-C <path>` already does; anything the hook cannot resolve (a variable,
@@ -117,6 +119,8 @@ case "$cmd" in *git*|*gh*merge*|*'\'*) ;; *) exit 0 ;; esac
 # there too — a real shell tokenizer is the fix for either, and not worth it for a gate whose declared
 # direction is fail-open (ADR 0002).
 cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || exit 0
+# Claude Code stamps `agent_id` on a sub-agent's tool call; empty means the main thread (#643).
+agent_id=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || agent_id=""
 
 # ---------------------------------------------------------------- #533: recognise past disguises
 # Three shapes let a real write slip past the walk below unrecognised: a backslash or quoting that
@@ -124,6 +128,8 @@ cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || exit 0
 # (`timeout`), and a command hidden inside `$(...)`/backtick substitution. The first two are fixed
 # inside the same character scan that already strips quotes/comments (below); the third needs its
 # own recursive check, since the substituted command runs regardless of where it sits on the line.
+# A fourth (#658): a shell launcher's `-c` string (`bash -c '…'`, `sh -ec "…"`) or `eval`'s argument
+# is also a command that runs regardless of where it sits — recognised the same recursive way.
 
 # ------------------------------------------------------------------- strip quotes and comments
 # `echo "git push --force"` is not a push, and `git log # git reset --hard` is not a reset. Matt's
@@ -157,6 +163,17 @@ cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || exit 0
 awkout=$(printf '%s' "$cmd" | tr '\n' ';' | awk '
 BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
 function endsw(s, suf,    ls, lu) { ls = length(s); lu = length(suf); return (ls >= lu && substr(s, ls-lu+1) == suf) }
+# The emitted text of the current segment: `out` after its last `;`, `|` or `&` — a plain backward
+# scan, since POSIX awk has no rindex-of-a-set. Used only to test what PRECEDES a quote that is
+# about to close, never what is inside it (#658). No apostrophes in this comment block: it sits
+# inside the awk program, which the outer shell still reads as ONE single-quoted string.
+function segtail(s,    p, cch) {
+  for (p = length(s); p > 0; p--) {
+    cch = substr(s, p, 1)
+    if (cch == ";" || cch == "|" || cch == "&") return substr(s, p + 1)
+  }
+  return s
+}
 {
   out = ""; q = ""; qbuf = ""; n = length($0); i = 1; prev = " "; nsubs = 0
   while (i <= n) {
@@ -244,6 +261,31 @@ function endsw(s, suf,    ls, lu) { ls = length(s); lu = length(suf); return (ls
         qbuf = qbuf "@P@"; i = j + 1; continue
       }
       if (c == q) {
+        # #658: the -c string of a shell launcher, or the argument eval will run, is a command the
+        # shell WILL run — judged the same as if it had been typed bare, by feeding it into the same
+        # subs[] relay #533 built for $(...)/backticks. The trigger reads the text already emitted
+        # for THIS segment (segtail(out)), not qbuf — the question is what precedes the quote, not
+        # what is inside it. A flag word may sit either side of the c-cluster (bash --norc -c, or
+        # bash -c -x, or bash -c --, ahead of the quoted span) — a real shell still takes the quoted
+        # span as the -c string in every one of those, empirically checked. Checked with macOS
+        # /usr/bin/awk against
+        # bash -c, bash -lc, /bin/bash -c, sh -ec, bash --norc -c, bash -c -x, bash -c -- and eval
+        # (match), and echo, bash, sh -x script.sh, ssh -c aes, foosh -c and sh -c @Q@ (no match). No
+        # apostrophes anywhere in this block (see above).
+        tail = segtail(out)
+        if (tail ~ /(^| |@P@)([^ ]*\/)?(bash|sh|zsh|dash|ksh)( +-[-A-Za-z]+)* +-[A-Za-z]*c[A-Za-z]*( +-[-A-Za-z]+)* *$/ || tail ~ /(^| |@P@)eval *$/) {
+          rec = qbuf
+          # The off-switch carries in: an already-open GIT_GATE=off|0|false|no|disabled assignment
+          # prefixes the relayed string too, so the recursive judge() applies the rule from #643
+          # (honoured for the main thread, stepped over for a sub-agent) to it exactly as to a bare
+          # command. Two conditions, not one regex: the trailing space stops GIT_GATE=offbeat from
+          # truncating to the exact off-switch token GIT_GATE=off, and the RSTART check stops
+          # FOO_GIT_GATE=off from being read as the same token — match() finds GIT_GATE=... as a
+          # SUBSTRING anywhere in tail, so without this a longer, unrelated assignment would still
+          # relay the bare token that the recursive judge exact-word case honours (#658 review).
+          if (match(tail, /GIT_GATE=(off|0|false|no|disabled) /) && (RSTART == 1 || substr(tail, RSTART - 1, 1) == " ")) rec = substr(tail, RSTART, RLENGTH - 1) " " rec
+          subs[nsubs++] = rec
+        }
         q = ""
         # A quoted span collapses to a placeholder so its content can never be substring-matched
         # (the reason it is opaque at all) — but a quoted `gh`/`git`, or a quoted path ending in one
@@ -291,8 +333,9 @@ EOF
 if [ -n "$gate_subs" ]; then
   while IFS= read -r gate_subcmd; do
     [ -n "$gate_subcmd" ] || continue
-    gate_subpay=$(jq -nc --arg d "$cwd" --arg c "$gate_subcmd" \
-      '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' 2>/dev/null) || continue
+    gate_subpay=$(jq -nc --arg d "$cwd" --arg c "$gate_subcmd" --arg a "$agent_id" \
+      '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}} + (if $a == "" then {} else {agent_id:$a} end)' \
+      2>/dev/null) || continue
     gate_subout=$(printf '%s' "$gate_subpay" | bash "$0" 2>/dev/null)
     if [ -n "$gate_subout" ]; then
       printf '%s\n' "$gate_subout"
@@ -329,7 +372,13 @@ deny() { # $1 the offending segment  $2 the replacement sentence
   local reason why="${3:-is one of the writes that produced #26 and #280 in a shared checkout}"
   reason="Blocked by the git write-gate: \`$1\` $why.
 $2
-To run this one command anyway, prefix it: \`GIT_GATE=off ${4:-git} …\`. To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment — an \`export\` inside a Bash call never reaches this hook."
+"
+  # A sub-agent's prefix is not honoured (#643), so its denial offers the guard fallback instead.
+  if [ -n "$agent_id" ]; then
+    reason="${reason}You are a sub-agent — nobody is here to approve a bypass, and a \`GIT_GATE=off\` prefix is not honoured for you. If the guard's path is refused, follow \`$(guard_hint skills/_shared/guard-invocation.md)\`; otherwise stop and report this denial."
+  else
+    reason="${reason}To run this one command anyway, prefix it: \`GIT_GATE=off ${4:-git} …\`. To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment — an \`export\` inside a Bash call never reaches this hook."
+  fi
   jq -n --arg r "$reason" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}' 2>/dev/null
   exit 0
@@ -469,7 +518,11 @@ judge() { # $1 one segment of the stripped command
       # The one assignment the walk READS instead of stepping over: the per-command off-switch the
       # deny text advertises. It has to be honoured here, because the environment check at the top
       # of this file sees the hook's own environment, never a prefix typed into the command (#372).
-      GIT_GATE=off|GIT_GATE=0|GIT_GATE=false|GIT_GATE=no|GIT_GATE=disabled) return 0 ;;
+      # Honoured for the main thread only: a sub-agent has nobody to ask before it reaches for the
+      # escape its deny text names, so its prefixed segment is stepped over and judged (#643).
+      GIT_GATE=off|GIT_GATE=0|GIT_GATE=false|GIT_GATE=no|GIT_GATE=disabled)
+        [ -z "$agent_id" ] && return 0
+        shift ;;
       # `GH_REPO=` retargets a later `gh pr merge` at another repo the same way `-R`/`--repo` does
       # (#533) — recorded here, since by the time `judge_gh` sees the segment this prefix is
       # already consumed and gone from "$@".

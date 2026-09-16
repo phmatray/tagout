@@ -11,7 +11,7 @@
     },
     "repo": {
       "args": "",
-      "stdout": "{\"slug\",\"host\",\"defaultBranch\"}"
+      "stdout": "{\"slug\",\"host\",\"defaultBranch\",\"originSlug\"}"
     },
     "issue-view": {
       "args": "<number>",

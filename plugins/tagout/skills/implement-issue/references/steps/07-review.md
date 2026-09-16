@@ -1,18 +1,69 @@
 ## Step 7 — Review on three axes: Standards, Spec, Verification
 
-Stage the diff **once, to a file** — `git -C "$WORKTREE" diff main...HEAD > "/tmp/issue-$ISSUE.diff"`,
+**Commit and push before you dispatch anything.** `code-review` is a sub-skill that runs *in this
+session*, against *this* worktree, with this session's own write access — the review-dispatch rule
+below constrains the sub-agents you spawn, and does not reach it. It has written to a live worktree
+before — #477 and #560 (both recounted later in this file) and #578, a fresh, non-git reproduction in
+which the Standards-axis dispatch wrote directly into a worker's tree, unauthorized. A committed,
+pushed tree is what makes such a write *visible* instead of silently folded into your next commit,
+so it is the precondition for the check below, not housekeeping:
+
+```bash
+git -C "$WORKTREE" status --porcelain                 # anything here is yours, and must land first
+"$GUARDS/guarded-commit.sh" -C "$WORKTREE" <commit-identity> "$BRANCH" -- -A -m "…"   # -A: untracked too
+"$GUARDS/guarded-push.sh"   -C "$WORKTREE" "$BRANCH"
+git -C "$WORKTREE" rev-parse HEAD                    # write this sha into your report — see below
+```
+
+**Write that sha down in your report, not in a shell variable.** Every command runs in a fresh
+shell, so a `REVIEW_BASE=…` set here is empty by the time the check below runs — and an empty
+variable makes that comparison pass silently, which is the exact failure this step exists to catch.
+
+Then stage the diff **once, to a file** — `git -C "$WORKTREE" fetch origin main --quiet && git -C "$WORKTREE" diff origin/main...HEAD > "/tmp/issue-$ISSUE.diff"`,
 non-empty or stop — and hand sub-agents that path, never the diff text and never a worktree they
-could write to (#477). Then review the **whole feature branch** (`main...HEAD`, not just the last
+could write to (#477). Then review the **whole feature branch** (`origin/main...HEAD`, not just the last
 commit) along **three axes, run in parallel and never merged**:
 
 - **Standards** — is this good code by this repo's lights? Correctness bugs, missed reuse, cross-task
   inconsistencies, the profile's *Coding standards*. Run the **`code-review` skill** over
-  `main...HEAD` with an explicit level sized by the plan's breadth (Step 3) —
-  `/code-review medium main...HEAD` for a small, localized plan, `/code-review high main...HEAD` for
+  `origin/main...HEAD` with an explicit level sized by the plan's breadth (Step 3) —
+  `/code-review medium origin/main...HEAD` for a small, localized plan, `/code-review high origin/main...HEAD` for
   a broad/deep one. Pass the level every time: with no level, `code-review` reuses the last level
   typed in any session, and one bare call inherited `xhigh` and spent 106.8M tokens on 25 review
   sub-agents (2026-09-07). `ultra` is never prescribed — it is a cloud review the user launches and
   pays for, which no agent can start. **Never `--fix`**: read the findings and apply them yourself.
+  **The moment that call returns, before you read a single finding, ask what it changed:**
+
+  ```bash
+  "$GUARDS/post-review-check.sh" -C "$WORKTREE" --branch "$BRANCH" --before <the sha you wrote down>
+  ```
+
+  Three prior incidents (#477, #560, #578) left this check as three commands the caller had to
+  remember to run and compare by hand; #659 measured that not holding the line — a fourth
+  occurrence where the fork committed twice through bare `git`, and a `status`/`rev-parse` pair run
+  at the wrong moment read as "nothing happened". `post-review-check.sh` is the enforceable
+  replacement — read its exit code, not just its output:
+
+  | Exit | Meaning | What to do |
+  |---:|---|---|
+  | `0` | clean — HEAD is still the sha you wrote down, on `$BRANCH`, and the tree has no changes | Nothing to do — read the findings and apply them yourself, as always |
+  | `1` | the tree is dirty — tracked or untracked changes since the review | Read the printed `status --porcelain` and `diff --stat`; this is the unauthorized-write case below |
+  | `2` | `HEAD` moved off the recorded sha while still on `$BRANCH` | Read the printed `git log --oneline` of the new commits; this is the #477 shape below |
+  | `3` | `HEAD` is not on `$BRANCH`, or is detached | Stop — get back onto `$BRANCH`, in a worktree of its own, before anything else |
+  | `64` | usage error — bad arguments, `-C` not a repository, or `--before` not a commit that resolves (an empty `--before` refuses here rather than silently comparing as equal, which is the failure #659 exists to close) | Nothing was checked; fix the call and re-run |
+
+  Anything exit `1` or `2` surfaces is an **unauthorized write** — you did not ask for an edit, and `--fix` was not
+  passed. It is not yours and it is not automatically correct. Do **not** fold it into your next
+  commit. Read it in full — exit `1`'s own printed `diff --stat` is a summary, not the changed
+  lines, so run `git -C "$WORKTREE" diff` yourself for those — check it against the findings the review actually reported (a change
+  matching no reported finding is the strongest signal it should be discarded), and re-run the
+  task's tests over it. Only then either take deliberate ownership of it in its own commit, saying
+  in the Step 10 recap that the review wrote it and why you kept it — or discard it and say that
+  instead (`git -C "$WORKTREE" restore -- <paths>` for tracked edits; an unauthorized write can also
+  *create* files, which `restore` will not remove — take those from `status --porcelain`'s `??`
+  entries and delete them by name). A HEAD that moved is the #477 shape: read what landed before you push
+  anything on top of it.
+
 - **Spec** — is this what the issue *promised*? Dispatch **one sub-agent** with the brief in
   [`references/spec-review.md`](../spec-review.md): the diff file, the commit list and the
   issue's 📋 Spec as a second file **read after the diff**, reporting (a) requirements missing or
@@ -87,7 +138,7 @@ If an axis is clean, say which one and skip its fix commit. **"Clean" is a resul
 axis that was never run is not clean, and Step 10 recaps the three separately for exactly that reason.
 
 **If the diff touches a path an accepted ADR names in its `code_refs`, propose the ADR update.**
-Run `suggest_adr_from_change` over `git diff main...HEAD` through the `adr` server and put the
+Run `suggest_adr_from_change` over `git diff origin/main...HEAD` through the `adr` server and put the
 returned draft under the PR's `## Follow-ups` heading as *ADR proposal*; without the server, grep
 `docs/adr/*.md` frontmatter for a `code_refs` path this diff touches and write the proposal by hand
 from the ADR it names, saying AdrMcp was not connected. It is a **proposal for the owner**: do not

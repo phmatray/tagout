@@ -75,6 +75,7 @@ A situational way in, folded from a router-skill proposal declined in the v2 met
 | New here — how the whole thing fits together | [`docs/methodology.md`](docs/methodology.md) — the two loops, when to call which skill, where each MCP server is used |
 | An idea to track | [`create-issue`](skills/create-issue/SKILL.md) |
 | An issue with a plan | [`implement-issue`](skills/implement-issue/SKILL.md) `#N` |
+| A finished branch to open as a PR | [`create-pr`](skills/create-pr/SKILL.md) (`#N`, `--draft`) |
 | A PR to land | [`merge-pr`](skills/merge-pr/SKILL.md) `#N` |
 | One idea or issue to a merged PR, hands-off | [`deliver-issue`](skills/deliver-issue/SKILL.md) `<idea>` or `#N` |
 | A queue that never shrinks | [`triage-backlog`](skills/triage-backlog/SKILL.md) |
@@ -164,7 +165,9 @@ Full reference — the `dnx` version floor, the `Edit` escape hatch for what ros
   trust, and the command proceeds. `GIT_GATE=off` (also `0|false|no|disabled`) disables it outright
   — as a prefix on the one command (`GIT_GATE=off git …` or `GIT_GATE=off gh …`), or set where
   Claude is launched for the whole session; an `export` typed into a Bash call never reaches the
-  hook (#372). `GIT_GATE=on` forces it past the profile probe, and `off` still wins.
+  hook (#372). The prefix is not offered to, or honoured for, a sub-agent (its payload carries
+  `agent_id`), which has nobody to approve it. `GIT_GATE=on` forces it past the profile probe, and
+  `off` still wins.
 - **The probe follows `cd`** — `cd /tmp/shop && git init && git commit` is that repository's commit,
   not the cwd's, so a literal, resolvable `cd` moves the profile lookup the way `-C <path>` does;
   a `git init` marks what follows as a brand-new, guard-less repository (#372). And the arms read
@@ -390,6 +393,7 @@ skill is `verb-object` (`create-issue`, `profile-repo`, `debug-issue`), and a me
 | [`migrate-legacy`](skills/migrate-legacy/SKILL.md) | The seven-phase pipeline orchestrator that `/migrate` drives — phase references and playbooks. |
 | [`create-issue`](skills/create-issue/SKILL.md) | File a template-compliant issue whose body carries a brainstorm → spec → implementation-plan trail with tickable task checkboxes. |
 | [`implement-issue`](skills/implement-issue/SKILL.md) | Execute an issue's plan: worktree, draft PR, one commit per task with live checkbox ticking, review on three axes (standards, spec, verification gap) by read-only sub-agents over a staged diff file, sync with `main`, ready-flip. |
+| [`create-pr`](skills/create-pr/SKILL.md) | Open a PR for a finished feature branch: guarded push, ready when the *Full test* is green (draft when asked or red), then the shared PR-open recipe in `skills/_shared/open-pr.md`. |
 | [`merge-pr`](skills/merge-pr/SKILL.md) | Land a ready PR: wait for CI, clear blockers (red checks, conflicts, review) in a corrections loop, squash-merge, triage follow-ups (cluster by root cause, fold into the issue that owns them, file at most 3), tear down. |
 | [`auto-dev`](skills/auto-dev/SKILL.md) | Supervise a FLEET of N parallel workers over the whole backlog: survey and order the open issues, dispatch area-isolated workers (`implement-issue` → `merge-pr`), wait for CI, verify real merge state, refill each slot as a PR lands. |
 | [`deliver-issue`](skills/deliver-issue/SKILL.md) | The single-item form of that chain: one idea or one planned issue to a merged PR, hands-off — files or seeds it through `create-issue`, then dispatches the same two worker commands `auto-dev` uses, each in a fresh sub-agent, waiting for CI in between. `--stop-at ready` leaves the merge to you. |
@@ -440,9 +444,10 @@ omarchy plugin add https://github.com/Atypical-Consulting/omarchy-aikit.git --en
 - That gate is **inert** in any repository without a `.claude/skills/repo-profile.md`, and
   it **fails open** on every internal error — the decision recorded in
   [ADR 0002](docs/adr/0002-the-roseline-gate-fails-open-always.md).
-- A `GIT_GATE=off` prefix lets one command through; launching Claude with `GIT_GATE=off` in its
-  environment disables the gate for the session (an `export` inside a Bash call never reaches the
-  hook). `GIT_GATE=on` forces it past the profile probe.
+- A `GIT_GATE=off` prefix lets one command through — not offered to, or honoured for, a sub-agent
+  (its payload carries `agent_id`), which has nobody to approve it; launching Claude with
+  `GIT_GATE=off` in its environment disables the gate for the session (an `export` inside a Bash
+  call never reaches the hook). `GIT_GATE=on` forces it past the profile probe.
 - The guards also refuse a write from a worktree that was destroyed mid-run: `make-worktree.sh`
   records each worktree's path in the repo config, and `guarded-commit/push/merge.sh` compare it to
   where they actually stand before touching the branch (#469).
@@ -466,6 +471,7 @@ skills/migrate-legacy/   the pipeline orchestrator + phase references + playbook
 skills/review-followups/ consolidated follow-up queue across migrated repos, updated at the source
 skills/create-issue/     generic issue/PR lifecycle: seeded issue (brainstorm → spec → plan)
 skills/implement-issue/  generic issue/PR lifecycle: plan → draft PR → ready
+skills/create-pr/        generic issue/PR lifecycle: a finished feature branch → an open PR
 skills/merge-pr/         generic issue/PR lifecycle: CI wait, corrections loop, squash-merge, follow-ups
 skills/auto-dev/         fleet supervisor above the lifecycle skills: N parallel workers burning down the backlog
 skills/deliver-issue/    the single-item form: one idea or issue to a merged PR, each phase dispatched in a fresh sub-agent
@@ -474,7 +480,7 @@ skills/debug-issue/      root-cause-before-fix process, harness-agnostic
 skills/review-sessions/  the retro across sessions: harvest.py over the transcripts → cluster → verify → filing bar → create-issue
 skills/profile-repo/     the per-repo profile generator the lifecycle skills consume
 skills/setup-repo/       the write half of that: plan/apply a repo's labels, issue forms, settings, topics and Pages source from a manifest
-skills/_shared/          procedures shared by the lifecycle skills (preconditions, sync-with-main, filing-bar, worktree-ignore-check, untrusted-input-boundary, test-seams, grilling, brainstorm-and-spec, plan-shape, tdd-loop, recap)
+skills/_shared/          procedures shared by the lifecycle skills (preconditions, open-pr, sync-with-main, filing-bar, worktree-ignore-check, untrusted-input-boundary, test-seams, grilling, brainstorm-and-spec, plan-shape, tdd-loop, recap)
 scripts/                 preflight.sh (phase-0 gate) · run-all-tests.sh (one command for everything CI checks, exit 2 on a missing prerequisite) · audit-inventory.sh (JSON inventory) · report-dashboard.py (report generator) · contrast-check.py (WCAG AA gate) · followups.py (open-tail aggregator) · release-title-gate.sh + release-title-diff.sh (a change to shipped content must carry a title that cuts a release) · recap-wiring-check.py (every skill closes with the shared recap, and its hand-off table matches ARCHITECTURE.md's dashed edges)
 templates/               ci-dotnet.yml + deploy-pages-blazor.yml — CI/deployment a migration drops into the target repo · repo-setup.yml + issue-forms/ — the desired GitHub configuration setup-repo applies · bundle-gate.json.example — copy-pasteable config for the opt-in committed-bundle drift gate
 tests/                   one golden suite per contract, each a tests/<name>/test.sh that CI runs — and a CI step fails the build if a suite is ever left unwired. Run them all with `./scripts/run-all-tests.sh`. tests/skills/ also lints every prompt: frontmatter, shared refs, and every file path a prompt names must resolve (check-file-refs.py)

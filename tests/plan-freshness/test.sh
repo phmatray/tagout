@@ -46,12 +46,16 @@ note_ok()   { echo "ok   [$1]"; }
 # so a stub of git would move the seam from "does this resolve against a ref" to "does this call
 # the function I named git" — the mocking anti-pattern in _shared/test-seams.md.
 REPO="$WORK/repo"
-mkdir -p "$REPO/dir with space"
+mkdir -p "$REPO/dir with space" "$REPO/.github/workflows"
 git -C "$REPO" init -q
 git -C "$REPO" config user.email "suite@example.invalid"
 git -C "$REPO" config user.name "plan-freshness suite"
 printf 'x\n' > "$REPO/a.sh"
 printf 'y\n' > "$REPO/dir with space/b.sh"
+# Dot-prefixed paths (#647): a Git Bash argv rewrite only ever touches an argument holding ':.', so
+# these two exist at the base ref for the wrapper cases below to resolve.
+printf 'ci\n' > "$REPO/.github/workflows/ci.yml"
+printf 'root = true\n' > "$REPO/.editorconfig"
 git -C "$REPO" add -A
 git -C "$REPO" commit -qm "init"
 
@@ -152,6 +156,20 @@ want_line() {
   fi
 }
 
+# The mirror of want_line: some fixtures are about a span producing NO line at all. Asserting only
+# the lines that SHOULD appear cannot catch a span that is silently consumed as something else —
+# which is exactly how #599 survived: every positive assertion still passed while the rename target
+# was being eaten. `grep -Fxq` reads a FILE, so there is no pipeline for grep to close early.
+want_no_line() {
+  local label="$1" line="$2"
+  if grep -Fxq "$line" "$OUT"; then
+    note_fail "$label — the output names '$line', which it must not:"
+    sed 's/^/      /' "$OUT"
+  else
+    note_ok "$label"
+  fi
+}
+
 echo "== a plan with a stale modify path is exit 5, and says which path (#322) =="
 run_case "C1 mixed plan exits 5             " 5 "$WORK/mixed.md"
 want_line "C2 the present path is OK         " "OK modify a.sh (Task 1)"
@@ -169,6 +187,198 @@ echo "== --base is READ, not merely accepted =="
 run_case "C8 --base without-a finds a.sh gone" 5 "$WORK/all-present.md" --base without-a
 want_line "C9 …and names it MISSING          " "MISSING modify a.sh (Task 1)"
 run_case "C10 --base origin/main is the same as the default" 0 "$WORK/all-present.md" --base origin/main
+
+echo "== a path an EARLIER task of the same plan creates is SKIP, not MISSING (#640) =="
+cat > "$WORK/create-then-modify.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: modify it
+
+**Files:** modify `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a new test file
+
+**Files:** test `other.sh` (new).
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 4: modify the new test file
+
+**Files:** modify `other.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 5: rename a.sh
+
+**Files:** rename `a.sh` → `moved.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 6: modify the renamed file and the original
+
+**Files:** modify `moved.sh`, `a.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C102 create-then-modify plan exits 0 " 0 "$WORK/create-then-modify.md"
+want_line "C103 the earlier create stays SKIP  " "SKIP create new.sh (Task 1)"
+want_line "C104 a later modify of it is SKIP   " "SKIP modify new.sh (Task 2)"
+want_line "C105 a later modify of a (new) is SKIP" "SKIP modify other.sh (Task 4)"
+want_line "C106 a later modify of a rename target is SKIP" "SKIP modify moved.sh (Task 6)"
+# a.sh is Task 5's rename SOURCE, not an unrelated path — it reads OK on its own terms (it
+# genuinely resolves at the base ref, out of scope per #640's own Spec: a pre-existing path a plan
+# renames/deletes away is not tracked, same as it was before this fix), not because of $CREATED.
+want_line "C107 a's rename source, pre-existing at base, stays OK on its own terms" "OK modify a.sh (Task 6)"
+
+echo "== …but a path only CREATED-known (never at base) is un-remembered once rename/delete CONSUMES it — referencing the old name after that is still MISSING, not silently SKIPped forever (found in review of #640) =="
+cat > "$WORK/create-then-rename-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `renamed-src.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: rename it away
+
+**Files:** rename `renamed-src.sh` → `renamed-dst.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a stale reference to the old name
+
+**Files:** modify `renamed-src.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C110 create-then-rename-then-stale-modify exits 5" 5 "$WORK/create-then-rename-then-stale.md"
+want_line "C111 …the rename source is still SKIP first" "SKIP rename renamed-src.sh (Task 2)"
+want_line "C112 …then the stale old-name reference is MISSING, not SKIP" \
+  "MISSING modify renamed-src.sh (Task 3)"
+
+cat > "$WORK/create-then-delete-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: delete it
+
+**Files:** delete `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a stale reference to the deleted path
+
+**Files:** modify `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C113 create-then-delete-then-stale-modify exits 5" 5 "$WORK/create-then-delete-then-stale.md"
+want_line "C114 …the delete is still SKIP first" "SKIP delete to-delete.sh (Task 2)"
+want_line "C115 …then the stale old-name reference is MISSING, not SKIP" \
+  "MISSING modify to-delete.sh (Task 3)"
+
+echo "== …and a path SKIPped from TWO different sites before being renamed away forgets BOTH records, not just one (found in review of #640) =="
+cat > "$WORK/duplicate-then-rename-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `dup.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: its own new test, named again
+
+**Files:** test `dup.sh` (new).
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: rename it away
+
+**Files:** rename `dup.sh` → `dup2.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 4: a stale reference to the old name
+
+**Files:** modify `dup.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C116 duplicate-then-rename-then-stale-modify exits 5" 5 "$WORK/duplicate-then-rename-then-stale.md"
+want_line "C117 …both earlier SKIPs of the duplicate fire" "SKIP create dup.sh (Task 1)"
+want_line "C118 …the second SKIP fires too" "SKIP test dup.sh (Task 2)"
+want_line "C119 …the rename source is still SKIP" "SKIP rename dup.sh (Task 3)"
+want_line "C120 …and the stale reference is MISSING, not SKIP — neither duplicate survives" \
+  "MISSING modify dup.sh (Task 4)"
+
+cat > "$WORK/modify-then-create.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: modify before it exists
+
+**Files:** modify `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: create it
+
+**Files:** create `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C108 the reverse order (modify then create) exits 5" 5 "$WORK/modify-then-create.md"
+want_line "C109 …and the early modify stays MISSING" "MISSING modify new.sh (Task 1)"
 
 # --------------------------------------------------- 4. the prose that has to CALL the script
 #
@@ -443,6 +653,74 @@ run_case "C71 a stale rename: exit 5           " 5 "$WORK/rename-stale.md"
 want_line "C72 …the missing source is MISSING   " "MISSING rename gone.sh (Task 1)"
 want_line "C73 …the new target is still SKIPped " "SKIP rename also-gone.sh (Task 1)"
 
+# The FIFTH false-STALE shape (#599), and a regression of the fix for the fourth: PR #594 added the
+# `looks_like_path` filter to the rename SOURCE branch only, leaving the PENDING branch consuming
+# whatever span arrived next as the target. A backticked aside between the two names was therefore
+# eaten as the target, the real target fell through to the end-of-field flush, and a legitimately
+# new file was reported MISSING. The shape is explicitly sanctioned by `skills/_shared/plan-shape.md`
+# ("arrow or prose between them, either way"), so this was a legal plan being refused — and a false
+# STALE is a stop, not a degraded answer: Step 2 reads it as "no usable plan" for the task.
+echo "== …a backticked NON-PATH between a rename's two names is prose, not the target (#599) =="
+cat > "$WORK/rename-aside.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: a rename with a backticked aside between its two names
+
+**Files:** rename `a.sh` (see `guard_hint()` for context) → `NEWNAME-does-not-exist.sh`.
+PLAN
+run_case "C90 a rename with an aside: exit 0 " 0 "$WORK/rename-aside.md"
+want_line "C91 …the source still resolves OK  " "OK rename a.sh (Task 1)"
+want_no_line "C92 …the aside yields no item at all " "SKIP rename guard_hint() (Task 1)"
+want_line "C93 …the REAL target is the target " "SKIP rename NEWNAME-does-not-exist.sh (Task 1)"
+
+# The other half of the same branch, and the reason the end-of-field flush is left unconditional:
+# a rename whose target never arrives must still resolve its source. #599's filter makes this path
+# reachable in a NEW way — a source followed only by a non-path aside now falls through to the
+# flush — so the flush's behaviour is pinned here rather than left to inspection.
+echo "== …a rename whose target never arrives still resolves its source at end-of-field (#599) =="
+cat > "$WORK/rename-no-target.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: a rename with no target at all
+
+**Files:** rename `a.sh` (see `guard_hint()` for context).
+PLAN
+run_case "C94 a targetless rename: exit 0  " 0 "$WORK/rename-no-target.md"
+want_line "C95 …the source still resolves OK  " "OK rename a.sh (Task 1)"
+want_no_line "C96 …and no phantom target is named" "SKIP rename guard_hint() (Task 1)"
+
+# #587's shape: a parenthetical aside that QUOTES a shell token containing a literal ")". The old
+# aside-stripper paired every ")" against the nearest preceding "(" with no notion of a backtick
+# span, so the cut landed INSIDE the quoted token, spliced the aside's text into the path, and a
+# real file came back as `MISSING modify a.sh  arm`.
+#
+# #594's rewrite (paths are backtick-quoted spans, #441) removed that pairing loop wholesale and
+# closed this incidentally — no case ever pinned the shape, which is how the same ~40-line function
+# produced five false-STALE shapes in a row. These cases are that pin: numbered from C97 to stay
+# clear of #599's C90-C96 in the sibling PR.
+echo "== a backtick-quoted ')' inside an aside is not an aside delimiter (#587, closed by #594) =="
+cat > "$WORK/paren-in-backticks.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: an aside quoting a shell token that contains a paren
+
+**Files:** modify `a.sh` (the `timeout)` arm)
+PLAN
+run_case "C97 an aside quoting ')': exit 0  " 0 "$WORK/paren-in-backticks.md"
+want_line "C98 …the real path resolves OK    " "OK modify a.sh (Task 1)"
+
+echo "== …and the same with a call-shaped token, and two of them (#587) =="
+cat > "$WORK/paren-in-backticks2.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: two quoted parens, and a second item after the aside
+
+**Files:** modify `a.sh` (the `a)` and `b)` arms); modify `dir with space/b.sh` (see `judge()`)
+PLAN
+run_case "C99 two quoted parens: exit 0     " 0 "$WORK/paren-in-backticks2.md"
+want_line "C100 …the first path is OK        " "OK modify a.sh (Task 1)"
+want_line "C101 …the second path is OK too   " "OK modify dir with space/b.sh (Task 1)"
+
 echo "== …two backticked paths joined by 'and' are two paths, not one glued string (#441, #514) =="
 cat > "$WORK/and-joined.md" <<'PLAN'
 ## 🛠️ Implementation plan
@@ -684,6 +962,58 @@ else
   note_fail "C23 plan-freshness.sh parse-sweeps — parse-sweep refused:"
   sed 's/^/      /' "$WORK/sweep.log"
 fi
+
+echo "== a dot-prefixed <base>:<path> resolves on stdin, immune to a Git Bash argv rewrite (#647) =="
+#
+# check_span used to put "<base>:<path>" in argv (`git cat-file -e "$BASE:$path"`), and Git Bash's
+# MSYS layer rewrites an argv entry holding ':.' before git.exe ever sees it — turning a present
+# dot-prefixed path into a false MISSING. This wrapper reproduces the MEASURED rewrite shape
+# (`/`→`\`, `:`→`;` on an argument matching `*:.*`) and forwards everything else untouched, so the
+# fix is proven against the actual defect rather than against a description of it.
+REAL_GIT=$(command -v git)
+mkdir -p "$WORK/msys-bin"
+cat > "$WORK/msys-bin/git" <<GITWRAP
+#!/usr/bin/env bash
+args=()
+for a in "\$@"; do
+  case "\$a" in
+    *:.*) a=\${a//\\//\\\\}; a=\${a//:/;} ;;
+  esac
+  args+=("\$a")
+done
+exec "$REAL_GIT" "\${args[@]}"
+GITWRAP
+chmod +x "$WORK/msys-bin/git"
+
+if PATH="$WORK/msys-bin:$PATH" git -C "$REPO" cat-file -e origin/main:.editorconfig > "$OUT" 2>&1; then
+  note_fail "C121 the wrapper really reproduces the defect — cat-file -e exited 0 under it"
+else
+  note_ok "C121 the wrapper really reproduces the defect — a raw cat-file -e fails under it"
+fi
+
+cat > "$WORK/dotfiles.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: touch CI and a root dotfile
+
+**Files:** modify `.github/workflows/ci.yml`; modify `.editorconfig`; modify `a.sh`.
+PLAN
+OLDPATH="$PATH"
+PATH="$WORK/msys-bin:$PATH"
+run_case "C122 dot-prefixed paths under the wrapper: exit 0" 0 "$WORK/dotfiles.md"
+want_line "C123 ….github/workflows/ci.yml reads OK" "OK modify .github/workflows/ci.yml (Task 1)"
+want_line "C124 ….editorconfig reads OK           " "OK modify .editorconfig (Task 1)"
+
+cat > "$WORK/dotfile-missing.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: a dot-prefixed path that is not there
+
+**Files:** modify `.gone.yml`.
+PLAN
+run_case "C125 a stale dot-prefixed path: exit 5   " 5 "$WORK/dotfile-missing.md"
+want_line "C126 …still named MISSING, not swallowed" "MISSING modify .gone.yml (Task 1)"
+PATH="$OLDPATH"
 
 echo "== SKILL.md Step 2 must RUN the freshness pass and carry a STALE list (#322) =="
 STEP2=$(section "$SKILL" "## Step 2 — " "## Step 3 — ")

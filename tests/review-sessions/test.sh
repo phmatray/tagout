@@ -98,14 +98,46 @@ write_line "$T" user "$D" "$(tool_result t5c '<tool_use_error>This agent is isol
 # and the same wrap on a hook-deny — must still be RECOGNIZED as one (not dropped, not tool-error).
 write_line "$T" assistant "$D" "$(tool_use t3b Bash '{"command":"git commit -m x"}')"
 write_line "$T" user "$D" "$(tool_result t3b '<tool_use_error>Blocked by the git write-gate: `git commit -m x` is one of the writes that produced #26 and #280 in a shared checkout.</tool_use_error>' true)"
+# decoys (#645): a harness/dispatch tool failure is not a kit tool-error — only a Bash call's own
+# failure is. Each below is is_error and its tool_use touches a skills/ path, so it counts as a
+# tool-error today; after the fix, none of them may.
+# decoy: Agent — a host dispatch-depth ceiling, not the kit.
+write_line "$T" assistant "$D" "$(tool_use t30 Agent '{"prompt":"run skills/implement-issue/SKILL.md"}')"
+write_line "$T" user "$D" "$(tool_result t30 'Subagent nesting limit reached (depth 3 of 3)' true)"
+# decoy: Agent — fork unavailable inside a forked worker (same host ceiling).
+write_line "$T" assistant "$D" "$(tool_use t31 Agent '{"prompt":"run skills/implement-issue/SKILL.md"}')"
+write_line "$T" user "$D" "$(tool_result t31 'Fork is not available inside a forked worker' true)"
+# decoy: Edit — a harness tool_use_error, wrapped.
+write_line "$T" assistant "$D" "$(tool_use t32 Edit '{"file_path":"skills/x/SKILL.md"}')"
+write_line "$T" user "$D" "$(tool_result t32 '<tool_use_error>String to replace not found in file.</tool_use_error>' true)"
+# decoy: Read — a missing kit prose link, not a script failing.
+write_line "$T" assistant "$D" "$(tool_use t33 Read '{"file_path":"skills/_shared/github-mechanics.md"}')"
+write_line "$T" user "$D" "$(tool_result t33 'File does not exist.' true)"
+# decoy: Grep — the harness's own tool-availability error, wrapped.
+write_line "$T" assistant "$D" "$(tool_use t34 Grep '{"path":"skills/"}')"
+write_line "$T" user "$D" "$(tool_result t34 '<tool_use_error>Error: No such tool available: Grep</tool_use_error>' true)"
+# decoy: Bash — the harness blocking a sleep, wrapped (the tool ran, the harness refused it).
+write_line "$T" assistant "$D" "$(tool_use t35 Bash '{"command":"sleep 45; skills/auto-dev/scripts/wait-ci.sh 598"}')"
+write_line "$T" user "$D" "$(tool_result t35 '<tool_use_error>Blocked: sleep 45 followed by: skills/auto-dev/scripts/wait-ci.sh 598</tool_use_error>' true)"
+# decoy: an MCP tool — a browser session conflict, not a kit script.
+write_line "$T" assistant "$D" "$(tool_use t36 mcp__plugin_chrome-devtools-mcp_chrome-devtools__new_page '{"url":"http://localhost:4174/tagout/"}')"
+write_line "$T" user "$D" "$(tool_result t36 'The browser is already running for /x/chrome-profile' true)"
+# decoy: Bash — a permission rejection, no structural tell (the one literal prefix this task adds).
+write_line "$T" assistant "$D" "$(tool_use t37 Bash '{"command":"skills/auto-dev/scripts/wait-ci.sh 598"}')"
+write_line "$T" user "$D" "$(tool_result t37 'The user doesn'\''t want to proceed with this tool use. The tool use was rejected.' true)"
 # 3. forbidden-wait.
 write_line "$T" assistant "$D" "$(text "The suite is running. I'll pause here and wait for the code-review report before continuing.")"
 # 4. worker-report.
 write_line "$T" assistant "$D" "$(text 'PHASE1 | ISSUE: 47 | PR: none | STATUS: BLOCKED | DETAIL: no usable plan | FILED: none')"
-# 5. suite-fail: a kit golden suite's FAIL line inside a tool result.
+# 5. suite-fail: a kit golden suite's FAIL line inside a tool result. Built with printf, not a raw
+# multi-line literal (#645): a literal 'ok: frontier\nFAIL: ...' line would itself start a SOURCE
+# line with "FAIL:" — the exact column-0 shape AC4 requires this file to have none of.
 write_line "$T" assistant "$D" "$(tool_use t6 Bash '{"command":"./tests/survey/test.sh"}')"
-write_line "$T" user "$D" "$(tool_result t6 'ok: frontier
-FAIL: SKILL.md Step 4 does not carry the immediate re-survey trigger (tests/survey/test.sh case 12d)' true)"
+write_line "$T" user "$D" "$(tool_result t6 "$(printf 'ok: frontier\nFAIL: SKILL.md Step 4 does not carry the immediate re-survey trigger (tests/survey/test.sh case 12d)')" true)"
+# decoy (#645): reading the suite's OWN source is not a suite failure, even though (before this
+# task's t6 rewrite above) it embeds the same FAIL: line the real positive plants.
+write_line "$T" assistant "$D" "$(tool_use t41 Bash '{"command":"sed -n '"'"'1,400p'"'"' tests/review-sessions/test.sh"}')"
+write_line "$T" user "$D" "$(tool_result t41 "$(cat "${BASH_SOURCE[0]}")" false)"
 # 6. guard-refusal — sourced from the REAL guard, never retyped, so the fixture cannot agree with
 # a drifted GUARD_RE the way a hand-typed one could (#513).
 GR=$(kit_scratch)/guard-repo
@@ -228,6 +260,39 @@ out, ts = sys.argv[1:3]
 with open(out, "a", encoding="utf-8") as f:
     f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": "[Request interrupted by user]"}}) + "\n")
 PY
+# decoys (#645): prose that QUOTES a never-wait phrase, a worker-report shape or a nudge is not the
+# kit failing — only an UNQUOTED occurrence is. And a deny-shaped line that did not fail (is_error
+# false) is not a hook-deny.
+# decoy: forbidden-wait, quoted via emphasis + a straight double quote.
+write_line "$T" assistant "$D" "$(text "> *\"I'll pause here and wait for the report\"* is what the worker said before it died.")"
+# decoy: forbidden-wait, quoted via a JSON-escaped quote (the \" case).
+write_line "$T" assistant "$D" "$(text '"failure_scenario": "ends its turn with \"I'\''ll stop issuing further tool calls now and wait\""')"
+# decoy: worker-report, quoted via a backtick.
+write_line "$T" assistant "$D" "$(text 'a dispatch that reports `STATUS: BLOCKED` on any failure')"
+# decoy: harness-nudge, quoted via a backtick, in a USER text block.
+write_line "$T" user "$D" "$(text '- the `harness-nudge` kind on `[Request interrupted` is noise')"
+# code-review finding (#645): a quoted occurrence of a nudge phrase FOLLOWED by a genuine unquoted
+# one in the SAME block. `str.find()` only ever sees the first (quoted) occurrence, so a naive
+# quoted-check on that index alone drops the real nudge after it — every occurrence must be checked.
+write_line "$T" user "$D" "$(text 'earlier we quoted `[Request interrupted` as fine, but now: [Request interrupted by user]')"
+# code-review finding (#645): quoted() must also skip whitespace between the quote mark and the
+# cited phrase, not only `*`/`_` emphasis — a space-padded citation was wrongly read as unquoted.
+write_line "$T" user "$D" "$(text 'as the transcript shows: " [Request interrupted by the user] " right after the tool call')"
+# verification-gap coverage (#645): the other QUOTE_CHARS this diff added were never exercised —
+# a straight single quote…
+write_line "$T" assistant "$D" "$(text "she typed 'I'll stop issuing further tool calls now and wait' as an example only.")"
+# …a curly open-quote…
+write_line "$T" assistant "$D" "$(text 'logged as “STATUS: BLOCKED” today, apparently.')"
+# …and `_` emphasis stacked inside a straight quote (the skip must chain to the quote beneath it).
+write_line "$T" user "$D" "$(text 'the log shows "_[Request interrupted_" apparently, nothing more.')"
+# verification-gap coverage (#645): "any occurrence" scanning proven on a QUOTED-then-REAL pair, not
+# just the trivial single-occurrence case — forbidden-wait and worker-report, mirroring the
+# harness-nudge decoy above.
+write_line "$T" assistant "$D" "$(text "\"I'll pause here and wait for\" is the banned phrase, and yet: I'll pause here and wait for the review to land.")"
+write_line "$T" assistant "$D" "$(text 'the old note said `STATUS: BLOCKED` verbatim; the new one just says STATUS: BLOCKED plainly.')"
+# decoy: hook-deny shape that did NOT fail (is_error false) — a test's own printed incident line.
+write_line "$T" assistant "$D" "$(tool_use t40 Bash '{"command":"./tests/incident-check/test.sh"}')"
+write_line "$T" user "$D" "$(tool_result t40 "$(printf 'INCIDENT (verbatim shape) -> ALLOW\nBlocked by the git write-gate: git commit -m x')" false)"
 # decoys: a non-JSON line, and an old kit tool-error --since must drop.
 printf 'not json at all\n' >> "$T"
 write_line "$T" assistant "2026-08-01T09:00:00.000Z" "$(tool_use t8 Bash '{"command":"./skills/auto-dev/scripts/survey.sh"}')"
@@ -263,6 +328,16 @@ want_guards = ["guarded-commit", "guarded-merge", "guarded-pr-merge", "guarded-p
 if guard_details != want_guards:
     print("FAIL: guard-refusal details differ from the six real guard names")
     print("  got :", guard_details); print("  want:", want_guards); sys.exit(1)
+# #645: a quoted occurrence (any of the three text kinds) or a non-failing deny line must not add to
+# the summed count — count, never len(), since a collapse (t3+t3b) is one record worth 2.
+def summed(kind):
+    return sum(r["count"] for r in recs if r["kind"] == kind)
+want_summed = {"forbidden-wait": 2, "worker-report": 2, "harness-nudge": 2, "hook-deny": 2, "suite-fail": 1}
+for kind, want_n in want_summed.items():
+    got_n = summed(kind)
+    if got_n != want_n:
+        print(f"FAIL: {kind} summed count is {got_n}, want {want_n} (a quoted or non-failing decoy leaked through)")
+        sys.exit(1)
 print("ok   the JSON records are exactly the planted set, keyed as documented, and --since holds")
 PY
 
@@ -270,7 +345,7 @@ PY
 MD=$(kit_scratch)/tally.md
 python3 "$SCRIPT" "$PROJ" --markdown --since 2026-08-15 > "$MD" 2>/dev/null || { echo "FAIL: --markdown exited non-zero"; exit 1; }
 grep -q '^## implement-issue$' "$MD" || { echo "FAIL: the tally has no per-skill heading"; cat "$MD"; exit 1; }
-grep -q '^signals: 14 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 14 across 1 sessions'"; tail -3 "$MD"; exit 1; }
+grep -q '^signals: 17 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 17 across 1 sessions'"; tail -3 "$MD"; exit 1; }
 grep -q 'skipped 1 unparseable' "$MD" || { echo "FAIL: the non-JSON line was not counted as skipped"; tail -3 "$MD"; exit 1; }
 echo "ok   the markdown tally groups by skill and kind, counts the skipped line, ends with the signals line"
 
