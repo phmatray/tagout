@@ -22,19 +22,17 @@ KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
   echo "FAIL: cannot source $KIT_ROOT/tests/_lib.sh — refusing to run unguarded"; exit 1; }
 kit_init "$KIT_ROOT"
 kit_guard kit_guard_samples_unchanged
+kit_source "$KIT_ROOT/tests/_lib/py.sh"
 
 command -v python3 > /dev/null 2>&1 || { echo "FAIL: python3 is missing"; exit 1; }
 
 WORK=$(kit_scratch)
-python3 - "$KIT_ROOT" "$WORK" <<'PY'
-import sys, pathlib, importlib.util
+# PYTHONPATH, because run_all.py imports its sibling trigger_eval by bare name — it has to be
+# importable before py_module's loader execs run_all.py, not after.
+PYTHONPATH="$KIT_ROOT/evals" py_module "$KIT_ROOT/evals/run_all.py" "$WORK" <<'PY'
+import sys, pathlib
 
-kit_root, work = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-# run_all.py imports its sibling `trigger_eval`, so evals/ has to be importable before it loads.
-sys.path.insert(0, str(kit_root / "evals"))
-spec = importlib.util.spec_from_file_location("run_all", kit_root / "evals" / "run_all.py")
-mod = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(mod)
+work = pathlib.Path(sys.argv[2])
 
 fails = []
 def ok(label):  print(f"  ok: {label}")
