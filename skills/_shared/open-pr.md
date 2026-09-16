@@ -123,8 +123,9 @@ _and_ a `(#<issue>)` suffix — two independent constraints, both enforced, e.g.
 Pick the **type** from the change, not a guess: the issue's type label maps cleanly (`bug` → `fix`,
 `enhancement` → `feat`) — use it. When it doesn't map cleanly, build a candidate type from the
 change's own shape (`docs:` for prose, `ci:`/`build:` for CI plumbing, `refactor:`/`test:` for a pure
-refactor or tests-only change), then **dry-run the real gate against `$TITLE_PATHS`**:
-`scripts/release-title-gate.sh "<candidate-type>(<scope>): <subject> (#$ISSUE)" $TITLE_PATHS`.
+refactor or tests-only change), then **dry-run the real gate against `$TITLE_PATHS`**, with
+`SUFFIX=${ISSUE:+ (#$ISSUE)}` — empty when `$ISSUE` is, so no PR ever carries a bare `(#)`:
+`scripts/release-title-gate.sh "<candidate-type>(<scope>): <subject>$SUFFIX" $TITLE_PATHS`.
 Never hand-classify a path as "genuinely non-shipped" against a memorized example list — the gate's
 actual `NON_SHIPPED`/`SHIPPED_ANYWAY` rules are longer than any such list and carve specific paths
 back into "shipped" by name, and a hand-copied approximation has already drifted from them twice
@@ -146,7 +147,7 @@ symptom wording — so the example issue becomes e.g.
 `fix(export): use invariant culture in CSV number formatting (#849)`.
 
 ```bash
-TITLE="<type>(<scope>): <subject> (#$ISSUE)"   # the title the dry-run accepted; no suffix when $ISSUE is empty
+TITLE="<type>(<scope>): <subject>$SUFFIX"      # the title the dry-run accepted
 if [ "$DRAFT" = 1 ]; then DRAFT_FLAG=--draft; else DRAFT_FLAG=; fi
 gh pr create $DRAFT_FLAG --base "$BASE" --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
 
