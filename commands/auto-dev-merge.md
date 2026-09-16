@@ -76,8 +76,9 @@ check table. A sub-agent that ends its turn to wait has returned; nothing resume
 confined to a worktree, invoking a guard whose path can resolve outside it. Follow that fallback
 (copy the guards plus `_assert-branch.sh` into a scratch dir inside your own worktree, run them
 from there, delete it before finishing) and **report that you did** in your final line's `DETAIL:`
-field. Never fall back to a bare `git commit`, `git push` or `git merge` — that is the exact failure
-the guards exist to prevent.
+field. Never fall back to a bare — or `GIT_GATE=off`-prefixed, a prefix the gate does not honour
+for a sub-agent — `git commit`, `git push` or `git merge`; that is the exact failure the guards
+exist to prevent.
 
 Repo specifics (default branch, merge mode, CI state, commit identity) come from the repo profile,
 which `merge-pr` loads.
