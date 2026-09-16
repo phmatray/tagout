@@ -2380,6 +2380,66 @@ else
   fi
 fi
 
+# --- every review/ADR diff range resolves against origin/main, not a local main (#601) -----------
+#
+# Nothing in the kit advances the main checkout's local `main` ref, so in a long-lived clone it
+# drifts arbitrarily far behind `origin/main` and every hardcoded `main...HEAD` silently resolves
+# against the stale one. Measured on one fleet run (2026-09-13): local `main` 30 commits behind, a
+# reviewer handed a ~92-file diff, another 115 files — a reviewer that does not notice reviews
+# already-merged code, finds nothing wrong with it, and reports a FALSE CLEAN on the gate whose
+# whole job is catching what CI cannot. Two of the sites persisted the wrong diff to a FILE that
+# reviewers then read byte-for-byte; one fed `suggest_adr_from_change`.
+#
+# Seven copies accumulated because nothing pinned them. This is that pin.
+#
+# The two exemptions are deliberate and must stay readable as such:
+#   * skills/debug-issue/SKILL.md      — explains two-dot vs three-dot on purpose
+#   * skills/merge-pr/.../06-follow-ups.md — says explicitly NOT to use `git diff main...HEAD`
+# Both are named here, so an exemption is a decision on the record rather than a silent hole.
+# `origin/main...HEAD` CONTAINS `main...HEAD`, so a plain grep matches every corrected line too.
+# The corrected spellings are blanked out first, and whatever still names a range is by definition
+# a bare one. Both dot-forms are pinned: the two-dot `main..HEAD` commit list handed to the same
+# reviewer resolves against the same stale ref, and is the same defect.
+o1_hits="$WORK/stale-range-hits"
+: > "$o1_hits"
+# Every file, not just *.md: eight scripts live under skills/implement-issue/scripts/, and a script
+# is the one place a stale ref would actually EXECUTE rather than be copied out by a reader.
+for o1_f in $(find "$KIT_ROOT/skills/implement-issue" -type f); do
+  sed 's|origin/main\.\.\.HEAD||g; s|origin/main\.\.HEAD||g' "$o1_f"     | grep -n 'main\.\.\.HEAD\|main\.\.HEAD'     | sed "s|^|${o1_f#$KIT_ROOT/}:|" >> "$o1_hits" || :
+done
+if [ -s "$o1_hits" ]; then
+  echo "FAIL: [O1 no stale main..HEAD under skills/implement-issue (#601)]"
+  sed 's/^/      /' "$o1_hits"
+  echo "      Use 'origin/main...HEAD', and fetch before diffing — a local 'main' is never advanced"
+  echo "      by the kit, so these resolve against whatever the clone last happened to leave there."
+  fails=$((fails + 1))
+else
+  echo "ok   [O1 no stale main..HEAD under skills/implement-issue (#601)]"
+fi
+
+# The exemptions are asserted to still EXIST, so that deleting one silently narrows the rule rather
+# than announcing it — the same reason the rule above is a grep and not a convention.
+o2_missing=""
+for o2_f in "skills/debug-issue/SKILL.md" "skills/merge-pr/references/steps/06-follow-ups.md"; do
+  # Blanked the same way O1 blanks, and for the same reason: `origin/main...HEAD` CONTAINS
+  # `main...HEAD`, so a plain grep here would still pass after someone "corrected" an exemption —
+  # the one edit that actually destroys it. What must survive is a BARE range.
+  # Captured into a variable first, then read via a herestring: a `grep -q` fed by a STREAMING
+  # producer under pipefail is the race scripts/sigpipe-idiom-check.py refuses (it closes the
+  # pipe on its first match and the producer dies on SIGPIPE). An assignment has nothing to
+  # close early. Same remedy the gate itself prints.
+  o2_text=$(sed 's|origin/main\.\.\.HEAD||g; s|origin/main\.\.HEAD||g' "$KIT_ROOT/$o2_f")
+  grep -q 'main\.\.\.HEAD\|main\.\.HEAD' <<<"$o2_text" || o2_missing="$o2_missing $o2_f"
+done
+if [ -n "$o2_missing" ]; then
+  echo "FAIL: [O2 the two deliberate main...HEAD mentions survive (#601)] gone from:$o2_missing"
+  echo "      These two discuss the idiom on purpose. If one genuinely no longer needs to, drop it"
+  echo "      from this case's list in the same commit, so the exemption stays a decision."
+  fails=$((fails + 1))
+else
+  echo "ok   [O2 the two deliberate main...HEAD mentions survive (#601)]"
+fi
+
 if [ "$fails" -ne 0 ]; then
   echo "$fails case(s) failed"
   exit 1
