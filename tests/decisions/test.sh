@@ -1216,6 +1216,59 @@ else
 fi
 
 echo
+# --- the interpreter is resolved, not left to the OS's search order (#623) ------------------------
+#
+# `subprocess.run(["bash", ...])` leaves argv[0] for the OS to resolve. On Windows that is
+# CreateProcess, whose search order reaches C:\Windows\System32\bash.exe — the WSL launcher — before
+# the Git Bash every other script in this kit runs under. WSL can read neither `C:\...` (it eats the
+# backslashes as escapes, which is how #623 surfaced: every separator gone from the path) nor
+# `C:/...` (it wants /mnt/c/...), so rewriting the path does not fix it and was measured not to.
+# Resolving the interpreter through shutil.which() does, and leaves the path argument alone.
+#
+# The assertion is structural because it cannot be behavioural: on Linux a bare "bash" resolves to
+# the right interpreter, so no fixture can drive this red on CI. Pinning the call site is the only
+# thing that keeps the idiom from coming back.
+# Full-line comments are stripped first, into a file rather than through a pipe: the prose below
+# and in decision-check.py's own header quotes the very idiom being refused, and a `grep -q` fed by
+# a pipe is what scripts/sigpipe-idiom-check.py refuses.
+code_only="$(kit_scratch)/decision-check.code"
+grep -v '^[[:space:]]*#' "$CHECK" > "$code_only"
+if grep -Eq '\[[[:space:]]*["'"'"']bash["'"'"'][[:space:]]*,' "$code_only"; then
+  bad "decision-check.py invokes a bare \"bash\" — on Windows CreateProcess resolves that to WSL, \
+which cannot see the checkout, so no verdict is reached (#623). Resolve it through shutil.which()."
+else
+  ok "the bash interpreter is resolved explicitly, not left to the OS search order (#623)"
+fi
+
+# Every file read and write pins utf-8, and so do the subprocess decodes (#623). Windows defaults
+# both to the locale codec (cp1252 here), under which a single em-dash in this repo's own registry
+# or prose raises UnicodeDecodeError and the script exits with a traceback instead of a verdict.
+# Structural for the same reason as the case above: ubuntu CI is already utf-8, so nothing here can
+# be driven red behaviourally. `grep -Evq` reads the extracted calls from a FILE, never a pipe, so
+# scripts/sigpipe-idiom-check.py has nothing to refuse.
+io_calls="$(kit_scratch)/decision-check.io"
+grep -Eo '(read|write)_text\([^)]*\)' "$code_only" > "$io_calls"
+# A subprocess decode spells text=True and encoding= on two SEPARATE lines, so it is counted rather
+# than matched: awk reads the line after each text=True and reports how many lack the pin.
+unpinned_decodes=$(awk '/text=True,/ { getline nxt; if (nxt !~ /encoding=/) n++ } END { print n+0 }' "$code_only")
+if ! [ -s "$io_calls" ]; then
+  bad "no read_text/write_text call was found in decision-check.py at all — the utf-8 assertion below would pass vacuously, which is not a pass"
+elif grep -Evq 'encoding=' "$io_calls"; then
+  bad "decision-check.py reads or writes a file without pinning encoding=, so a cp1252 host decodes this repo's utf-8 with the wrong codec and reaches no verdict (#623)"
+elif [ "$unpinned_decodes" -ne 0 ]; then
+  bad "$unpinned_decodes subprocess call(s) decode child output with text=True but no encoding= — including program_text()'s own, which reads decide.sh's utf-8 program back through cp1252 (#623)"
+else
+  ok "every file read/write and subprocess decode pins utf-8 (#623)"
+fi
+
+# The refusal paths print U+2192 and U+2014, and this suite captures that output through a command
+# substitution — a pipe, where Windows falls back to the locale codec. Without both streams pinned,
+# report() raised UnicodeEncodeError and the guard died mid-verdict (#623).
+if [ "$(grep -Ec 'sys[.]std(out|err)[.]reconfigure' "$code_only")" -eq 2 ]; then
+  ok "both output streams are pinned to utf-8 before the first verdict is printed (#623)"
+else
+  bad "decision-check.py does not pin BOTH sys.stdout and sys.stderr — its refusal lines carry characters cp1252 cannot encode, so on Windows it dies printing the verdict instead of returning it (#623)"
+fi
 if [ "$fails" -eq 0 ]; then
   echo "decisions: OK — the dispatcher answers, and every rule of the guard goes red on demand."
   exit 0
