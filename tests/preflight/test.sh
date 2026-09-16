@@ -17,13 +17,15 @@ kit_guard kit_guard_samples_unchanged
 out=$(./scripts/preflight.sh --json || true)
 echo "$out" | python3 -m json.tool >/dev/null
 
-# 2. Every manifest entry appears in the output — nothing is silently skipped.
+# 2. Every manifest entry appears in the output — nothing is silently skipped. A `tools` entry
+#    carrying `for` (#642) is scoped to one caller and this default call passes no `--for`, so it
+#    is expected to be ABSENT here, not present.
 python3 - "$out" <<'PY'
 import json, sys
 out = json.loads(sys.argv[1])
 req = json.load(open("requirements.json"))
 names = {c["name"] for c in out["checks"]}
-expected = [t["name"] for t in req["tools"]] + [m["name"] for m in req["mcps"]] \
+expected = [t["name"] for t in req["tools"] if not t.get("for")] + [m["name"] for m in req["mcps"]] \
          + ["skill " + s["name"] for s in req["sessionSkills"]]
 missing = [n for n in expected if n not in names]
 assert not missing, f"manifest entries absent from the output: {missing}"
@@ -354,5 +356,88 @@ assert status == "unknown", \
 assert arch["when"] in seen["skill archify"]["hint"], \
     f"the hint must carry the when text a reader acts on: {seen['skill archify']['hint']!r}"
 PY
+
+# 10. A `for`-scoped prerequisite (#642) is checked ONLY when preflight is invoked with a matching
+#     `--for <name>` — #504's tracker-scoped shape, applied to a caller instead of a tracker, so a
+#     plain `preflight.sh` run (a consumer's phase 0) never sees a fixture-only prerequisite like the
+#     .NET 6 runtime that only `run-all-tests.sh` needs. Same synthetic-kit pattern as case 8: a copy
+#     of preflight.sh beside a copy of repo-profile.sh (unmodified) and a synthetic manifest, with a
+#     stubbed `dotnet` whose `--list-runtimes` output this case flips mid-way to prove the
+#     `runtime_ok` probe both ways.
+c9=$(kit_scratch)
+mkdir -p "$c9/scripts" "$c9/skills/profile-repo/scripts" "$c9/bin"
+cp ./scripts/preflight.sh "$c9/scripts/preflight.sh"
+cp ./skills/profile-repo/scripts/repo-profile.sh "$c9/skills/profile-repo/scripts/repo-profile.sh"
+cat > "$c9/requirements.json" <<'JSON'
+{
+  "description": "synthetic manifest — the for-scoped case",
+  "tools": [
+    { "name": "runtime six", "level": "required", "test": "runtime_ok 6", "for": "run-all-tests", "hint": "h" },
+    { "name": "bare recommended", "level": "recommended", "test": "false", "hint": "h2" }
+  ],
+  "mcps": [],
+  "sessionSkills": []
+}
+JSON
+cat > "$c9/bin/dotnet" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --list-sdks) echo "9.0.100 [/stub/sdk]" ;;
+  --list-runtimes) echo "Microsoft.NETCore.App 8.0.20 [/stub/shared/Microsoft.NETCore.App]" ;;
+esac
+exit 0
+SH
+chmod +x "$c9/bin/dotnet"
+for c in bash python3 dirname awk grep sed git head cat cut wc find basename tr sort; do
+  ln -sf "$(command -v "$c")" "$c9/bin/$c"
+done
+
+# (a) no --for: exit 0, and the for-scoped entry never appears.
+rc=0
+out=$(PATH="$c9/bin" bash "$c9/scripts/preflight.sh" --json 2>/dev/null) || rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL [for-scoped/a]: expected exit 0 with no --for, got $rc"; echo "$out"; exit 1; }
+printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "runtime six" not in {c["name"] for c in d["checks"]}, d' \
+  || { echo "FAIL [for-scoped/a]: 'runtime six' must be absent with no --for"; exit 1; }
+
+# (b) --for run-all-tests, no 6.x runtime yet: exit 1, status missing.
+rc=0
+out=$(PATH="$c9/bin" bash "$c9/scripts/preflight.sh" --for run-all-tests --json 2>/dev/null) || rc=$?
+[ "$rc" -eq 1 ] || { echo "FAIL [for-scoped/b]: expected exit 1, got $rc"; echo "$out"; exit 1; }
+printf '%s' "$out" | python3 -c '
+import json, sys
+checks = {c["name"]: c for c in json.load(sys.stdin)["checks"]}
+assert checks["runtime six"]["status"] == "missing", checks["runtime six"]
+' || { echo "FAIL [for-scoped/b]: 'runtime six' must be status=missing"; exit 1; }
+
+# (c) same call, once the stub ALSO lists a 6.x runtime: exit 0, status ok.
+cat > "$c9/bin/dotnet" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --list-sdks) echo "9.0.100 [/stub/sdk]" ;;
+  --list-runtimes)
+    echo "Microsoft.NETCore.App 8.0.20 [/stub/shared/Microsoft.NETCore.App]"
+    echo "Microsoft.NETCore.App 6.0.36 [/stub/shared/Microsoft.NETCore.App]"
+    ;;
+esac
+exit 0
+SH
+chmod +x "$c9/bin/dotnet"
+rc=0
+out=$(PATH="$c9/bin" bash "$c9/scripts/preflight.sh" --for run-all-tests --json 2>/dev/null) || rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL [for-scoped/c]: expected exit 0 once a 6.x runtime is listed, got $rc"; echo "$out"; exit 1; }
+printf '%s' "$out" | python3 -c '
+import json, sys
+checks = {c["name"]: c for c in json.load(sys.stdin)["checks"]}
+assert checks["runtime six"]["status"] == "ok", checks["runtime six"]
+' || { echo "FAIL [for-scoped/c]: 'runtime six' must be status=ok once the 6.x runtime is listed"; exit 1; }
+
+# (d) a different --for: the entry is skipped exactly as with no --for at all.
+rc=0
+out=$(PATH="$c9/bin" bash "$c9/scripts/preflight.sh" --for other --json 2>/dev/null) || rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL [for-scoped/d]: expected exit 0 with an unrelated --for, got $rc"; echo "$out"; exit 1; }
+printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "runtime six" not in {c["name"] for c in d["checks"]}, d' \
+  || { echo "FAIL [for-scoped/d]: 'runtime six' must stay absent under an unrelated --for"; exit 1; }
+
+echo "  ok: for-scoped — an entry carrying 'for' is asked for only when --for names it"
 
 echo "preflight golden test OK"
