@@ -13,7 +13,8 @@ forwards `.failed` and `.pending` by name, because `merge.step4`'s own vocabular
 `.needs_approval` would otherwise vanish from the precedence entirely and read as mergeable the
 moment `mergeStateStatus` says `CLEAN` — which is exactly what it says, since GitHub does not block
 a merge on an approval-pending run. Nothing a push can fix here; only an approval can, and only for
-this repository's own release bot.
+this repository's own release PR — a recognised release-bot login, or release-please's own branch
+name carrying a diff confined to the paths `release-please-config.json` declares (#622).
 
 | `$ci_verdict` | What to do |
 |---|---|
@@ -28,7 +29,7 @@ if [ "$ci_verdict" = "needs-approval" ]; then
   rc=0; out=$(skills/merge-pr/scripts/approve-runs.sh "$PR") || rc=$?
   case "$rc" in
     0) echo "$out" ;;   # `approved <id>` per run, or `approved 0 run(s)` — either way, re-wait
-    2) echo "$out" >&2; exit 1 ;;   # REFUSED — not the release bot; ids + manual remedy printed
+    2) echo "$out" >&2; exit 1 ;;   # REFUSED — not this repo's release PR; ids + remedy printed
     *) echo "$out" >&2; exit 1 ;;   # a `gh` call failed — not this PR's fault; re-run the skill
   esac
 fi
@@ -44,7 +45,7 @@ since `gh` expands that placeholder in a REST *path*, never in the `-R` flag its
   `STATUS: BLOCKED | DETAIL: runs <ids> need approval by a maintainer` — a second occurrence on an
   unchanged sha means the approval did not clear anything a re-try could fix, so looping again would
   hang rather than converge.
-- **Exit 2** — REFUSED: the PR's author is not the repository's release bot. Stop —
+- **Exit 2** — REFUSED: the PR is not this repository's own release PR. Stop —
   `STATUS: BLOCKED | DETAIL: runs <ids> need approval by a maintainer` (the ids and the manual `gh
   api … approve` remedy are already in `$out`) — approving a stranger's workflow run executes their
   code with this repository's secrets, which is not this skill's call to make.
