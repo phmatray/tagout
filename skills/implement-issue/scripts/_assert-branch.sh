@@ -260,12 +260,16 @@ assert_worktree_live() {
   # so the message read "recorded at  (gone)" with the path itself erased (#644).
   recorded_phys=$(CDPATH= cd -- "$recorded" 2>/dev/null && pwd -P) || recorded_phys=""
   shown=${recorded_phys:-"$recorded (gone)"}
-  if [ "$top" = "$recorded_phys" ]; then return 0; fi
+  # `-n "$recorded_phys"` guards the comparison explicitly: without it, the rare case where $top
+  # ALSO resolves empty (rev-parse succeeds but the following `cd` races or hits a permissions
+  # error) would compare "" = "" and PASS a guard whose own contract is fail-CLOSED — the gone-path
+  # case must never be mistaken for a match just because neither side could be read.
+  if [ -n "$recorded_phys" ] && [ "$top" = "$recorded_phys" ]; then return 0; fi
 
   # Mismatch: ask git's own worktree admin which entry $top actually is — only the POSITION
-  # matters here (is it the first/main entry, or a linked one?), so this walks paths only. Same
-  # idiom as make-worktree.sh's EXISTING lookup — `substr($0, 10)`, never a field split, so a path
-  # containing a space survives. The branch $top itself holds is read straight off $top through
+  # matters here (is it the first/main entry, or a linked one?), so this walks paths only (same
+  # property as make-worktree.sh's EXISTING lookup: never a field split, so a path containing a
+  # space survives). The branch $top itself holds is read straight off $top through
   # head_branch_of below — this file's one home for that read (#129) — rather than trusted from a
   # second porcelain "branch " line, which would go stale if two entries ever resolved to the same
   # physical path (a stale/prunable admin record re-registered by `worktree add -f`).
