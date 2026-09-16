@@ -34,6 +34,8 @@
 #   * a `GIT_GATE=off git commit …` PREFIX used to be stepped over by the same walk that skips
 #     `TZ=UTC git …`, so the one-command escape the deny text advertised did nothing. The walk now
 #     reads the assignment it steps over: a segment prefixed with the off value is allowed whole.
+#     The prefix is honoured only for the main thread; a sub-agent's (a payload carrying `agent_id`)
+#     is judged like the bare command, since it has nobody to ask before using the escape (#643).
 # And the probe follows `cd` (#372): `cd /tmp/shop && git commit` is that repository's commit, not
 # the cwd's — a literal, resolvable `cd` in an earlier segment moves the directory the profile is
 # looked up in, exactly as `-C <path>` already does; anything the hook cannot resolve (a variable,
@@ -117,6 +119,8 @@ case "$cmd" in *git*|*gh*merge*|*'\'*) ;; *) exit 0 ;; esac
 # there too — a real shell tokenizer is the fix for either, and not worth it for a gate whose declared
 # direction is fail-open (ADR 0002).
 cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || exit 0
+# Claude Code stamps `agent_id` on a sub-agent's tool call; empty means the main thread (#643).
+agent_id=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || agent_id=""
 
 # ---------------------------------------------------------------- #533: recognise past disguises
 # Three shapes let a real write slip past the walk below unrecognised: a backslash or quoting that
@@ -291,8 +295,9 @@ EOF
 if [ -n "$gate_subs" ]; then
   while IFS= read -r gate_subcmd; do
     [ -n "$gate_subcmd" ] || continue
-    gate_subpay=$(jq -nc --arg d "$cwd" --arg c "$gate_subcmd" \
-      '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}}' 2>/dev/null) || continue
+    gate_subpay=$(jq -nc --arg d "$cwd" --arg c "$gate_subcmd" --arg a "$agent_id" \
+      '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}} + (if $a == "" then {} else {agent_id:$a} end)' \
+      2>/dev/null) || continue
     gate_subout=$(printf '%s' "$gate_subpay" | bash "$0" 2>/dev/null)
     if [ -n "$gate_subout" ]; then
       printf '%s\n' "$gate_subout"
@@ -469,7 +474,11 @@ judge() { # $1 one segment of the stripped command
       # The one assignment the walk READS instead of stepping over: the per-command off-switch the
       # deny text advertises. It has to be honoured here, because the environment check at the top
       # of this file sees the hook's own environment, never a prefix typed into the command (#372).
-      GIT_GATE=off|GIT_GATE=0|GIT_GATE=false|GIT_GATE=no|GIT_GATE=disabled) return 0 ;;
+      # Honoured for the main thread only: a sub-agent has nobody to ask before it reaches for the
+      # escape its deny text names, so its prefixed segment is stepped over and judged (#643).
+      GIT_GATE=off|GIT_GATE=0|GIT_GATE=false|GIT_GATE=no|GIT_GATE=disabled)
+        [ -z "$agent_id" ] && return 0
+        shift ;;
       # `GH_REPO=` retargets a later `gh pr merge` at another repo the same way `-R`/`--repo` does
       # (#533) — recorded here, since by the time `judge_gh` sees the segment this prefix is
       # already consumed and gone from "$@".

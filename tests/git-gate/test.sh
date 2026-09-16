@@ -86,6 +86,10 @@ pay() { # $1 tool  $2 command  $3 cwd
     '{session_id:"gitgate", cwd:$d, tool_name:$t, tool_input:{command:$c}}'
 }
 
+pay_sub() { # pay's arguments; the same payload as a sub-agent's call (Claude Code adds agent_id)
+  pay "$@" | jq -c '. + {agent_id:"agent-test"}'
+}
+
 # Drives the gate with a synthetic payload. Asserts the exit status, the decision, and — when
 # denying — that the reason names the replacement.
 # $1 name  $2 expected ("deny"|"pass")  $3 substring the reason must contain  $4 payload
@@ -575,6 +579,12 @@ verdict "A40 cd into a guard-less repo" pass "" "$(pay Bash "cd $PLAIN && git co
 verdict "A41 cp, cd, init, commit (the walkthrough line)" pass "" \
   "$(pay Bash "cp -r samples/LegacyShop $PLAIN/shop && cd $PLAIN/shop && git init && git add -A && git commit -m legacy" "$PROF")"
 verdict "A42 GIT_GATE=off as a one-command prefix" pass "" "$(pay Bash 'GIT_GATE=off git commit -m x' "$PROF")"
+# ...but only for the main thread (#643): a sub-agent reads the same deny text and cannot ask
+# anyone first, so its prefixed write is judged like the bare one — also inside `$( )`.
+verdict "A42s sub-agent GIT_GATE=off git commit" deny "guarded-commit.sh" "$(pay_sub Bash 'GIT_GATE=off git commit -m x' "$PROF")"
+verdict "G8s sub-agent GIT_GATE=off gh pr merge" deny "guarded-pr-merge.sh" "$(pay_sub Bash 'GIT_GATE=off gh pr merge 12' "$PROF")"
+verdict "A42t sub-agent prefix inside \$( )" deny "guarded-commit.sh" "$(pay_sub Bash 'echo $(GIT_GATE=off git commit -m x)' "$PROF")"
+verdict "A42u env GIT_GATE=off still wins for a sub-agent" pass "" "$(pay_sub Bash 'git commit -m x' "$PROF")" "$PATH" off
 # ...and every cd the hook cannot resolve leaves the probe where it was: a variable, `~`, `cd -`,
 # a bare `cd`, `pushd`, and a `cd` inside `( … )` whose directory change dies with the subshell.
 verdict "D23 cd \$VAR stays put"        deny "guarded-commit.sh" "$(pay Bash 'cd $ELSEWHERE && git commit -m x' "$PROF")"
