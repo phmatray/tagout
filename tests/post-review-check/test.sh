@@ -71,17 +71,26 @@ BEFORE=$(git -C "$R" rev-parse HEAD)
 echo changed >> "$R/seed.txt"
 run dirty_tracked "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 [ "$RC" -eq 1 ] || fail dirty_tracked "expected exit 1, got $RC"
-grep -q "seed.txt" "$OUT" || fail dirty_tracked "output does not include the diff --stat of the tracked change"
+grep -q "seed.txt" "$OUT" || fail dirty_tracked "output does not name the changed file"
+# `status --porcelain` alone already prints " M seed.txt" — AC3 requires `diff --stat` too, so
+# assert something only THAT command's output carries (its "N file(s) changed" summary line),
+# otherwise deleting the diff --stat call would still pass this case (#659 Spec axis).
+grep -qE '1 file changed' "$OUT" || fail dirty_tracked "output does not include diff --stat's own summary line"
 
 # -------------------------------------------------------------- case: HEAD advanced (exit 2)
+# TWO new commits, not one (#659 Spec axis: AC2 says "every new commit's subject line, not just
+# a count" — a single-commit fixture can't tell "every line" apart from "just the last one").
 R=$(new_repo advanced)
 BEFORE=$(git -C "$R" rev-parse HEAD)
 git -C "$R" commit -q --allow-empty -m "second commit, never authorized"
+git -C "$R" commit -q --allow-empty -m "third commit, also never authorized"
 AFTER=$(git -C "$R" rev-parse HEAD)
 run advanced "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 [ "$RC" -eq 2 ] || fail advanced "expected exit 2, got $RC"
 grep -q "REFUSED - HEAD advanced from $BEFORE to $AFTER" "$OUT" || fail advanced "missing the advance line naming both shas"
-grep -q "second commit, never authorized" "$OUT" || fail advanced "output does not list the new commit's subject line"
+grep -qF '(2 new commit(s))' "$OUT" || fail advanced "commit count does not read 2"
+grep -q "second commit, never authorized" "$OUT" || fail advanced "output does not list the first new commit's subject line"
+grep -q "third commit, also never authorized" "$OUT" || fail advanced "output does not list the second new commit's subject line"
 
 # ------------------------------------------------------------- case: wrong branch (exit 3)
 R=$(new_repo wrong-branch)
