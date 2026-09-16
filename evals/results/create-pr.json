@@ -1,0 +1,234 @@
+{
+  "skill_name": "create-pr",
+  "runs_per_query": 3,
+  "threshold": 0.5,
+  "results": [
+    {
+      "query": "I fixed it by hand on this branch, can you raise a pull request for it",
+      "note": "a hand-built fix, no plan",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "create a pull request for my fix",
+      "note": "'create a pull request for my fix'",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "cr\u00e9e la pull request pour fix/88-null-header",
+      "note": "FR 'cr\u00e9e la pull request' + branch name",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "my commits on fix/212-csv-culture are done \u2014 push it and open the PR against #212",
+      "note": "finished branch + issue",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "open a PR for this branch",
+      "note": "'open a PR for this branch'",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "fired": {
+        "create-pr": 2,
+        "(none)": 1
+      },
+      "pass": true
+    },
+    {
+      "query": "open a draft PR for the branch I'm on, the tests aren't passing yet",
+      "note": "--draft",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "fired": {
+        "create-pr": 1,
+        "(none)": 2
+      },
+      "pass": false
+    },
+    {
+      "query": "ouvre une PR pour ce correctif",
+      "note": "FR 'ouvre une PR'",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "put up a PR for feat/301-export-json so I can merge it later",
+      "note": "open now, merge later",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "turn this branch into a PR",
+      "note": "'turn this branch into a PR'",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "build the feature from issue 129 and open the PR",
+      "note": "a planned issue to build \u2192 implement-issue",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "file an issue for this bug",
+      "note": "\u2192 create-issue",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "implement issue 47",
+      "note": "\u2192 implement-issue",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "land #281 once CI is green",
+      "note": "\u2192 merge-pr",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "merge PR 281",
+      "note": "\u2192 merge-pr",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "review PR 281 but don't merge it",
+      "note": "\u2192 code-review",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "take issue 47 all the way to a merged PR",
+      "note": "\u2192 deliver-issue",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "the test suite is failing on my branch, find out why",
+      "note": "\u2192 debug-issue",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "what does our PR title convention require?",
+      "note": "doc question \u2014 no lifecycle skill",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    }
+  ],
+  "summary": {
+    "total": 18,
+    "passed": 15,
+    "failed": 3,
+    "should_trigger": 9,
+    "should_not": 9,
+    "recall": 0.6666666666666666,
+    "specificity": 1.0
+  }
+}

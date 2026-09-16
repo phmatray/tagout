@@ -38,12 +38,13 @@ graph TD
         DL[deliver-issue]
         CI[create-issue]
         II[implement-issue]
+        CP[create-pr]
         MP[merge-pr]
         TB[triage-backlog]
         RS[review-sessions]
         RP[profile-repo]
         SR[setup-repo]
-        SH["_shared/<br>preconditions · sync-with-main · filing-bar<br>worktree-ignore-check · untrusted-input-boundary<br>test-seams · grilling · prior-rejections<br>brainstorm-and-spec · plan-shape · tdd-loop · recap"]
+        SH["_shared/<br>preconditions · open-pr · sync-with-main · filing-bar<br>worktree-ignore-check · untrusted-input-boundary<br>test-seams · grilling · prior-rejections<br>brainstorm-and-spec · plan-shape · tdd-loop · recap"]
     end
 
     PROF[("repo-profile.md<br>(committed in the target repo)")]
@@ -54,6 +55,7 @@ graph TD
     RF -. "convert an entry: /create-issue" .-> CI
     CI -. "next step: /implement-issue #N" .-> II
     II -. "hand-off: /merge-pr #PR" .-> MP
+    CP -. "hand-off: /merge-pr #PR" .-> MP
     MP -. "then: /implement-issue #<next>" .-> II
     TB -. "next step: /implement-issue #<kept>" .-> II
     MP -- "files deferred work" --> CI
@@ -75,6 +77,7 @@ graph TD
     CI -- "reads at step 1" --> PROF
     II -- "reads at step 1" --> PROF
     MP -- "reads at step 1" --> PROF
+    CP -- "reads at step 1" --> PROF
     MP -- "reopens an incomplete ancestor" --> TB
     TB -- "folds · rescopes · closes by decision" --> CI
     TB -- "reads at step 1" --> PROF
@@ -85,6 +88,7 @@ graph TD
     RS --- SH
     II --- SH
     MP --- SH
+    CP --- SH
     TB --- SH
 ```
 
@@ -125,6 +129,7 @@ graph LR
         DL[deliver-issue]
         CI[create-issue]
         II[implement-issue]
+        CP[create-pr]
         MP[merge-pr]
         TB[triage-backlog]
         RP[profile-repo]
@@ -180,6 +185,9 @@ graph LR
     MP --> GIT
     MP -.-> ADR
 
+    CP --> GH
+    CP --> GIT
+
     TB --> GH
 
     RP --> GIT
@@ -214,6 +222,7 @@ why no arrow leaves it.
 | `review-followups` | — | — | **python3**, **git** | `followups.py`, `report-dashboard.py` |
 | `create-issue` | adr (rec.) | — (brainstorm, spec and plan doctrine in `skills/_shared/brainstorm-and-spec.md`, `plan-shape.md`) | **gh** | — |
 | `implement-issue` | adr (rec.) | code-review (plan shape and TDD loop in `skills/_shared/plan-shape.md`, `tdd-loop.md`; worktrees via its own `make-worktree.sh`) | **gh**, **git**, **jq** (`tick-plan.sh`'s round-trip check) | — |
+| `create-pr` | — | — (the PR-open recipe in `skills/_shared/open-pr.md`) | **gh** (push rights), **git** | `guarded-push.sh` (borrowed from implement-issue) |
 | `merge-pr` | adr (rec.) | — | **gh** (merge rights), **git** | — |
 | `auto-dev` | — | drives create-issue, implement-issue, merge-pr · `loop` (heartbeat) | **gh** (merge rights), **git** · python3 (cost reports) | `survey.sh`, `reconcile.sh`, `wait-ci.sh`, `usage_report.py`, `analyze_cache.py`, `measure_phase2.py` (bundled in the skill) |
 | `deliver-issue` | — | dispatches create-issue, then the two `auto-dev` worker commands (implement-issue → merge-pr) in fresh sub-agents | **gh** (merge rights), **git**, **jq** (`wait-ci.sh` reads gh's check table with it) | `skills/auto-dev/scripts/wait-ci.sh` (borrowed; ships nothing of its own) |
