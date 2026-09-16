@@ -248,23 +248,31 @@ forget_created() {
 # it away, then wrongly references `x` a third time would read SKIP forever instead of catching the
 # stale reference (found in review of #640: a genuinely stale plan silently waved through).
 check_span() {
-  local verb path
+  local verb path type
   verb="$1"; path=$(strip_anchor "$2")
-  if git -C "$DIR" cat-file -e "$BASE:$path" 2>/dev/null; then
-    printf 'OK %s %s (Task %s)\n' "$verb" "$path" "$TASK"
-  else
-    case "$CREATED" in
-      *"$NL$path$NL"*)
-        printf 'SKIP %s %s (Task %s)\n' "$verb" "$path" "$TASK"
-        case "$verb" in
-          rename|delete) forget_created "$path" ;;
-        esac
-        return 0
-        ;;
-    esac
-    printf 'MISSING %s %s (Task %s)\n' "$verb" "$path" "$TASK"
-    MISSING=$((MISSING + 1))
-  fi
+  # #647: the object name travels on stdin, not argv. Git Bash's MSYS layer rewrites an argv entry
+  # holding ':.' (e.g. "origin/main:.github/workflows/ci.yml") before git.exe ever sees it, turning
+  # a present dot-prefixed path into a false MISSING — stdin is never touched by that conversion.
+  type=$(printf '%s:%s\n' "$BASE" "$path" \
+    | git -C "$DIR" cat-file --batch-check='%(objecttype)' 2>/dev/null) || type=
+  case "$type" in
+    blob|tree|commit|tag)
+      printf 'OK %s %s (Task %s)\n' "$verb" "$path" "$TASK"
+      ;;
+    *)
+      case "$CREATED" in
+        *"$NL$path$NL"*)
+          printf 'SKIP %s %s (Task %s)\n' "$verb" "$path" "$TASK"
+          case "$verb" in
+            rename|delete) forget_created "$path" ;;
+          esac
+          return 0
+          ;;
+      esac
+      printf 'MISSING %s %s (Task %s)\n' "$verb" "$path" "$TASK"
+      MISSING=$((MISSING + 1))
+      ;;
+  esac
 }
 
 # handle_span <span> <following-prose> — dispatch one backtick-quoted span by $CURRENT_VERB.
