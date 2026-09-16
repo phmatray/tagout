@@ -128,6 +128,8 @@ agent_id=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || ag
 # (`timeout`), and a command hidden inside `$(...)`/backtick substitution. The first two are fixed
 # inside the same character scan that already strips quotes/comments (below); the third needs its
 # own recursive check, since the substituted command runs regardless of where it sits on the line.
+# A fourth (#658): a shell launcher's `-c` string (`bash -c '…'`, `sh -ec "…"`) or `eval`'s argument
+# is also a command that runs regardless of where it sits — recognised the same recursive way.
 
 # ------------------------------------------------------------------- strip quotes and comments
 # `echo "git push --force"` is not a push, and `git log # git reset --hard` is not a reset. Matt's
@@ -161,6 +163,17 @@ agent_id=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || ag
 awkout=$(printf '%s' "$cmd" | tr '\n' ';' | awk '
 BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
 function endsw(s, suf,    ls, lu) { ls = length(s); lu = length(suf); return (ls >= lu && substr(s, ls-lu+1) == suf) }
+# The emitted text of the current segment: `out` after its last `;`, `|` or `&` — a plain backward
+# scan, since POSIX awk has no rindex-of-a-set. Used only to test what PRECEDES a quote that is
+# about to close, never what is inside it (#658). No apostrophes in this comment block: it sits
+# inside the awk program, which the outer shell still reads as ONE single-quoted string.
+function segtail(s,    p, cch) {
+  for (p = length(s); p > 0; p--) {
+    cch = substr(s, p, 1)
+    if (cch == ";" || cch == "|" || cch == "&") return substr(s, p + 1)
+  }
+  return s
+}
 {
   out = ""; q = ""; qbuf = ""; n = length($0); i = 1; prev = " "; nsubs = 0
   while (i <= n) {
@@ -248,6 +261,23 @@ function endsw(s, suf,    ls, lu) { ls = length(s); lu = length(suf); return (ls
         qbuf = qbuf "@P@"; i = j + 1; continue
       }
       if (c == q) {
+        # #658: the -c string of a shell launcher, or the argument eval will run, is a command the
+        # shell WILL run — judged the same as if it had been typed bare, by feeding it into the same
+        # subs[] relay #533 built for $(...)/backticks. The trigger reads the text already emitted
+        # for THIS segment (segtail(out)), not qbuf — the question is what precedes the quote, not
+        # what is inside it. Checked with macOS /usr/bin/awk against bash -c, bash -lc, /bin/bash -c,
+        # sh -ec, bash --norc -c and eval (match), and echo, bash, sh -x script.sh, ssh -c aes,
+        # foosh -c and sh -c @Q@ (no match). No apostrophes anywhere in this block (see above).
+        tail = segtail(out)
+        if (tail ~ /(^| |@P@)([^ ]*\/)?(bash|sh|zsh|dash|ksh)( +-[-A-Za-z]+)* +-[A-Za-z]*c[A-Za-z]* *$/ || tail ~ /(^| |@P@)eval *$/) {
+          rec = qbuf
+          # The off-switch carries in: an already-open GIT_GATE=off|0|false|no|disabled assignment
+          # prefixes the relayed string too, so the recursive judge() applies the rule from #643
+          # (honoured for the main thread, stepped over for a sub-agent) to it exactly as to a bare
+          # command.
+          if (match(tail, /GIT_GATE=(off|0|false|no|disabled)/)) rec = substr(tail, RSTART, RLENGTH) " " rec
+          subs[nsubs++] = rec
+        }
         q = ""
         # A quoted span collapses to a placeholder so its content can never be substring-matched
         # (the reason it is opaque at all) — but a quoted `gh`/`git`, or a quoted path ending in one
