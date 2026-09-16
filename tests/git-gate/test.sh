@@ -222,6 +222,11 @@ mkdir -p "$SPACED/skills/merge-pr/scripts"; : > "$SPACED/skills/merge-pr/scripts
 verdict "K8  a root with a space is quoted" \
   deny "\"$SPACED/skills/merge-pr/scripts/guarded-pr-merge.sh\"" \
   "$(pay Bash 'gh pr merge 12' "$PROF")" "$PATH" "" "$SPACED"
+# A sub-agent's denial points at the relocate fallback (#643) — spelt under the plugin root too, or
+# in a consumer repo it names a relative path that resolves to nothing (#512).
+verdict "K9  a sub-agent's denial names guard-invocation.md by absolute path" \
+  deny "$KIT/skills/_shared/guard-invocation.md" \
+  "$(pay_sub Bash 'git commit -m x' "$PROF")" "$PATH" "" "$KIT"
 
 # ------------------------------------------------------------ 1d. a raw `gh pr merge` (#512)
 # #326 left `gh` out of scope on the premise that `gh pr merge` "is already guarded by
