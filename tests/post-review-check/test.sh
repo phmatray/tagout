@@ -115,4 +115,13 @@ run usage_bad_before "$SCRIPT" -C "$R" --branch main --before not-a-sha
 run usage_not_a_repo "$SCRIPT" -C "$WORK" --branch main --before "$BEFORE"
 [ "$RC" -eq 64 ] || fail usage_not_a_repo "expected exit 64 for a non-repository -C, got $RC"
 
-echo "OK: post-review-check.sh — clean/dirty(untracked+tracked)/advanced/wrong-branch/detached/usage all verified"
+# ---------------------------------------------------- wiring: 07-review.md still calls the guard
+# #659's Verification axis: the cases above only prove the SCRIPT is correct in isolation — nothing
+# fails if Step 7's prose is edited to drop the call, mangle its flags, or revert to the three-line
+# memory aid this script replaced. Pin the literal invocation so that drift is caught here too.
+STEP7="$KIT/skills/implement-issue/references/steps/07-review.md"
+[ -f "$STEP7" ] || fail wiring "missing $STEP7"
+grep -qF '"$GUARDS/post-review-check.sh" -C "$WORKTREE" --branch "$BRANCH" --before' "$STEP7" \
+  || fail wiring "07-review.md no longer calls post-review-check.sh with -C/--branch/--before"
+
+echo "OK: post-review-check.sh — clean/dirty(untracked+tracked)/advanced/wrong-branch/detached/usage/wiring all verified"
