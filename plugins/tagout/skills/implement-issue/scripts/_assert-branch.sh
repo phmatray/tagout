@@ -216,10 +216,13 @@ head_state_unreadable() { [ -z "${1:-}" ] && [ "${2:-}" = '<unreadable>' ]; }
 #             later with its own diagnosis, and refusing here would only respell it.
 #
 #     On a mismatch, asks git's own worktree admin — not just the stale record — which tree holds
-#     $EXPECTED now: git worktree list --porcelain is read once and walked to find the entry whose
-#     path resolves to $top.
-#       - That entry is a LINKED worktree (not the first/main entry) and its branch is
-#         refs/heads/$EXPECTED: the branch legitimately moved trees (a worker's own
+#     $EXPECTED now: git worktree list --porcelain is read once and walked (paths only, never a
+#     field split) to find the 1-based POSITION of the entry whose path resolves to $top. The
+#     branch $top itself holds is then read straight off $top through head_branch_of — this file's
+#     one home for that read (#129) — rather than trusted from the porcelain listing's own "branch "
+#     line, which could go stale if two entries ever resolved to the same physical path.
+#       - That entry is a LINKED worktree (not the first/main entry) and head_branch_of says it
+#         holds $EXPECTED: the branch legitimately moved trees (a worker's own
 #         `git worktree remove` + `switch`, #510's release-branch.sh handing a PR branch to a
 #         re-dispatched worker, a harness cleanup) — this is not the #469 relocation. Heal the
 #         record to $top, note it on stderr, and return 0: passes.
@@ -242,7 +245,7 @@ head_state_unreadable() { [ -z "${1:-}" ] && [ "${2:-}" = '<unreadable>' ]; }
 #     because `rev-parse --show-toplevel` answers with symlinks resolved.
 assert_worktree_live() {
   local tool="$1" recorded recorded_phys shown top
-  local entry idx path branch found_idx found_branch
+  local entry idx path found_idx
   [ -n "${REPO:-}" ]     || refuse "$tool" "internal: \$REPO is unset — the caller must set it before calling assert_worktree_live."
   [ -n "${EXPECTED:-}" ] || refuse "$tool" "internal: \$EXPECTED is unset — the caller must set it before calling assert_worktree_live."
   repo_readable "$REPO" || return 0
@@ -259,26 +262,22 @@ assert_worktree_live() {
   shown=${recorded_phys:-"$recorded (gone)"}
   if [ "$top" = "$recorded_phys" ]; then return 0; fi
 
-  # Mismatch: ask git's own worktree admin which entry $top actually is. Same idiom as
-  # make-worktree.sh's EXISTING lookup — `substr($0, 10)`/`substr($0, 8)`, never a field split, so
-  # a path or branch containing a space survives — but this walks EVERY entry (not just one
-  # branch's), tagging each with its 1-based position so the first (main) entry is tellable from a
-  # linked one.
-  found_idx="" found_branch=""
-  idx=0 path="" branch=""
+  # Mismatch: ask git's own worktree admin which entry $top actually is — only the POSITION
+  # matters here (is it the first/main entry, or a linked one?), so this walks paths only. Same
+  # idiom as make-worktree.sh's EXISTING lookup — `substr($0, 10)`, never a field split, so a path
+  # containing a space survives. The branch $top itself holds is read straight off $top through
+  # head_branch_of below — this file's one home for that read (#129) — rather than trusted from a
+  # second porcelain "branch " line, which would go stale if two entries ever resolved to the same
+  # physical path (a stale/prunable admin record re-registered by `worktree add -f`).
+  found_idx="" idx=0 path=""
   while IFS= read -r entry; do
     case "$entry" in
       "worktree "*)
         if [ -n "$path" ] && [ "$(CDPATH= cd -- "$path" 2>/dev/null && pwd -P || true)" = "$top" ]; then
           found_idx=$idx
-          found_branch=$branch
         fi
         idx=$((idx + 1))
         path=${entry#worktree }
-        branch=""
-        ;;
-      "branch "*)
-        branch=${entry#branch }
         ;;
     esac
   done <<EOF
@@ -286,10 +285,9 @@ $(git -C "$REPO" worktree list --porcelain 2>/dev/null || true)
 EOF
   if [ -n "$path" ] && [ "$(CDPATH= cd -- "$path" 2>/dev/null && pwd -P || true)" = "$top" ]; then
     found_idx=$idx
-    found_branch=$branch
   fi
 
-  if [ -n "$found_idx" ] && [ "$found_idx" -gt 1 ] && [ "$found_branch" = "refs/heads/$EXPECTED" ]; then
+  if [ -n "$found_idx" ] && [ "$found_idx" -gt 1 ] && [ "$(head_branch_of "$top")" = "$EXPECTED" ]; then
     if git -C "$REPO" config "kit.worktree.${EXPECTED}.path" "$top"; then
       printf '%s: note — kit.worktree.%s.path named %s; %s holds '"'"'%s'"'"' now, record updated.\n' \
         "$tool" "$EXPECTED" "$shown" "$top" "$EXPECTED" >&2

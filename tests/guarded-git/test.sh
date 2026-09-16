@@ -2061,6 +2061,7 @@ echo "  ok: a recorded path that no longer exists is still named, not erased (#6
 # worker, a harness cleanup) — not the #469 relocation. The guard must heal the record to the
 # new tree and pass, not refuse (#644).
 new_linked_worktree moved
+wt_phys=$(cd "$WT" && pwd -P)
 AGENT1="$R_MAIN/.claude/worktrees/agent-1"
 git -C "$R_MAIN" branch -q throwaway b
 git -C "$R_MAIN" worktree add -q "$AGENT1" throwaway
@@ -2077,6 +2078,8 @@ agent1_phys=$(cd "$AGENT1" && pwd -P)
 [ "$(git -C "$R_MAIN" config --get kit.worktree.a.path)" = "$agent1_phys" ] \
   || fail moved-commit "the record must be healed to the new worktree's physical path"
 grep -q 'note —' "$OUT" || fail moved-commit "the heal must note the old and new path on stderr"
+grep -qF "$wt_phys" "$OUT" || fail moved-commit "the heal note must name the OLD (stale) recorded path"
+grep -qF "$agent1_phys" "$OUT" || fail moved-commit "the heal note must name the NEW (healed) path"
 echo "  ok: a branch held by another live linked worktree heals the record instead of refusing (#644)"
 
 # 35f. A record naming a removed path, while -C is a DIFFERENT live linked worktree that does not
