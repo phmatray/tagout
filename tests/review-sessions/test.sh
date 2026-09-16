@@ -271,6 +271,10 @@ write_line "$T" assistant "$D" "$(text '"failure_scenario": "ends its turn with 
 write_line "$T" assistant "$D" "$(text 'a dispatch that reports `STATUS: BLOCKED` on any failure')"
 # decoy: harness-nudge, quoted via a backtick, in a USER text block.
 write_line "$T" user "$D" "$(text '- the `harness-nudge` kind on `[Request interrupted` is noise')"
+# code-review finding (#645): a quoted occurrence of a nudge phrase FOLLOWED by a genuine unquoted
+# one in the SAME block. `str.find()` only ever sees the first (quoted) occurrence, so a naive
+# quoted-check on that index alone drops the real nudge after it — every occurrence must be checked.
+write_line "$T" user "$D" "$(text 'earlier we quoted `[Request interrupted` as fine, but now: [Request interrupted by user]')"
 # decoy: hook-deny shape that did NOT fail (is_error false) — a test's own printed incident line.
 write_line "$T" assistant "$D" "$(tool_use t40 Bash '{"command":"./tests/incident-check/test.sh"}')"
 write_line "$T" user "$D" "$(tool_result t40 "$(printf 'INCIDENT (verbatim shape) -> ALLOW\nBlocked by the git write-gate: git commit -m x')" false)"
@@ -313,7 +317,7 @@ if guard_details != want_guards:
 # the summed count — count, never len(), since a collapse (t3+t3b) is one record worth 2.
 def summed(kind):
     return sum(r["count"] for r in recs if r["kind"] == kind)
-want_summed = {"forbidden-wait": 1, "worker-report": 1, "harness-nudge": 1, "hook-deny": 2, "suite-fail": 1}
+want_summed = {"forbidden-wait": 1, "worker-report": 1, "harness-nudge": 2, "hook-deny": 2, "suite-fail": 1}
 for kind, want_n in want_summed.items():
     got_n = summed(kind)
     if got_n != want_n:
@@ -326,7 +330,7 @@ PY
 MD=$(kit_scratch)/tally.md
 python3 "$SCRIPT" "$PROJ" --markdown --since 2026-08-15 > "$MD" 2>/dev/null || { echo "FAIL: --markdown exited non-zero"; exit 1; }
 grep -q '^## implement-issue$' "$MD" || { echo "FAIL: the tally has no per-skill heading"; cat "$MD"; exit 1; }
-grep -q '^signals: 14 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 14 across 1 sessions'"; tail -3 "$MD"; exit 1; }
+grep -q '^signals: 15 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 15 across 1 sessions'"; tail -3 "$MD"; exit 1; }
 grep -q 'skipped 1 unparseable' "$MD" || { echo "FAIL: the non-JSON line was not counted as skipped"; tail -3 "$MD"; exit 1; }
 echo "ok   the markdown tally groups by skill and kind, counts the skipped line, ends with the signals line"
 

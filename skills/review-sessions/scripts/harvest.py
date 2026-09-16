@@ -332,9 +332,10 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                 # session the kit was never driving.
                 if isinstance(content, str):
                     for n in NUDGES:
-                        i = content.find(n)
-                        if i >= 0 and active and not quoted(content, i):
-                            emit("harness-nudge", excerpt_of(content, n), None, n)
+                        for m in re.finditer(re.escape(n), content):
+                            if active and not quoted(content, m.start()):
+                                emit("harness-nudge", excerpt_of(content, n), None, n)
+                                break
                     continue
                 if not isinstance(content, list):
                     continue
@@ -343,9 +344,10 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                         continue
                     if b.get("type") == "text" and isinstance(b.get("text"), str):
                         for n in NUDGES:
-                            i = b["text"].find(n)
-                            if i >= 0 and active and not quoted(b["text"], i):
-                                emit("harness-nudge", excerpt_of(b["text"], n), None, n)
+                            for m in re.finditer(re.escape(n), b["text"]):
+                                if active and not quoted(b["text"], m.start()):
+                                    emit("harness-nudge", excerpt_of(b["text"], n), None, n)
+                                    break
                         continue
                     if b.get("type") != "tool_result":
                         continue
