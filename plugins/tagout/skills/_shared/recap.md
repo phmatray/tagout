@@ -118,6 +118,7 @@ checked against it; they are not a second copy to hand-sync.
 | `setup-repo` | the repo converged on its manifest | `/profile-repo --refresh` |
 | `create-issue` | issue(s) filed, each with a plan | `/implement-issue #<issue>` |
 | `implement-issue` | PR **ready**, not landed | `/merge-pr #<pr>` |
+| `create-pr` | PR opened (ready, or draft when asked or red) | `/merge-pr #<pr>` |
 | `merge-pr` | PR merged, follow-ups filed | `/implement-issue #<next-issue>` |
 | `deliver-issue` | the one item merged (or its PR ready, with `--stop-at ready`) | `/implement-issue #<follow-up>` for a follow-up the merge filed — or `/implement-issue #<issue>` to resume a draft a stopped phase 1 left; `/merge-pr #<pr>` only for a PR reported READY under `--stop-at ready`; else `—` |
 | `auto-dev` | the eligible queue drained | `/implement-issue #<held-issue>` for anything held as L/XL, else `—` |

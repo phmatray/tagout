@@ -224,7 +224,11 @@ handle_span() {
   local span following
   span="$1"; following="$2"
 
-  if [ -n "$PEND_SRC" ]; then
+  # Filtered exactly as the source branch below is: without it ANY span was consumed as the target,
+  # so a backticked aside between the two names was eaten and the real target flushed as MISSING
+  # (#599 — shipped by #594, which added this filter to the source branch only). The end-of-field
+  # flush stays unconditional: a rename whose target never arrives must still resolve its source.
+  if [ -n "$PEND_SRC" ] && looks_like_path "$span"; then
     check_span rename "$PEND_SRC"
     printf 'SKIP rename %s (Task %s)\n' "$(strip_anchor "$span")" "$TASK"
     PEND_SRC=""

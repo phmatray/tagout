@@ -19,15 +19,15 @@ git -C "$WORKTREE" rev-parse HEAD                    # write this sha into your 
 shell, so a `REVIEW_BASE=…` set here is empty by the time the check below runs — and an empty
 variable makes that comparison pass silently, which is the exact failure this step exists to catch.
 
-Then stage the diff **once, to a file** — `git -C "$WORKTREE" diff main...HEAD > "/tmp/issue-$ISSUE.diff"`,
+Then stage the diff **once, to a file** — `git -C "$WORKTREE" fetch origin main --quiet && git -C "$WORKTREE" diff origin/main...HEAD > "/tmp/issue-$ISSUE.diff"`,
 non-empty or stop — and hand sub-agents that path, never the diff text and never a worktree they
-could write to (#477). Then review the **whole feature branch** (`main...HEAD`, not just the last
+could write to (#477). Then review the **whole feature branch** (`origin/main...HEAD`, not just the last
 commit) along **three axes, run in parallel and never merged**:
 
 - **Standards** — is this good code by this repo's lights? Correctness bugs, missed reuse, cross-task
   inconsistencies, the profile's *Coding standards*. Run the **`code-review` skill** over
-  `main...HEAD` with an explicit level sized by the plan's breadth (Step 3) —
-  `/code-review medium main...HEAD` for a small, localized plan, `/code-review high main...HEAD` for
+  `origin/main...HEAD` with an explicit level sized by the plan's breadth (Step 3) —
+  `/code-review medium origin/main...HEAD` for a small, localized plan, `/code-review high origin/main...HEAD` for
   a broad/deep one. Pass the level every time: with no level, `code-review` reuses the last level
   typed in any session, and one bare call inherited `xhigh` and spent 106.8M tokens on 25 review
   sub-agents (2026-09-07). `ultra` is never prescribed — it is a cloud review the user launches and
@@ -125,7 +125,7 @@ If an axis is clean, say which one and skip its fix commit. **"Clean" is a resul
 axis that was never run is not clean, and Step 10 recaps the three separately for exactly that reason.
 
 **If the diff touches a path an accepted ADR names in its `code_refs`, propose the ADR update.**
-Run `suggest_adr_from_change` over `git diff main...HEAD` through the `adr` server and put the
+Run `suggest_adr_from_change` over `git diff origin/main...HEAD` through the `adr` server and put the
 returned draft under the PR's `## Follow-ups` heading as *ADR proposal*; without the server, grep
 `docs/adr/*.md` frontmatter for a `code_refs` path this diff touches and write the proposal by hand
 from the ADR it names, saying AdrMcp was not connected. It is a **proposal for the owner**: do not
