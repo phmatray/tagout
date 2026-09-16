@@ -2042,4 +2042,18 @@ run healthy-subdir "$COMMIT" -C "$WT/sub" a -- -m "feat: from a subdirectory of 
 [ "$RC" -eq 0 ] || fail healthy-subdir "expected exit 0 from a subdirectory of a healthy recorded worktree, got $RC"
 echo "  ok: healthy recorded worktree — a -C into a subdirectory still passes (#469)"
 
+# 35d. The record names a path that is now gone AND the toplevel is the main checkout: the
+# refusal must show the recorded path followed by " (gone)", never the erased "at  (gone)" (#644).
+new_linked_worktree relocate-gone
+wt_phys=$(cd "$WT" && pwd -P)
+git -C "$R_MAIN" worktree remove --force "$WT"
+echo "task work" >> "$R_MAIN/seed.txt"
+git -C "$R_MAIN" add seed.txt
+
+run relocate-gone-commit "$COMMIT" -C "$R_MAIN" a -- -m x
+[ "$RC" -eq 2 ] || fail relocate-gone-commit "expected exit 2, got $RC"
+grep -qF "$wt_phys (gone)" "$OUT" || fail relocate-gone-commit "the refusal must name the removed recorded path followed by ' (gone)'"
+grep -q 'at  (gone)' "$OUT" && fail relocate-gone-commit "the refusal erased the recorded path — 'at  (gone)' must never appear"
+echo "  ok: a recorded path that no longer exists is still named, not erased (#644)"
+
 echo "guarded-git golden test OK"

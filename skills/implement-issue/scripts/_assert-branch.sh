@@ -226,7 +226,7 @@ head_state_unreadable() { [ -z "${1:-}" ] && [ "${2:-}" = '<unreadable>' ]; }
 #     toplevel names the relocation as a relocation. Both sides through `pwd -P`, because
 #     `rev-parse --show-toplevel` answers with symlinks resolved.
 assert_worktree_live() {
-  local tool="$1" recorded top
+  local tool="$1" recorded recorded_phys shown top
   [ -n "${REPO:-}" ]     || refuse "$tool" "internal: \$REPO is unset — the caller must set it before calling assert_worktree_live."
   [ -n "${EXPECTED:-}" ] || refuse "$tool" "internal: \$EXPECTED is unset — the caller must set it before calling assert_worktree_live."
   repo_readable "$REPO" || return 0
@@ -235,9 +235,14 @@ assert_worktree_live() {
   top=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)
   [ -n "$top" ] || refuse "$tool" "the worktree recorded for '$EXPECTED' at $recorded has no readable toplevel from $REPO — it was destroyed mid-run. Nothing written."
   top=$(CDPATH= cd -- "$top" 2>/dev/null && pwd -P) || true
-  recorded=$(CDPATH= cd -- "$recorded" 2>/dev/null && pwd -P) || recorded="$recorded (gone)"
-  [ "$top" = "$recorded" ] \
-    || refuse "$tool" "the worktree for '$EXPECTED' was recorded at $recorded, but $REPO now resolves to $top — the worktree was destroyed mid-run and git discovery walked up to the parent checkout. Nothing written. Recreate the worktree (make-worktree.sh) and retry there."
+  # Keep the RAW record intact even when it no longer resolves — recorded_phys, not recorded
+  # itself, is what the physical-path cd may fail on. Folding the fallback into `recorded` (the
+  # old shape) had already captured the empty command-substitution output by the time `||` fired,
+  # so the message read "recorded at  (gone)" with the path itself erased (#644).
+  recorded_phys=$(CDPATH= cd -- "$recorded" 2>/dev/null && pwd -P) || recorded_phys=""
+  shown=${recorded_phys:-"$recorded (gone)"}
+  [ "$top" = "$recorded_phys" ] \
+    || refuse "$tool" "the worktree for '$EXPECTED' was recorded at $shown, but $REPO now resolves to $top — the worktree was destroyed mid-run and git discovery walked up to the parent checkout. Nothing written. Recreate the worktree (make-worktree.sh) and retry there."
 }
 
 # assert_branch is defined LAST on purpose, and each guard's bootstrap leans on it: that check
