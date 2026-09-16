@@ -206,7 +206,7 @@ head_state() {
 
 head_state_unreadable() { [ -z "${1:-}" ] && [ "${2:-}" = '<unreadable>' ]; }
 
-# assert_worktree_live <tool-name>  (#469)
+# assert_worktree_live <tool-name>  (#469, healed by #644)
 #     Reads   $REPO      the worktree the caller named
 #             $EXPECTED  the branch this task owns
 #     Returns 0 when make-worktree.sh recorded no path for $EXPECTED (nothing was ever asserted
@@ -214,19 +214,35 @@ head_state_unreadable() { [ -z "${1:-}" ] && [ "${2:-}" = '<unreadable>' ]; }
 #             byte as before), or when the record equals $REPO's live toplevel. Also 0 when
 #             $REPO cannot be read as a repository at all: assert_branch refuses that a moment
 #             later with its own diagnosis, and refusing here would only respell it.
-#     Refuses with exit 2, naming the recorded path and the toplevel actually found, otherwise.
 #
-#     Why: the worktree home `.claude/worktrees/` sits INSIDE the main checkout, so a worktree
-#     destroyed mid-run (`rm -rf` + `mkdir`, or any sweeper) does not fail — git's upward
-#     discovery walks out of the dead tree and lands on the parent, and every command from then
-#     on runs in the USER'S checkout with exit 0. Measured 2026-09-05: a fleet worker kept going
-#     there; assert_branch caught only the commit, by luck (HEAD was `main`, not the task's
-#     branch), and diagnosed it as a branch mismatch. The record make-worktree.sh writes lives
-#     in the common .git/config, so it survives the tree it describes; comparing it to the live
-#     toplevel names the relocation as a relocation. Both sides through `pwd -P`, because
-#     `rev-parse --show-toplevel` answers with symlinks resolved.
+#     On a mismatch, asks git's own worktree admin — not just the stale record — which tree holds
+#     $EXPECTED now: git worktree list --porcelain is read once and walked to find the entry whose
+#     path resolves to $top.
+#       - That entry is a LINKED worktree (not the first/main entry) and its branch is
+#         refs/heads/$EXPECTED: the branch legitimately moved trees (a worker's own
+#         `git worktree remove` + `switch`, #510's release-branch.sh handing a PR branch to a
+#         re-dispatched worker, a harness cleanup) — this is not the #469 relocation. Heal the
+#         record to $top, note it on stderr, and return 0: passes.
+#       - That entry IS the first/main entry: the #469 relocation — discovery walked up to the
+#         parent checkout. Refuses exactly as before, naming the recorded path and $top.
+#       - That entry is some OTHER linked worktree, holding neither $EXPECTED nor the main
+#         checkout: refuses, naming $top and that it does not hold $EXPECTED — never the
+#         "parent checkout" wording, which would misdiagnose it.
+#
+#     Why the record heals rather than only refusing: the worktree home `.claude/worktrees/` sits
+#     INSIDE the main checkout, so a worktree destroyed mid-run (`rm -rf` + `mkdir`, or any
+#     sweeper) does not fail — git's upward discovery walks out of the dead tree and lands on the
+#     parent, and every command from then on runs in the USER'S checkout with exit 0. Measured
+#     2026-09-05: a fleet worker kept going there; assert_branch caught only the commit, by luck
+#     (HEAD was `main`, not the task's branch), and diagnosed it as a branch mismatch. The record
+#     make-worktree.sh writes lives in the common .git/config, so it survives the tree it
+#     describes — but comparing it ONLY to the live toplevel could not tell that relocation from a
+#     branch git itself says legitimately moved to another live linked worktree (#644: 3 refusals
+#     in 2 fleet runs took exactly that route). Every path comparison goes through `pwd -P`,
+#     because `rev-parse --show-toplevel` answers with symlinks resolved.
 assert_worktree_live() {
-  local tool="$1" recorded top
+  local tool="$1" recorded recorded_phys shown top
+  local entry idx path branch found_idx found_branch
   [ -n "${REPO:-}" ]     || refuse "$tool" "internal: \$REPO is unset — the caller must set it before calling assert_worktree_live."
   [ -n "${EXPECTED:-}" ] || refuse "$tool" "internal: \$EXPECTED is unset — the caller must set it before calling assert_worktree_live."
   repo_readable "$REPO" || return 0
@@ -235,9 +251,59 @@ assert_worktree_live() {
   top=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)
   [ -n "$top" ] || refuse "$tool" "the worktree recorded for '$EXPECTED' at $recorded has no readable toplevel from $REPO — it was destroyed mid-run. Nothing written."
   top=$(CDPATH= cd -- "$top" 2>/dev/null && pwd -P) || true
-  recorded=$(CDPATH= cd -- "$recorded" 2>/dev/null && pwd -P) || recorded="$recorded (gone)"
-  [ "$top" = "$recorded" ] \
-    || refuse "$tool" "the worktree for '$EXPECTED' was recorded at $recorded, but $REPO now resolves to $top — the worktree was destroyed mid-run and git discovery walked up to the parent checkout. Nothing written. Recreate the worktree (make-worktree.sh) and retry there."
+  # Keep the RAW record intact even when it no longer resolves — recorded_phys, not recorded
+  # itself, is what the physical-path cd may fail on. Folding the fallback into `recorded` (the
+  # old shape) had already captured the empty command-substitution output by the time `||` fired,
+  # so the message read "recorded at  (gone)" with the path itself erased (#644).
+  recorded_phys=$(CDPATH= cd -- "$recorded" 2>/dev/null && pwd -P) || recorded_phys=""
+  shown=${recorded_phys:-"$recorded (gone)"}
+  if [ "$top" = "$recorded_phys" ]; then return 0; fi
+
+  # Mismatch: ask git's own worktree admin which entry $top actually is. Same idiom as
+  # make-worktree.sh's EXISTING lookup — `substr($0, 10)`/`substr($0, 8)`, never a field split, so
+  # a path or branch containing a space survives — but this walks EVERY entry (not just one
+  # branch's), tagging each with its 1-based position so the first (main) entry is tellable from a
+  # linked one.
+  found_idx="" found_branch=""
+  idx=0 path="" branch=""
+  while IFS= read -r entry; do
+    case "$entry" in
+      "worktree "*)
+        if [ -n "$path" ] && [ "$(CDPATH= cd -- "$path" 2>/dev/null && pwd -P || true)" = "$top" ]; then
+          found_idx=$idx
+          found_branch=$branch
+        fi
+        idx=$((idx + 1))
+        path=${entry#worktree }
+        branch=""
+        ;;
+      "branch "*)
+        branch=${entry#branch }
+        ;;
+    esac
+  done <<EOF
+$(git -C "$REPO" worktree list --porcelain 2>/dev/null || true)
+EOF
+  if [ -n "$path" ] && [ "$(CDPATH= cd -- "$path" 2>/dev/null && pwd -P || true)" = "$top" ]; then
+    found_idx=$idx
+    found_branch=$branch
+  fi
+
+  if [ -n "$found_idx" ] && [ "$found_idx" -gt 1 ] && [ "$found_branch" = "refs/heads/$EXPECTED" ]; then
+    if git -C "$REPO" config "kit.worktree.${EXPECTED}.path" "$top"; then
+      printf '%s: note — kit.worktree.%s.path named %s; %s holds '"'"'%s'"'"' now, record updated.\n' \
+        "$tool" "$EXPECTED" "$shown" "$top" "$EXPECTED" >&2
+    else
+      printf '%s: warning: could not update kit.worktree.%s.path — the liveness guard will keep comparing against the stale record.\n' \
+        "$tool" "$EXPECTED" >&2
+    fi
+    return 0
+  fi
+
+  if [ "$found_idx" = "1" ]; then
+    refuse "$tool" "the worktree for '$EXPECTED' was recorded at $shown, but $REPO now resolves to $top — the worktree was destroyed mid-run and git discovery walked up to the parent checkout. Nothing written. Recreate the worktree (make-worktree.sh) and retry there."
+  fi
+  refuse "$tool" "the worktree for '$EXPECTED' was recorded at $shown, but $REPO resolves to $top, a worktree that does not hold '$EXPECTED'. Nothing written."
 }
 
 # assert_branch is defined LAST on purpose, and each guard's bootstrap leans on it: that check
