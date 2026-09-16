@@ -265,17 +265,25 @@ function segtail(s,    p, cch) {
         # shell WILL run — judged the same as if it had been typed bare, by feeding it into the same
         # subs[] relay #533 built for $(...)/backticks. The trigger reads the text already emitted
         # for THIS segment (segtail(out)), not qbuf — the question is what precedes the quote, not
-        # what is inside it. Checked with macOS /usr/bin/awk against bash -c, bash -lc, /bin/bash -c,
-        # sh -ec, bash --norc -c and eval (match), and echo, bash, sh -x script.sh, ssh -c aes,
-        # foosh -c and sh -c @Q@ (no match). No apostrophes anywhere in this block (see above).
+        # what is inside it. A flag word may sit either side of the c-cluster (bash --norc -c, or
+        # bash -c -x, or bash -c --, ahead of the quoted span) — a real shell still takes the quoted
+        # span as the -c string in every one of those, empirically checked. Checked with macOS
+        # /usr/bin/awk against
+        # bash -c, bash -lc, /bin/bash -c, sh -ec, bash --norc -c, bash -c -x, bash -c -- and eval
+        # (match), and echo, bash, sh -x script.sh, ssh -c aes, foosh -c and sh -c @Q@ (no match). No
+        # apostrophes anywhere in this block (see above).
         tail = segtail(out)
-        if (tail ~ /(^| |@P@)([^ ]*\/)?(bash|sh|zsh|dash|ksh)( +-[-A-Za-z]+)* +-[A-Za-z]*c[A-Za-z]* *$/ || tail ~ /(^| |@P@)eval *$/) {
+        if (tail ~ /(^| |@P@)([^ ]*\/)?(bash|sh|zsh|dash|ksh)( +-[-A-Za-z]+)* +-[A-Za-z]*c[A-Za-z]*( +-[-A-Za-z]+)* *$/ || tail ~ /(^| |@P@)eval *$/) {
           rec = qbuf
           # The off-switch carries in: an already-open GIT_GATE=off|0|false|no|disabled assignment
           # prefixes the relayed string too, so the recursive judge() applies the rule from #643
           # (honoured for the main thread, stepped over for a sub-agent) to it exactly as to a bare
-          # command.
-          if (match(tail, /GIT_GATE=(off|0|false|no|disabled)/)) rec = substr(tail, RSTART, RLENGTH) " " rec
+          # command. Two conditions, not one regex: the trailing space stops GIT_GATE=offbeat from
+          # truncating to the exact off-switch token GIT_GATE=off, and the RSTART check stops
+          # FOO_GIT_GATE=off from being read as the same token — match() finds GIT_GATE=... as a
+          # SUBSTRING anywhere in tail, so without this a longer, unrelated assignment would still
+          # relay the bare token that the recursive judge exact-word case honours (#658 review).
+          if (match(tail, /GIT_GATE=(off|0|false|no|disabled) /) && (RSTART == 1 || substr(tail, RSTART - 1, 1) == " ")) rec = substr(tail, RSTART, RLENGTH - 1) " " rec
           subs[nsubs++] = rec
         }
         q = ""
