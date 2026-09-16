@@ -39,6 +39,34 @@ for entry in req["tools"] + req["mcps"] + req["sessionSkills"]:
         assert got == want, f"requiredBy mismatch for {name}: {got} != {want}"
 PY
 
+# 2b. requirements.json's `for` value and run-all-tests.sh's hardcoded `--for run-all-tests` flag
+#     are two independent string literals with nothing else tying them together (#642 verification
+#     gap, code-review) — a typo in either would silently stop the .NET 6 runtime from ever being
+#     checked on a full run, and case 9's synthetic manifest below can't catch that: it makes up its
+#     own `for` value, which is always self-consistent by construction. Prove the two literals agree,
+#     against the REAL requirements.json and the REAL preflight.sh, not a copy of either.
+grep -qF 'preflight_for="--for run-all-tests"' scripts/run-all-tests.sh || {
+  echo "FAIL [for-wiring]: scripts/run-all-tests.sh no longer forwards --for run-all-tests"
+  exit 1
+}
+python3 - <<'PY'
+import json
+req = json.load(open("requirements.json"))
+runtime = [t for t in req["tools"] if t["name"] == ".NET 6 runtime"]
+assert len(runtime) == 1, f"requirements.json must declare exactly one .NET 6 runtime tools entry, got {len(runtime)}"
+got_for = runtime[0].get("for")
+assert got_for == "run-all-tests", \
+    f"the .NET 6 runtime entry's for must match run-all-tests.sh's hardcoded --for flag: got {got_for!r}"
+PY
+for_out=$(./scripts/preflight.sh --for run-all-tests --json || true)
+python3 - "$for_out" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+assert ".NET 6 runtime" in {c["name"] for c in d["checks"]}, \
+    f".NET 6 runtime must appear when preflight is called with --for run-all-tests: {d}"
+PY
+echo "  ok: --for wiring — requirements.json's for value and run-all-tests.sh's --for flag agree end-to-end"
+
 # 4. A missing REQUIRED item ⇒ exit 1 and status "missing". PATH reduced to the bare minimum
 #    needed to read the manifest (bash + python3 + dirname): git/dotnet become unfindable.
 #    The scratch comes from the shared helper, so it is removed on EVERY exit path (#128). The
