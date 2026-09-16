@@ -56,4 +56,63 @@ run clean "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 grep -q "^post-review-check: clean" "$OUT" || fail clean "missing the clean verdict line"
 grep -qF "$BEFORE" "$OUT" || fail clean "clean line does not name the unchanged sha"
 
-echo "OK: post-review-check.sh — clean verified"
+# ------------------------------------------------------- case: dirty, untracked file (exit 1)
+R=$(new_repo dirty-untracked)
+BEFORE=$(git -C "$R" rev-parse HEAD)
+echo stray > "$R/untracked.txt"
+run dirty_untracked "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
+[ "$RC" -eq 1 ] || fail dirty_untracked "expected exit 1, got $RC"
+grep -q "REFUSED - uncommitted changes" "$OUT" || fail dirty_untracked "missing the REFUSED line"
+grep -q "untracked.txt" "$OUT" || fail dirty_untracked "output does not name the untracked file"
+
+# --------------------------------------------------------- case: dirty, tracked edit (exit 1)
+R=$(new_repo dirty-tracked)
+BEFORE=$(git -C "$R" rev-parse HEAD)
+echo changed >> "$R/seed.txt"
+run dirty_tracked "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
+[ "$RC" -eq 1 ] || fail dirty_tracked "expected exit 1, got $RC"
+grep -q "seed.txt" "$OUT" || fail dirty_tracked "output does not include the diff --stat of the tracked change"
+
+# -------------------------------------------------------------- case: HEAD advanced (exit 2)
+R=$(new_repo advanced)
+BEFORE=$(git -C "$R" rev-parse HEAD)
+git -C "$R" commit -q --allow-empty -m "second commit, never authorized"
+AFTER=$(git -C "$R" rev-parse HEAD)
+run advanced "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
+[ "$RC" -eq 2 ] || fail advanced "expected exit 2, got $RC"
+grep -q "REFUSED - HEAD advanced from $BEFORE to $AFTER" "$OUT" || fail advanced "missing the advance line naming both shas"
+grep -q "second commit, never authorized" "$OUT" || fail advanced "output does not list the new commit's subject line"
+
+# ------------------------------------------------------------- case: wrong branch (exit 3)
+R=$(new_repo wrong-branch)
+BEFORE=$(git -C "$R" rev-parse HEAD)
+git -C "$R" checkout -q -b other
+run wrong_branch "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
+[ "$RC" -eq 3 ] || fail wrong_branch "expected exit 3, got $RC"
+grep -q "REFUSED - HEAD is on 'other', expected 'main'" "$OUT" || fail wrong_branch "missing the branch-mismatch line"
+
+# ------------------------------------------------------------- case: detached HEAD (exit 3)
+R=$(new_repo detached)
+BEFORE=$(git -C "$R" rev-parse HEAD)
+git -C "$R" checkout -q "$BEFORE"
+run detached "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
+[ "$RC" -eq 3 ] || fail detached "expected exit 3, got $RC"
+grep -q "REFUSED - HEAD is on '<detached>', expected 'main'" "$OUT" || fail detached "missing the detached-HEAD line"
+
+# ---------------------------------------------------------- case: usage errors (exit 64)
+R=$(new_repo usage)
+BEFORE=$(git -C "$R" rev-parse HEAD)
+
+run usage_missing_branch "$SCRIPT" -C "$R" --before "$BEFORE"
+[ "$RC" -eq 64 ] || fail usage_missing_branch "expected exit 64 for a missing --branch, got $RC"
+
+run usage_missing_before "$SCRIPT" -C "$R" --branch main
+[ "$RC" -eq 64 ] || fail usage_missing_before "expected exit 64 for a missing --before, got $RC"
+
+run usage_bad_before "$SCRIPT" -C "$R" --branch main --before not-a-sha
+[ "$RC" -eq 64 ] || fail usage_bad_before "expected exit 64 for an unresolvable --before, got $RC"
+
+run usage_not_a_repo "$SCRIPT" -C "$WORK" --branch main --before "$BEFORE"
+[ "$RC" -eq 64 ] || fail usage_not_a_repo "expected exit 64 for a non-repository -C, got $RC"
+
+echo "OK: post-review-check.sh — clean/dirty(untracked+tracked)/advanced/wrong-branch/detached/usage all verified"

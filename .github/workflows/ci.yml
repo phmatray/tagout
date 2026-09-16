@@ -486,6 +486,9 @@ jobs:
       - name: Guarded git golden test (a commit cannot land on the wrong branch)
         run: ./tests/guarded-git/test.sh
 
+      - name: Post-review-check golden test (a code-review dispatch cannot write past its own report undetected)
+        run: ./tests/post-review-check/test.sh
+
       - name: Finish-task golden test (one call closes a task through the three guards, in order)
         run: ./tests/finish-task/test.sh
 
