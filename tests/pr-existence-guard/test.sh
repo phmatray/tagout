@@ -10,13 +10,13 @@
 # right.
 #
 # The program under test is NOT copied here. It is EXTRACTED from the marked block inside
-# skills/implement-issue/references/github-mechanics.md §5 and run verbatim via `jq -f`, so the
-# thing this suite proves green is the thing an agent pastes — same discipline as
+# skills/_shared/open-pr.md — the one home of the PR-open recipe (#635) — and run verbatim via
+# `jq -f`, so the thing this suite proves green is the thing an agent pastes — same discipline as
 # tests/merge-gate/test.sh (#91), which this suite is modeled on.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
-RECIPE="./skills/implement-issue/references/github-mechanics.md"
+RECIPE="./skills/_shared/open-pr.md"
 [ -r "$RECIPE" ] || { echo "FAIL: $RECIPE missing — nothing to extract the guard from"; exit 1; }
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
