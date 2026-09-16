@@ -1,14 +1,16 @@
 ## Step 3 — Open the PR
 
 **Push through the guard**, never a bare push. It asserts the branch, then reads the remote back
-(exit codes: `skills/implement-issue/references/steps/05-open-the-draft-pr.md`). If the call to the
-guard is itself refused, see [`../_shared/guard-invocation.md`](../../../_shared/guard-invocation.md):
+(exit codes: `skills/implement-issue/references/steps/05-open-the-draft-pr.md`):
 
 ```bash
 GUARDS=<kit>/skills/implement-issue/scripts
 WORKTREE=$(git rev-parse --show-toplevel)
 "$GUARDS/guarded-push.sh" -C "$WORKTREE" "$BRANCH" -- -u origin "$BRANCH"
 ```
+
+If the call to the guard is itself refused, see
+[`../_shared/guard-invocation.md`](../../../_shared/guard-invocation.md).
 
 **Ready or draft:**
 
