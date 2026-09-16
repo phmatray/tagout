@@ -46,12 +46,16 @@ note_ok()   { echo "ok   [$1]"; }
 # so a stub of git would move the seam from "does this resolve against a ref" to "does this call
 # the function I named git" — the mocking anti-pattern in _shared/test-seams.md.
 REPO="$WORK/repo"
-mkdir -p "$REPO/dir with space"
+mkdir -p "$REPO/dir with space" "$REPO/.github/workflows"
 git -C "$REPO" init -q
 git -C "$REPO" config user.email "suite@example.invalid"
 git -C "$REPO" config user.name "plan-freshness suite"
 printf 'x\n' > "$REPO/a.sh"
 printf 'y\n' > "$REPO/dir with space/b.sh"
+# Dot-prefixed paths (#647): a Git Bash argv rewrite only ever touches an argument holding ':.', so
+# these two exist at the base ref for the wrapper cases below to resolve.
+printf 'ci\n' > "$REPO/.github/workflows/ci.yml"
+printf 'root = true\n' > "$REPO/.editorconfig"
 git -C "$REPO" add -A
 git -C "$REPO" commit -qm "init"
 
@@ -958,6 +962,58 @@ else
   note_fail "C23 plan-freshness.sh parse-sweeps — parse-sweep refused:"
   sed 's/^/      /' "$WORK/sweep.log"
 fi
+
+echo "== a dot-prefixed <base>:<path> resolves on stdin, immune to a Git Bash argv rewrite (#647) =="
+#
+# check_span used to put "<base>:<path>" in argv (`git cat-file -e "$BASE:$path"`), and Git Bash's
+# MSYS layer rewrites an argv entry holding ':.' before git.exe ever sees it — turning a present
+# dot-prefixed path into a false MISSING. This wrapper reproduces the MEASURED rewrite shape
+# (`/`→`\`, `:`→`;` on an argument matching `*:.*`) and forwards everything else untouched, so the
+# fix is proven against the actual defect rather than against a description of it.
+REAL_GIT=$(command -v git)
+mkdir -p "$WORK/msys-bin"
+cat > "$WORK/msys-bin/git" <<GITWRAP
+#!/usr/bin/env bash
+args=()
+for a in "\$@"; do
+  case "\$a" in
+    *:.*) a=\${a//\\//\\\\}; a=\${a//:/;} ;;
+  esac
+  args+=("\$a")
+done
+exec "$REAL_GIT" "\${args[@]}"
+GITWRAP
+chmod +x "$WORK/msys-bin/git"
+
+if PATH="$WORK/msys-bin:$PATH" git -C "$REPO" cat-file -e origin/main:.editorconfig > "$OUT" 2>&1; then
+  note_fail "C121 the wrapper really reproduces the defect — cat-file -e exited 0 under it"
+else
+  note_ok "C121 the wrapper really reproduces the defect — a raw cat-file -e fails under it"
+fi
+
+cat > "$WORK/dotfiles.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: touch CI and a root dotfile
+
+**Files:** modify `.github/workflows/ci.yml`; modify `.editorconfig`; modify `a.sh`.
+PLAN
+OLDPATH="$PATH"
+PATH="$WORK/msys-bin:$PATH"
+run_case "C122 dot-prefixed paths under the wrapper: exit 0" 0 "$WORK/dotfiles.md"
+want_line "C123 ….github/workflows/ci.yml reads OK" "OK modify .github/workflows/ci.yml (Task 1)"
+want_line "C124 ….editorconfig reads OK           " "OK modify .editorconfig (Task 1)"
+
+cat > "$WORK/dotfile-missing.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: a dot-prefixed path that is not there
+
+**Files:** modify `.gone.yml`.
+PLAN
+run_case "C125 a stale dot-prefixed path: exit 5   " 5 "$WORK/dotfile-missing.md"
+want_line "C126 …still named MISSING, not swallowed" "MISSING modify .gone.yml (Task 1)"
+PATH="$OLDPATH"
 
 echo "== SKILL.md Step 2 must RUN the freshness pass and carry a STALE list (#322) =="
 STEP2=$(section "$SKILL" "## Step 2 — " "## Step 3 — ")
