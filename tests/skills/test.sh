@@ -2467,6 +2467,33 @@ else
   echo "ok   [O2 the two deliberate main...HEAD mentions survive (#601)]"
 fi
 
+# --- auto-dev-worker.md states the make-worktree.sh nesting guarantee conditionally (#656) -------
+#
+# `implement-issue` Step 4 always calls `make-worktree.sh`, unconditionally, even inside an already
+# `isolation: "worktree"`-dispatched worker. A live fleet run found the harness does NOT refuse that
+# second call the way `commands/auto-dev-worker.md` used to claim ("it will be refused") — it creates
+# the nested tree, and only later git/Edit operations against it are refused. A grep for the
+# replacement text alone would pass even if the old, now-false claim were left in place alongside
+# it, so both halves are pinned: the unconditional claim is gone, AND the actual guarantee plus what
+# to do when nesting is not refused are stated.
+echo "== auto-dev-worker.md states the make-worktree.sh nesting guarantee conditionally (#656) =="
+AUTO_DEV_WORKER="$KIT_ROOT/commands/auto-dev-worker.md"
+if [ ! -f "$AUTO_DEV_WORKER" ]; then
+  echo "FAIL: [nesting guarantee] $AUTO_DEV_WORKER missing"
+  fails=$((fails + 1))
+elif grep -q 'will be refused' "$AUTO_DEV_WORKER"; then
+  echo "FAIL: [nesting guarantee] $AUTO_DEV_WORKER still claims a second make-worktree.sh call"
+  echo "      'will be refused' — that guarantee does not hold under isolation (#656)"
+  fails=$((fails + 1))
+elif ! grep -q 'will not be refused' "$AUTO_DEV_WORKER" \
+    || ! grep -q 'refuses every git operation run in a tree outside the one you were given' "$AUTO_DEV_WORKER"; then
+  echo "FAIL: [nesting guarantee] $AUTO_DEV_WORKER does not state the actual guarantee and what"
+  echo "      happens when a second make-worktree.sh call is not refused (#656)"
+  fails=$((fails + 1))
+else
+  echo "ok   [nesting guarantee] $AUTO_DEV_WORKER states the guarantee conditionally, with the fallout"
+fi
+
 if [ "$fails" -ne 0 ]; then
   echo "$fails case(s) failed"
   exit 1
