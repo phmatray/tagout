@@ -278,6 +278,16 @@ case "$r" in *'#26 and #280'*) echo "FAIL [G14]: the gh denial claims the #26/#2
 r=$(reason_for "$(pay Bash 'git commit -m x' "$PROF")" "")
 case "$r" in *'GIT_GATE=off gh'*) echo "FAIL [G14]: a git denial advertises the gh escape: $r"; exit 1 ;; esac
 echo "ok: G14 each denial names its own cause and its own escape"
+# A sub-agent's prefix is not honoured (A42s/G8s), so its denial must not offer one: it names the
+# guard fallback instead (#643).
+for c in 'git commit -m x' 'gh pr merge 12'; do
+  r=$(reason_for "$(pay_sub Bash "$c" "$PROF")" "")
+  case "$r" in ''|*'GIT_GATE=off git'*|*'GIT_GATE=off gh'*)
+    echo "FAIL [G15 $c]: a sub-agent's denial is empty or offers the GIT_GATE=off prefix: $r"; exit 1 ;; esac
+  case "$r" in *guard-invocation.md*) ;;
+    *) echo "FAIL [G15 $c]: a sub-agent's denial does not name guard-invocation.md: $r"; exit 1 ;; esac
+done
+echo "ok: G15 a sub-agent's denial offers the fallback, not the prefix"
 
 # ------------------------------------------------- 1e. -R/GH_REPO/URL retarget denies (#533)
 # judge_gh's probe answers only for $eff_dir (the payload's cwd, or wherever a followed `cd`

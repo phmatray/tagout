@@ -334,7 +334,13 @@ deny() { # $1 the offending segment  $2 the replacement sentence
   local reason why="${3:-is one of the writes that produced #26 and #280 in a shared checkout}"
   reason="Blocked by the git write-gate: \`$1\` $why.
 $2
-To run this one command anyway, prefix it: \`GIT_GATE=off ${4:-git} …\`. To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment — an \`export\` inside a Bash call never reaches this hook."
+"
+  # A sub-agent's prefix is not honoured (#643), so its denial offers the guard fallback instead.
+  if [ -n "$agent_id" ]; then
+    reason="${reason}You are a sub-agent — nobody is here to approve a bypass, and a \`GIT_GATE=off\` prefix is not honoured for you. If the guard's path is refused, follow \`$(guard_hint skills/_shared/guard-invocation.md)\`; otherwise stop and report this denial."
+  else
+    reason="${reason}To run this one command anyway, prefix it: \`GIT_GATE=off ${4:-git} …\`. To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment — an \`export\` inside a Bash call never reaches this hook."
+  fi
   jq -n --arg r "$reason" \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}' 2>/dev/null
   exit 0
