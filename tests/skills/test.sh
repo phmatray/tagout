@@ -1286,6 +1286,20 @@ grep -q 'Proceed only on' "$PRECONDITIONS" \
 echo "ok   preconditions names Tracker, invokes tracker.capable and refuses a non-capable verdict"
 
 # ---------------------------------------------------------------------------------------------
+# preconditions.md repoints a stale `origin` before any search runs (#637): `gh repo view` follows
+# a GitHub rename redirect but the Search API does not, so a checkout whose `origin` still names an
+# old slug makes every `gh … --search` silently answer `[]`. Fixture-free, same style as the
+# tracker.capable pin above — a grep against the committed reference itself.
+echo "== preconditions repoint a stale origin before any search runs (#637) =="
+grep -q 'originSlug' "$PRECONDITIONS" \
+  || { echo "FAIL: $PRECONDITIONS does not name originSlug — the repo verb's stale-origin signal"; exit 1; }
+grep -q 'git remote set-url origin' "$PRECONDITIONS" \
+  || { echo "FAIL: $PRECONDITIONS does not repoint a stale origin with git remote set-url"; exit 1; }
+grep -q 'origin repointed' "$PRECONDITIONS" \
+  || { echo "FAIL: $PRECONDITIONS does not recap the repoint with an 'origin repointed' line"; exit 1; }
+echo "ok   preconditions names originSlug, repoints origin, and recaps the repoint"
+
+# ---------------------------------------------------------------------------------------------
 # create-issue's Inputs states the flag-position rule (#404): a flag is a standalone token at the
 # start or end of the request, never a word inside the idea's own sentence — otherwise an
 # unattended caller (merge-pr Step 6, the auto-dev workers, deliver-issue) that hands it an idea
