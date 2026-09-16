@@ -2056,4 +2056,46 @@ grep -qF "$wt_phys (gone)" "$OUT" || fail relocate-gone-commit "the refusal must
 grep -q 'at  (gone)' "$OUT" && fail relocate-gone-commit "the refusal erased the recorded path — 'at  (gone)' must never appear"
 echo "  ok: a recorded path that no longer exists is still named, not erased (#644)"
 
+# 35e. The branch legitimately moved to another LIVE linked worktree (a worker's own
+# `git worktree remove` + `switch`, release-branch.sh handing a PR branch to a re-dispatched
+# worker, a harness cleanup) — not the #469 relocation. The guard must heal the record to the
+# new tree and pass, not refuse (#644).
+new_linked_worktree moved
+AGENT1="$R_MAIN/.claude/worktrees/agent-1"
+git -C "$R_MAIN" branch -q throwaway b
+git -C "$R_MAIN" worktree add -q "$AGENT1" throwaway
+git -C "$R_MAIN" worktree remove "$WT"
+git -C "$AGENT1" switch -q a
+echo "moved work" >> "$AGENT1/seed.txt"
+git -C "$AGENT1" add seed.txt
+before_moved=$(tip "$R_MAIN" a)
+
+run moved-commit "$COMMIT" -C "$AGENT1" a -- -m "feat: written after the branch moved trees"
+[ "$RC" -eq 0 ] || fail moved-commit "expected exit 0 when a live linked worktree holds the branch, got $RC"
+[ "$(tip "$R_MAIN" a)" != "$before_moved" ] || fail moved-commit "the commit did not land"
+agent1_phys=$(cd "$AGENT1" && pwd -P)
+[ "$(git -C "$R_MAIN" config --get kit.worktree.a.path)" = "$agent1_phys" ] \
+  || fail moved-commit "the record must be healed to the new worktree's physical path"
+grep -q 'note —' "$OUT" || fail moved-commit "the heal must note the old and new path on stderr"
+echo "  ok: a branch held by another live linked worktree heals the record instead of refusing (#644)"
+
+# 35f. A record naming a removed path, while -C is a DIFFERENT live linked worktree that does not
+# hold the expected branch: still refuses, but must name that worktree, not misdiagnose it as the
+# main-checkout relocation (#644).
+new_linked_worktree relocate-other
+git -C "$R_MAIN" worktree remove --force "$WT"
+OTHER="$R_MAIN/.claude/worktrees/other"
+git -C "$R_MAIN" branch -q other-branch b
+git -C "$R_MAIN" worktree add -q "$OTHER" other-branch
+echo "unrelated work" >> "$OTHER/seed.txt"
+git -C "$OTHER" add seed.txt
+
+run relocate-other-commit "$COMMIT" -C "$OTHER" a -- -m x
+[ "$RC" -eq 2 ] || fail relocate-other-commit "expected exit 2, got $RC"
+other_phys=$(cd "$OTHER" && pwd -P)
+grep -qF "$other_phys" "$OUT" || fail relocate-other-commit "the refusal must name the toplevel actually found"
+grep -q 'walked up to the parent checkout' "$OUT" \
+  && fail relocate-other-commit "a non-main linked worktree must not be diagnosed as the parent checkout"
+echo "  ok: a linked worktree that does not hold the expected branch still refuses, by the right diagnosis (#644)"
+
 echo "guarded-git golden test OK"
