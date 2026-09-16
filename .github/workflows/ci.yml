@@ -260,6 +260,12 @@ jobs:
       - name: Recap-wiring guard golden test (refusal paths, and 'no verdict' kept distinct)
         run: ./tests/recap-wiring/test.sh
 
+      # The eval runner stages skills into .claude/skills/ so detection measures the REPO's own
+      # SKILL.md, not the plugin cache's. It staged by symlink, which needs a privilege Windows
+      # does not grant by default (#624) — this pins the staging and its leave-alone teardown.
+      - name: Eval runner stages skills by copy, and tears down only what it created
+        run: ./tests/evals-stage-skills/test.sh
+
       - name: Fixture LegacyShop — build + tests (must stay green AND legacy)
         run: dotnet test samples/LegacyShop --nologo
 
