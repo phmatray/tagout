@@ -115,6 +115,7 @@ import argparse
 import json
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -263,7 +264,7 @@ def load_registry(path):
     would force a second, separate read of the same file for the other half of that question.
     """
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise Unanswerable(f"cannot read the registry {path}: {exc}")
     try:
@@ -302,6 +303,19 @@ def load_not_decisions(doc, rel_registry):
     return raw
 
 
+# The bash that runs `decide.sh`, resolved rather than left to the OS to find (#623).
+#
+# `subprocess.run(["bash", ...])` hands argv[0] to the platform's own search. On Windows that is
+# CreateProcess, which reaches System32's own bash.exe — the WSL launcher — before the Git
+# Bash every other script in this kit runs under. WSL then sees neither `C:\...` (it eats the
+# backslashes as escapes, so every separator vanishes from the path) nor `C:/...` (it wants
+# /mnt/c/...), and the extraction fails with a 127 that reads like a missing dispatcher. Rewriting
+# the path does not help — only naming the interpreter does. `shutil.which` honours PATH, so it
+# finds the same bash the caller's shell would; on POSIX it resolves to the same /bin/bash a bare
+# "bash" always did, which is why this changes nothing there.
+BASH = shutil.which("bash") or "bash"
+
+
 def program_text(repo, did):
     """The decision's program, obtained the one way this repo extracts a program."""
     decide = repo / "scripts" / "decide.sh"
@@ -309,9 +323,10 @@ def program_text(repo, did):
         raise Unanswerable(f"{decide} does not exist — there is no way to extract a program.")
     try:
         proc = subprocess.run(
-            ["bash", str(decide), "--program", did],
+            [BASH, str(decide), "--program", did],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             cwd=str(repo),
         )
     except OSError as exc:
@@ -339,6 +354,7 @@ def index_modes(repo, paths):
             ["git", "-C", str(repo), "ls-files", "-s", "-z", "--", *paths],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
     except OSError as exc:
         return {}, f"git is not available ({exc})"
@@ -627,6 +643,7 @@ def tracked_executables(repo):
             ["git", "-C", str(repo), "ls-files", "-z", "--", *tracked_exec_globs()],
             capture_output=True,
             text=True,
+            encoding="utf-8",
         )
     except OSError as exc:
         raise Unanswerable(f"could not enumerate tracked executables for R10: {exc}")
@@ -756,7 +773,7 @@ def check(repo, registry_path):
                        f"a second copy of '{did}'s marked block lives here",
                        f"Its one home is {home}. Delete this copy — two homes for a gate is how "
                        "a gate drifts, and the copy that is not run is the one that goes wrong.")
-            _text, err = extract_marked(home_path.read_text(), marker)
+            _text, err = extract_marked(home_path.read_text(encoding="utf-8"), marker)
             if err:
                 refuse("R1", home, f"'{did}': {err}")
 
@@ -819,7 +836,7 @@ def check(repo, registry_path):
             raise Unanswerable(
                 f"'{did}' declares its shape home as {shape['home']}, which cannot be read."
             )
-        block, err = extract_marked(shome.read_text(), shape["marker"])
+        block, err = extract_marked(shome.read_text(encoding="utf-8"), shape["marker"])
         if err:
             refuse("R6", shape["home"], f"'{did}'s shape block: {err}")
             continue
@@ -874,7 +891,7 @@ def check(repo, registry_path):
         owner = row.get("owner")
         if not owner or not (repo / owner).is_file():
             continue  # already refused by R9
-        lines = (repo / owner).read_text().splitlines()
+        lines = (repo / owner).read_text(encoding="utf-8").splitlines()
         flags = fence_flags(lines)
         pattern = invocation_re(did)
         if not any(flag and pattern.search(line) for line, flag in zip(lines, flags)):
@@ -887,7 +904,7 @@ def check(repo, registry_path):
 
     for path in prose_files(repo):
         rel = _rel(repo, path)
-        text = path.read_text(errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
         lines = text.splitlines()
         exempt = marked_regions(text)
         for begin, end, cells in table_runs(lines):
@@ -935,13 +952,14 @@ def _jq_compiles(prog):
     """
     with tempfile.TemporaryDirectory() as tmp:
         path = pathlib.Path(tmp) / "program.jq"
-        path.write_text(prog)
+        path.write_text(prog, encoding="utf-8")
         try:
             proc = subprocess.run(
                 ["jq", "-f", str(path)],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
             )
         except OSError as exc:
             raise Unanswerable(
@@ -962,7 +980,7 @@ def _marker_copies(repo, begin, exclude):
             if not path.is_file() or path == exclude:
                 continue
             try:
-                if begin in path.read_text(errors="replace"):
+                if begin in path.read_text(encoding="utf-8", errors="replace"):
                     yield path
             except OSError:
                 continue
@@ -1010,6 +1028,16 @@ def main():
     ap.add_argument("--repo", default=".", help="kit root (default: cwd)")
     ap.add_argument("--registry", default=None, help="registry path (default: <repo>/decisions/registry.json)")
     args = ap.parse_args()
+
+    # Pin both streams before anything is written to them (#623). Every verdict this script prints
+    # carries characters outside cp1252 - the refusal lines interpolate a U+2192 arrow - and on a
+    # Windows host a PIPED stdout defaults to the locale encoding, so `python3 scripts/decision-check.py`
+    # raised UnicodeEncodeError from inside report() and exited 1 with a traceback instead of
+    # printing its verdict. `tests/decisions/test.sh` reads this output through a command
+    # substitution, which is exactly such a pipe. Same reasoning, and same idiom, as
+    # skills/setup-repo/scripts/parse-manifest.py - the repo profile's "pin both halves" gotcha.
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
+    sys.stderr.reconfigure(encoding="utf-8", newline="\n")
 
     repo = pathlib.Path(args.repo).resolve()
     registry = pathlib.Path(args.registry).resolve() if args.registry \
