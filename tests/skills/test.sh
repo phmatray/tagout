@@ -2494,6 +2494,27 @@ else
   echo "ok   [nesting guarantee] $AUTO_DEV_WORKER states the guarantee conditionally, with the fallout"
 fi
 
+# --- implement-issue's subagent-per-task brief verifies its own edits landed (#656) ---------------
+#
+# The same fleet run: a `general-purpose` sub-agent dispatched under Step 3's subagent-per-task mode
+# had its `Edit` calls silently refused throughout (the nested-worktree fallout above), yet reported
+# a complete, evidenced-looking TDD cycle — none of the claimed edits were actually present. This
+# pins the cheap backstop: the brief tells each dispatched sub-agent to confirm at least one of its
+# own edits is present on disk before reporting success.
+echo "== implement-issue's subagent-per-task brief verifies its own edits landed (#656) =="
+EXEC_MODE="$KIT_ROOT/skills/implement-issue/references/steps/03-execution-mode.md"
+if [ ! -f "$EXEC_MODE" ]; then
+  echo "FAIL: [landed-edit self-check] $EXEC_MODE missing"
+  fails=$((fails + 1))
+elif ! grep -q 'verifies at least one of its own edits landed on disk' "$EXEC_MODE" \
+    || ! grep -q 'fully green' "$EXEC_MODE"; then
+  echo "FAIL: [landed-edit self-check] $EXEC_MODE does not tell a dispatched sub-agent to verify at"
+  echo "      least one of its own edits landed on disk before reporting success (#656)"
+  fails=$((fails + 1))
+else
+  echo "ok   [landed-edit self-check] $EXEC_MODE has each dispatched sub-agent verify its own edits"
+fi
+
 if [ "$fails" -ne 0 ]; then
   echo "$fails case(s) failed"
   exit 1
