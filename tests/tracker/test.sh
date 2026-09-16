@@ -198,15 +198,111 @@ mkdir -p "$BARE"
 echo "== A. the dispatcher and the gh backend"
 
 # ------------------------------------------------------------------------------------------- AC1
+#
+# $PROFILED is outside any git repository (KIT_LIB_TMP is a plain mktemp -d, never nested under
+# this checkout), so `git remote get-url origin` finds nothing there — the "no origin" case for
+# free, and originSlug must be JSON null, never the string "null" or "" (#637).
 run_tracker "$PROFILED" --tracker github repo
 if [ "$RC" -ne 0 ]; then
   note_fail "AC1 repo — exited $RC ($ERR)"
-elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main"}' ]; then
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":null}' ]; then
   note_fail "AC1 repo — wrong stdout
-      want: {\"slug\":\"o/r\",\"host\":\"github.com\",\"defaultBranch\":\"main\"}
+      want: {\"slug\":\"o/r\",\"host\":\"github.com\",\"defaultBranch\":\"main\",\"originSlug\":null}
       got:  $OUT"
 else
-  ok "AC1 repo — normalised {slug, host, defaultBranch}, exit 0"
+  ok "AC1 repo — normalised {slug, host, defaultBranch, originSlug}, no origin -> null, exit 0"
+fi
+
+# ------------------------------------------------------------------------------------------- AC1b/c/d
+#
+# originSlug is read from the LOCAL `origin` remote, never from the stub `gh repo view` answer
+# (which always reports "o/r" regardless) — that is the whole point of the field (#637): it is
+# the fact `gh --search` actually uses, which does not follow a rename the way `gh repo view`
+# does. Each expected originSlug is a hand-written literal, never re-derived by parsing the same
+# URL string the case itself sets (the issue's own "a good test here" testing decision).
+ORIGIN_HTTPS="$WORK/origin-https"
+mkdir -p "$ORIGIN_HTTPS"
+git -C "$ORIGIN_HTTPS" init -q
+git -C "$ORIGIN_HTTPS" remote add origin "https://github.com/acme/widgets.git"
+run_tracker "$ORIGIN_HTTPS" --tracker github repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC1b repo originSlug (https) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":"acme/widgets"}' ]; then
+  note_fail "AC1b repo originSlug (https) — wrong stdout
+      want: originSlug \"acme/widgets\"
+      got:  $OUT"
+else
+  ok "AC1b repo originSlug — https://github.com/OWNER/REPO.git origin"
+fi
+
+ORIGIN_SCP="$WORK/origin-scp"
+mkdir -p "$ORIGIN_SCP"
+git -C "$ORIGIN_SCP" init -q
+git -C "$ORIGIN_SCP" remote add origin "git@github.com:acme/widgets.git"
+run_tracker "$ORIGIN_SCP" --tracker github repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC1c repo originSlug (git@) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":"acme/widgets"}' ]; then
+  note_fail "AC1c repo originSlug (git@) — wrong stdout
+      want: originSlug \"acme/widgets\"
+      got:  $OUT"
+else
+  ok "AC1c repo originSlug — git@github.com:OWNER/REPO.git origin"
+fi
+
+ORIGIN_SSH="$WORK/origin-ssh"
+mkdir -p "$ORIGIN_SSH"
+git -C "$ORIGIN_SSH" init -q
+git -C "$ORIGIN_SSH" remote add origin "ssh://git@github.com/acme/widgets"
+run_tracker "$ORIGIN_SSH" --tracker github repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC1d repo originSlug (ssh://, no .git) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":"acme/widgets"}' ]; then
+  note_fail "AC1d repo originSlug (ssh://, no .git) — wrong stdout
+      want: originSlug \"acme/widgets\"
+      got:  $OUT"
+else
+  ok "AC1d repo originSlug — ssh://git@github.com/OWNER/REPO origin (no .git suffix)"
+fi
+
+# ------------------------------------------------------------------------------------- AC1b2/c2/d2
+#
+# Verification gap (#637 review): skills/_shared/preconditions.md's repoint recipe (the
+# prefix/newUrl computation that turns a stale `origin` into the canonical slug) is prose an agent
+# runs verbatim — nothing else executes it, so tests/skills/test.sh's keyword-only grep would stay
+# green even if the recipe swapped its capture order or dropped the `.git`-suffix restoration. This
+# runs that SAME recipe (copied from preconditions.md's fenced block — keep the two in sync) against
+# each origin form staged above and asserts the resulting `git remote get-url origin`.
+repoint_recipe() {
+  # $1: a scratch dir already carrying an `origin` remote; $2: the slug to repoint to.
+  local dir="$1" slug="$2" url prefix newUrl
+  url=$(git -C "$dir" remote get-url origin)
+  prefix=$(printf '%s' "$url" | sed -E 's#(\.git)?/*$##' | sed -E 's#[^:/]+/[^:/]+$##')
+  newUrl="$prefix$slug"
+  case "$url" in *.git) newUrl="$newUrl.git" ;; esac
+  git -C "$dir" remote set-url origin "$newUrl"
+  git -C "$dir" remote get-url origin
+}
+
+got=$(repoint_recipe "$ORIGIN_HTTPS" "acme/widgets-renamed")
+if [ "$got" != "https://github.com/acme/widgets-renamed.git" ]; then
+  note_fail "AC1b2 preconditions repoint recipe (https) — want https://github.com/acme/widgets-renamed.git, got $got"
+else
+  ok "AC1b2 preconditions repoint recipe — https, .git suffix preserved"
+fi
+
+got=$(repoint_recipe "$ORIGIN_SCP" "acme/widgets-renamed")
+if [ "$got" != "git@github.com:acme/widgets-renamed.git" ]; then
+  note_fail "AC1c2 preconditions repoint recipe (git@) — want git@github.com:acme/widgets-renamed.git, got $got"
+else
+  ok "AC1c2 preconditions repoint recipe — git@, .git suffix preserved"
+fi
+
+got=$(repoint_recipe "$ORIGIN_SSH" "acme/widgets-renamed")
+if [ "$got" != "ssh://git@github.com/acme/widgets-renamed" ]; then
+  note_fail "AC1d2 preconditions repoint recipe (ssh://) — want ssh://git@github.com/acme/widgets-renamed, got $got"
+else
+  ok "AC1d2 preconditions repoint recipe — ssh://, no .git suffix added"
 fi
 
 # ------------------------------------------------------------------------------------------- AC2
