@@ -360,7 +360,7 @@ branch is ahead of `main`):
 "$GUARDS/guarded-push.sh" -C "$WORKTREE" "$BRANCH" -- -u origin "$BRANCH"
 ```
 
-Then open it through [`../../_shared/open-pr.md`](../../_shared/open-pr.md) with `DRAFT=1`,
+Then open it through [`../../_shared/open-pr.md`](../../_shared/open-pr.md) with `DRAFT=1`, `BASE=main`,
 `TITLE_PATHS` = the plan's `**Files:**` paths and `BODY_FILE` holding Step 5's `### Plan` mirror body.
 
 The guards take `$BRANCH` explicitly and refuse (exit 2) if HEAD is anything else; `guarded-push.sh`

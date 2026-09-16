@@ -29,6 +29,7 @@ is why Step 4 records them.
 "$GUARDS/guarded-push.sh" -C "$WORKTREE" "$BRANCH" -- -u origin "$BRANCH"
 
 DRAFT=1
+BASE=main                                                    # Step 4 cut the worktree off main
 TITLE_PATHS=<the plan's **Files:** paths, parsed in Step 2>   # no real diff yet: the scaffold changes no file
 BODY_FILE=/tmp/issue-$ISSUE-pr-body.md
 # Quoted delimiter: plan task names carry backticks, which an unquoted heredoc would execute.
@@ -44,7 +45,7 @@ BODY
 ```
 
 The `### Plan` list carries one `- [ ] Task N: <name>` line per `### Task N` heading in the plan. Then
-follow [`../_shared/open-pr.md`](../../../_shared/open-pr.md) with those three names and `$BRANCH`,
+follow [`../_shared/open-pr.md`](../../../_shared/open-pr.md) with those four names and `$BRANCH`,
 `$ISSUE` from Step 4.
 
 Capture the PR URL/number from its readback. (If it stops on a PR that already exists, reuse it.) The PR's `### Plan` list

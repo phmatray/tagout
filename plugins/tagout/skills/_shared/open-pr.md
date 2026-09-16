@@ -1,17 +1,19 @@
 # Open a pull request
 
 Shared procedure for opening a pull request the way the kit expects. `implement-issue` runs §1 in
-Step 4, before it creates a worktree, and the whole of it in Step 5 for its draft PR. The caller owns
+Step 4, before it creates a worktree, and the whole of it in Step 5 for its draft PR; `create-pr`
+runs the whole of it in Step 3 for a finished feature branch. The caller owns
 what comes before (the commit, the guarded push) and what to do about a PR that already exists; the
 lookup, the title and `gh pr create` live **here**, once.
 
-Five names have to be in scope, and the caller sets them before it gets here (§1 reads only the
+Six names have to be in scope, and the caller sets them before it gets here (§1 reads only the
 first two):
 
 ```bash
 BRANCH=<the branch the PR opens from>   # already pushed through guarded-push.sh before §2
 ISSUE=<the issue number, digits only>   # or empty for a PR with no issue: no suffix, no Closes, no issue guard
 DRAFT=<1 or 0>                          # 1 opens a draft, 0 a PR ready for review
+BASE=<the branch the PR merges into>    # the profile's *Default branch*
 TITLE_PATHS=<the paths the title gate classifies>
     # a scaffold: the plan's **Files:** paths · real work: git diff --name-only origin/<default>...HEAD
 BODY_FILE=<a file holding the PR body>  # carries `Closes #$ISSUE` when $ISSUE is set, none when it is empty
@@ -129,7 +131,9 @@ back into "shipped" by name, and a hand-copied approximation has already drifted
 (#233, #245, #258). On exit 1 (refused), retry with `fix:` (or `feat:` when the issue's own label
 says enhancement) instead of the rejected type — a shipped-path PR is restricted to
 `feat`/`fix`/`perf`/`revert` regardless of how prose-like or mechanical the diff reads. Exit 0 means
-the candidate is releasable; use it as-is. **Exit 2 is not a verdict about the title — it is a broken
+the candidate is releasable; use it as-is. `$TITLE_PATHS` expands unquoted, so the shell splits it on
+whitespace: a changed path holding a space reaches the gate as fragments it may misclassify — that
+is the ceiling, so pass such a path to the gate quoted, by hand. **Exit 2 is not a verdict about the title — it is a broken
 call**: `$TITLE_PATHS` yielded no usable path, so the gate had nothing to classify (#470). Do not
 pick a type blind; the path list is the defect — for a scaffold, fix the plan's `**Files:**` line (a
 task with no files says `none expected.`, the idiom `scripts/plan-freshness.sh` recognizes) and
@@ -144,7 +148,7 @@ symptom wording — so the example issue becomes e.g.
 ```bash
 TITLE="<type>(<scope>): <subject> (#$ISSUE)"   # the title the dry-run accepted; no suffix when $ISSUE is empty
 if [ "$DRAFT" = 1 ]; then DRAFT_FLAG=--draft; else DRAFT_FLAG=; fi
-gh pr create $DRAFT_FLAG --base main --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
+gh pr create $DRAFT_FLAG --base "$BASE" --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
 
 # Read it back: a zero exit is a claim about what gh attempted, not a receipt.
 gh pr view "$BRANCH" --json number,url,isDraft,headRefName
@@ -159,3 +163,5 @@ stop, not a retry. Hand `number` and `url` back to the caller.
 - `skills/implement-issue/references/github-mechanics.md` — §5 frames the lookup and the draft PR in implement-issue's own terms
 - `skills/implement-issue/references/steps/04-worktree.md` — Step 4 runs §1's issue-scoped guard before creating a worktree
 - `skills/implement-issue/references/steps/05-open-the-draft-pr.md` — Step 5 opens the draft PR through this recipe
+- `skills/create-pr/SKILL.md` — Step 3 names this recipe in the step index
+- `skills/create-pr/references/steps/03-open.md` — Step 3 opens the PR for a finished feature branch through this recipe

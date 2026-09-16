@@ -51,7 +51,7 @@ from pathlib import Path
 # (so the implement-issue vs merge-pr boundary can be read off a single run).
 # All ten skills, so a near-miss negative records WHICH sibling took it: a specificity
 # number is only real when the `fired` histogram names the skill that should have won (#331).
-DEFAULT_KNOWN = ["auto-dev", "create-issue", "debug-issue", "deliver-issue", "implement-issue",
+DEFAULT_KNOWN = ["auto-dev", "create-issue", "create-pr", "debug-issue", "deliver-issue", "implement-issue",
                  "merge-pr", "migrate-legacy", "profile-repo", "review-followups",
                  "review-sessions", "setup-repo", "triage-backlog"]
 
