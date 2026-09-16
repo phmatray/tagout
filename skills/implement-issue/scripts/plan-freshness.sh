@@ -37,6 +37,8 @@
 #                                      `create` (#433) — same reading, original verb word kept
 #   SKIP    rename <path> (Task N)     the NEW name of a `rename` pair (#441) — same reading as
 #                                      `create`, the OLD name is checked like `modify` instead
+#   SKIP    <verb> <path> (Task N)     an EARLIER task of the plan creates it — absent from <ref>
+#                                      by design (#640)
 #
 # `(Task N)` is on ALL lines, not only on MISSING: the task number is what Step 2 needs to find the
 # `**Interfaces:**` line to re-anchor through, and a reader diffing two runs wants the OK lines
@@ -206,12 +208,21 @@ is_new_marker() {
 }
 
 # check_span <verb> <span> — resolve against $BASE (after stripping a line anchor), print OK/MISSING.
+# A path an EARLIER task of this same plan already SKIPped (i.e. is about to be created) is read
+# as SKIP here too, never MISSING — $CREATED is the run-wide record handle_span's SKIP branches
+# fill in (#640).
 check_span() {
   local verb path
   verb="$1"; path=$(strip_anchor "$2")
   if git -C "$DIR" cat-file -e "$BASE:$path" 2>/dev/null; then
     printf 'OK %s %s (Task %s)\n' "$verb" "$path" "$TASK"
   else
+    case "$CREATED" in
+      *"$NL$path$NL"*)
+        printf 'SKIP %s %s (Task %s)\n' "$verb" "$path" "$TASK"
+        return 0
+        ;;
+    esac
     printf 'MISSING %s %s (Task %s)\n' "$verb" "$path" "$TASK"
     MISSING=$((MISSING + 1))
   fi
@@ -231,6 +242,7 @@ handle_span() {
   if [ -n "$PEND_SRC" ] && looks_like_path "$span"; then
     check_span rename "$PEND_SRC"
     printf 'SKIP rename %s (Task %s)\n' "$(strip_anchor "$span")" "$TASK"
+    CREATED="$CREATED$(strip_anchor "$span")$NL"
     PEND_SRC=""
     return
   fi
@@ -245,10 +257,12 @@ handle_span() {
   case "$CURRENT_VERB" in
     create)
       printf 'SKIP create %s (Task %s)\n' "$(strip_anchor "$span")" "$TASK"
+      CREATED="$CREATED$(strip_anchor "$span")$NL"
       ;;
     *)
       if is_new_marker "$following"; then
         printf 'SKIP %s %s (Task %s)\n' "$CURRENT_VERB" "$(strip_anchor "$span")" "$TASK"
+        CREATED="$CREATED$(strip_anchor "$span")$NL"
       else
         check_span "$CURRENT_VERB" "$span"
       fi
@@ -289,6 +303,8 @@ git -C "$DIR" rev-parse --verify --quiet "$BASE^{commit}" > /dev/null 2>&1 \
 TASK=""
 SEEN_TASK=0
 MISSING=0
+NL=$'\n'
+CREATED="$NL"
 IN_FIELD=0
 PAYLOAD=""
 CURRENT_VERB="modify"

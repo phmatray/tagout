@@ -184,6 +184,87 @@ run_case "C8 --base without-a finds a.sh gone" 5 "$WORK/all-present.md" --base w
 want_line "C9 …and names it MISSING          " "MISSING modify a.sh (Task 1)"
 run_case "C10 --base origin/main is the same as the default" 0 "$WORK/all-present.md" --base origin/main
 
+echo "== a path an EARLIER task of the same plan creates is SKIP, not MISSING (#640) =="
+cat > "$WORK/create-then-modify.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: modify it
+
+**Files:** modify `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a new test file
+
+**Files:** test `other.sh` (new).
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 4: modify the new test file
+
+**Files:** modify `other.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 5: rename a.sh
+
+**Files:** rename `a.sh` → `moved.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 6: modify the renamed file and the original
+
+**Files:** modify `moved.sh`, `a.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C102 create-then-modify plan exits 0 " 0 "$WORK/create-then-modify.md"
+want_line "C103 the earlier create stays SKIP  " "SKIP create new.sh (Task 1)"
+want_line "C104 a later modify of it is SKIP   " "SKIP modify new.sh (Task 2)"
+want_line "C105 a later modify of a (new) is SKIP" "SKIP modify other.sh (Task 4)"
+want_line "C106 a later modify of a rename target is SKIP" "SKIP modify moved.sh (Task 6)"
+want_line "C107 an unrelated present path stays OK" "OK modify a.sh (Task 6)"
+
+cat > "$WORK/modify-then-create.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: modify before it exists
+
+**Files:** modify `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: create it
+
+**Files:** create `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C108 the reverse order (modify then create) exits 5" 5 "$WORK/modify-then-create.md"
+want_line "C109 …and the early modify stays MISSING" "MISSING modify new.sh (Task 1)"
+
 # --------------------------------------------------- 4. the prose that has to CALL the script
 #
 # A shipped script nothing invokes is the same absence-shaped failure ci-wiring-check.py exists for,
