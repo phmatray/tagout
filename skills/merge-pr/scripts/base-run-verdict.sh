@@ -327,6 +327,14 @@ case "$ci" in
       answer red failed "$runs"
     fi
     answer unverified cancelled "$runs" ;;
+  needs-approval)
+    # `ci.verdict`'s third, non-terminal word (#495): the run completed `action_required`, GitHub's
+    # state for one a maintainer must approve. Post-merge that is the same shape as `cancelled` —
+    # the merge landed and the run recorded nothing about it — so it is `unverified`, never red and
+    # never green. What it is NOT is unexpected: it named itself `unexpected-ci-verdict:needs-approval`
+    # here until #586, reporting an internal error string in place of the one condition on this
+    # branch a human can actually clear, by approving the run (`skills/merge-pr/scripts/approve-runs.sh`).
+    answer unverified needs-approval "$runs" ;;
   *)
     # `decide.sh` has already refused any word outside ci.verdict's declared vocabulary, so this
     # is unreachable through it — and is therefore written as a non-verdict rather than a guess.
