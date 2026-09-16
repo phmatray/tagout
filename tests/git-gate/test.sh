@@ -772,6 +772,17 @@ grep -qF 'GIT_GATE=off' "$KIT/README.md" \
   || { echo "FAIL: README does not document GIT_GATE=off"; exit 1; }
 echo "ok: README documents the gate and its off-switch"
 
+# S7 — the doctrine a sub-agent reads names the prefixed form too (#643): the gate no longer honours
+# a GIT_GATE=off prefix for a sub-agent, so the never-fall-back sentences must forbid it by name.
+for doc in commands/auto-dev-worker.md commands/auto-dev-merge.md skills/_shared/guard-invocation.md; do
+  grep -qF 'GIT_GATE=off' "$KIT/$doc" \
+    || { echo "FAIL [S7]: $doc does not name a GIT_GATE=off-prefixed write as forbidden"; exit 1; }
+done
+readme_off=$(grep -F 'GIT_GATE=off' "$KIT/README.md" || true)
+grep -qF 'sub-agent' <<<"$readme_off" \
+  || { echo "FAIL [S7]: README's GIT_GATE=off text does not say a sub-agent is not offered the prefix"; exit 1; }
+echo "ok: S7 the worker, merge and guard doctrine name the prefixed form"
+
 # S6 — the prior-art credit. Matt Pocock's block-dangerous-git.sh (mattpocock/skills, MIT) is the
 # idea's source and is deliberately not copied; the file has to say both.
 grep -qF 'mattpocock/skills' "$GATE" \

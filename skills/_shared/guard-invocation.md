@@ -54,6 +54,6 @@ If invoking a guard at `$GUARDS` is refused:
    belongs in the run's structured report so a supervisor's recap can see it — a deviation that
    surfaces nowhere is indistinguishable from one that never happened.
 
-**Never fall back to a bare `git commit`, `git push`, `git merge` or a raw `gh pr merge`.** That is
-precisely the failure the guards exist to prevent (#26, #280, #41, #512) — a refused guard is a
-reason to relocate it, not a reason to bypass it.
+**Never fall back to a bare — or `GIT_GATE=off`-prefixed — `git commit`, `git push`,
+`git merge` or a raw `gh pr merge`.** That is precisely the failure the guards exist to prevent
+(#26, #280, #41, #512) — a refused guard is a reason to relocate it, not a reason to bypass it.
