@@ -419,7 +419,9 @@ and runs this exact block:
 and nothing about the rest of the run. A worktree destroyed mid-run is covered elsewhere, by the
 shared git guard (#469): `make-worktree.sh` records each tree's path in the common `.git/config`
 and `assert_worktree_live` in `_assert-branch.sh` refuses every guarded commit, push or merge whose
-live toplevel is not that record — so a relocated worker is stopped at its next write, by name.
+live toplevel is not that record — unless that toplevel is another linked worktree holding the same
+branch, which re-records it instead (#644) — so a relocated worker is stopped at its next write, by
+name.
 
 ```bash
 # >>> worker-toplevel guard
