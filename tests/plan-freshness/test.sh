@@ -493,6 +493,38 @@ run_case "C94 a targetless rename: exit 0  " 0 "$WORK/rename-no-target.md"
 want_line "C95 …the source still resolves OK  " "OK rename a.sh (Task 1)"
 want_no_line "C96 …and no phantom target is named" "SKIP rename guard_hint() (Task 1)"
 
+# #587's shape: a parenthetical aside that QUOTES a shell token containing a literal ")". The old
+# aside-stripper paired every ")" against the nearest preceding "(" with no notion of a backtick
+# span, so the cut landed INSIDE the quoted token, spliced the aside's text into the path, and a
+# real file came back as `MISSING modify a.sh  arm`.
+#
+# #594's rewrite (paths are backtick-quoted spans, #441) removed that pairing loop wholesale and
+# closed this incidentally — no case ever pinned the shape, which is how the same ~40-line function
+# produced five false-STALE shapes in a row. These cases are that pin: numbered from C97 to stay
+# clear of #599's C90-C96 in the sibling PR.
+echo "== a backtick-quoted ')' inside an aside is not an aside delimiter (#587, closed by #594) =="
+cat > "$WORK/paren-in-backticks.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: an aside quoting a shell token that contains a paren
+
+**Files:** modify `a.sh` (the `timeout)` arm)
+PLAN
+run_case "C97 an aside quoting ')': exit 0  " 0 "$WORK/paren-in-backticks.md"
+want_line "C98 …the real path resolves OK    " "OK modify a.sh (Task 1)"
+
+echo "== …and the same with a call-shaped token, and two of them (#587) =="
+cat > "$WORK/paren-in-backticks2.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: two quoted parens, and a second item after the aside
+
+**Files:** modify `a.sh` (the `a)` and `b)` arms); modify `dir with space/b.sh` (see `judge()`)
+PLAN
+run_case "C99 two quoted parens: exit 0     " 0 "$WORK/paren-in-backticks2.md"
+want_line "C100 …the first path is OK        " "OK modify a.sh (Task 1)"
+want_line "C101 …the second path is OK too   " "OK modify dir with space/b.sh (Task 1)"
+
 echo "== …two backticked paths joined by 'and' are two paths, not one glued string (#441, #514) =="
 cat > "$WORK/and-joined.md" <<'PLAN'
 ## 🛠️ Implementation plan
