@@ -129,10 +129,15 @@ write_line "$T" user "$D" "$(tool_result t37 'The user doesn'\''t want to procee
 write_line "$T" assistant "$D" "$(text "The suite is running. I'll pause here and wait for the code-review report before continuing.")"
 # 4. worker-report.
 write_line "$T" assistant "$D" "$(text 'PHASE1 | ISSUE: 47 | PR: none | STATUS: BLOCKED | DETAIL: no usable plan | FILED: none')"
-# 5. suite-fail: a kit golden suite's FAIL line inside a tool result.
+# 5. suite-fail: a kit golden suite's FAIL line inside a tool result. Built with printf, not a raw
+# multi-line literal (#645): a literal 'ok: frontier\nFAIL: ...' line would itself start a SOURCE
+# line with "FAIL:" — the exact column-0 shape AC4 requires this file to have none of.
 write_line "$T" assistant "$D" "$(tool_use t6 Bash '{"command":"./tests/survey/test.sh"}')"
-write_line "$T" user "$D" "$(tool_result t6 'ok: frontier
-FAIL: SKILL.md Step 4 does not carry the immediate re-survey trigger (tests/survey/test.sh case 12d)' true)"
+write_line "$T" user "$D" "$(tool_result t6 "$(printf 'ok: frontier\nFAIL: SKILL.md Step 4 does not carry the immediate re-survey trigger (tests/survey/test.sh case 12d)')" true)"
+# decoy (#645): reading the suite's OWN source is not a suite failure, even though (before this
+# task's t6 rewrite above) it embeds the same FAIL: line the real positive plants.
+write_line "$T" assistant "$D" "$(tool_use t41 Bash '{"command":"sed -n '"'"'1,400p'"'"' tests/review-sessions/test.sh"}')"
+write_line "$T" user "$D" "$(tool_result t41 "$(cat "${BASH_SOURCE[0]}")" false)"
 # 6. guard-refusal — sourced from the REAL guard, never retyped, so the fixture cannot agree with
 # a drifted GUARD_RE the way a hand-typed one could (#513).
 GR=$(kit_scratch)/guard-repo
@@ -308,7 +313,7 @@ if guard_details != want_guards:
 # the summed count — count, never len(), since a collapse (t3+t3b) is one record worth 2.
 def summed(kind):
     return sum(r["count"] for r in recs if r["kind"] == kind)
-want_summed = {"forbidden-wait": 1, "worker-report": 1, "harness-nudge": 1, "hook-deny": 2}
+want_summed = {"forbidden-wait": 1, "worker-report": 1, "harness-nudge": 1, "hook-deny": 2, "suite-fail": 1}
 for kind, want_n in want_summed.items():
     got_n = summed(kind)
     if got_n != want_n:
