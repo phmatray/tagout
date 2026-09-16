@@ -255,6 +255,20 @@ out, ts = sys.argv[1:3]
 with open(out, "a", encoding="utf-8") as f:
     f.write(json.dumps({"type": "user", "timestamp": ts, "message": {"role": "user", "content": "[Request interrupted by user]"}}) + "\n")
 PY
+# decoys (#645): prose that QUOTES a never-wait phrase, a worker-report shape or a nudge is not the
+# kit failing — only an UNQUOTED occurrence is. And a deny-shaped line that did not fail (is_error
+# false) is not a hook-deny.
+# decoy: forbidden-wait, quoted via emphasis + a straight double quote.
+write_line "$T" assistant "$D" "$(text "> *\"I'll pause here and wait for the report\"* is what the worker said before it died.")"
+# decoy: forbidden-wait, quoted via a JSON-escaped quote (the \" case).
+write_line "$T" assistant "$D" "$(text '"failure_scenario": "ends its turn with \"I'\''ll stop issuing further tool calls now and wait\""')"
+# decoy: worker-report, quoted via a backtick.
+write_line "$T" assistant "$D" "$(text 'a dispatch that reports `STATUS: BLOCKED` on any failure')"
+# decoy: harness-nudge, quoted via a backtick, in a USER text block.
+write_line "$T" user "$D" "$(text '- the `harness-nudge` kind on `[Request interrupted` is noise')"
+# decoy: hook-deny shape that did NOT fail (is_error false) — a test's own printed incident line.
+write_line "$T" assistant "$D" "$(tool_use t40 Bash '{"command":"./tests/incident-check/test.sh"}')"
+write_line "$T" user "$D" "$(tool_result t40 "$(printf 'INCIDENT (verbatim shape) -> ALLOW\nBlocked by the git write-gate: git commit -m x')" false)"
 # decoys: a non-JSON line, and an old kit tool-error --since must drop.
 printf 'not json at all\n' >> "$T"
 write_line "$T" assistant "2026-08-01T09:00:00.000Z" "$(tool_use t8 Bash '{"command":"./skills/auto-dev/scripts/survey.sh"}')"
@@ -290,6 +304,16 @@ want_guards = ["guarded-commit", "guarded-merge", "guarded-pr-merge", "guarded-p
 if guard_details != want_guards:
     print("FAIL: guard-refusal details differ from the six real guard names")
     print("  got :", guard_details); print("  want:", want_guards); sys.exit(1)
+# #645: a quoted occurrence (any of the three text kinds) or a non-failing deny line must not add to
+# the summed count — count, never len(), since a collapse (t3+t3b) is one record worth 2.
+def summed(kind):
+    return sum(r["count"] for r in recs if r["kind"] == kind)
+want_summed = {"forbidden-wait": 1, "worker-report": 1, "harness-nudge": 1, "hook-deny": 2}
+for kind, want_n in want_summed.items():
+    got_n = summed(kind)
+    if got_n != want_n:
+        print(f"FAIL: {kind} summed count is {got_n}, want {want_n} (a quoted or non-failing decoy leaked through)")
+        sys.exit(1)
 print("ok   the JSON records are exactly the planted set, keyed as documented, and --since holds")
 PY
 

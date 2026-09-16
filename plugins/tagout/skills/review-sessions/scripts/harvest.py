@@ -34,11 +34,17 @@ kind ∈ tool-error      a Bash tool_result flagged is_error — not a harness `
        guard-refusal   a guard's own "<name>: REFUSED | ALERT | REJECTED" line (guarded-*, tick-plan, make-worktree)
        harness-nudge   "[Request interrupted" or "[Your previous response had no visible output"
 
-A `guard-refusal` and a kit `tool-error` both require the kit to have been INVOKED, never merely
-mentioned: a `guard-refusal` needs a failing Bash call that ran the guard (see `invoked_guard`), and
-`names_kit_path` counts `--kit-name` only as a standalone identifier, never as part of a longer one
-— a dash-encoded transcript directory or a same-prefixed sibling directory included. A
-`Read`/`Grep`/`Glob` result, or prose that quotes a guard or a kit path, produces neither.
+Every kind requires the kit to have been INVOKED, never merely mentioned. `tool-error` counts only a
+Bash call's own failure — a harness `<tool_use_error>` (a dispatch-depth ceiling, a blocked `sleep`,
+a permission rejection) or a non-Bash tool's error (Agent, Edit, Read, Grep, an MCP tool) is the
+harness's mechanics, not the kit's. `hook-deny` requires `is_error`, so a test's own printed deny
+line is not one. A `guard-refusal` needs a failing Bash call that ran the guard (see `invoked_guard`),
+and `names_kit_path` counts `--kit-name` only as a standalone identifier, never as part of a longer
+one — a dash-encoded transcript directory or a same-prefixed sibling directory included. And
+`forbidden-wait`, `worker-report` and `harness-nudge` each require an UNQUOTED occurrence (see
+`quoted`): the character just before the match, skipping `*`/`_` emphasis, must not be a quote mark
+— a `Read`/`Grep`/`Glob` result, or prose that quotes a guard, a kit path or a pinned phrase,
+produces none of the seven.
 
 Exit 0 (records, or the explicit `no signals` line); 2 on a usage error or an unreadable directory
 — never a traceback for a bad argument.
@@ -203,6 +209,19 @@ def excerpt_of(text, needle=None, width=160):
     return " ".join(text.split())[:width]
 
 
+QUOTE_CHARS = ('"', "'", "`", "“", "‘")
+
+
+def quoted(text, i):
+    """True when `text[i:]` is being CITED, not asserted: walk left from `i - 1`, skipping `*`/`_`
+    emphasis markers, and check whether the next character is a quote mark. False at the start of
+    `text` or on any other character. An escaped `\\"` ends in `"` and counts the same as a bare one."""
+    j = i - 1
+    while j >= 0 and text[j] in "*_":
+        j -= 1
+    return j >= 0 and text[j] in QUOTE_CHARS
+
+
 def names_kit_path(s, in_kit_repo, kit_names):
     if not s:
         return False
@@ -296,19 +315,25 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                     elif b.get("type") == "text" and isinstance(b.get("text"), str):
                         txt = b["text"]
                         for ph in phrases:
-                            if ph in txt:
-                                emit("forbidden-wait", excerpt_of(txt, ph), None, ph)
+                            for m in re.finditer(re.escape(ph), txt):
+                                if not quoted(txt, m.start()):
+                                    emit("forbidden-wait", excerpt_of(txt, ph), None, ph)
+                                    break
+                            else:
+                                continue
+                            break
+                        for m in WORKER_REPORT_RE.finditer(txt):
+                            if not quoted(txt, m.start()):
+                                emit("worker-report", excerpt_of(txt, "STATUS:"), None, m.group(1))
                                 break
-                        m = WORKER_REPORT_RE.search(txt)
-                        if m:
-                            emit("worker-report", excerpt_of(txt, "STATUS:"), None, m.group(1))
             elif t == "user":
                 # A nudge (an interrupt, a "no visible output") counts only while a kit skill is
                 # active: it is the kit's failure to attribute, not a user's change of mind in a
                 # session the kit was never driving.
                 if isinstance(content, str):
                     for n in NUDGES:
-                        if n in content and active:
+                        i = content.find(n)
+                        if i >= 0 and active and not quoted(content, i):
                             emit("harness-nudge", excerpt_of(content, n), None, n)
                     continue
                 if not isinstance(content, list):
@@ -318,7 +343,8 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                         continue
                     if b.get("type") == "text" and isinstance(b.get("text"), str):
                         for n in NUDGES:
-                            if n in b["text"] and active:
+                            i = b["text"].find(n)
+                            if i >= 0 and active and not quoted(b["text"], i):
                                 emit("harness-nudge", excerpt_of(b["text"], n), None, n)
                         continue
                     if b.get("type") != "tool_result":
@@ -329,7 +355,7 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                     unwrapped = unwrap(body)
                     if unwrapped.startswith(HARNESS_REFUSAL_PREFIXES):
                         continue   # the harness's own worktree isolation, not the kit
-                    if any(unwrapped.startswith(p) or ("\n" + p) in unwrapped for p in HOOK_DENY_PREFIXES):
+                    if is_error and any(unwrapped.startswith(p) or ("\n" + p) in unwrapped for p in HOOK_DENY_PREFIXES):
                         emit("hook-deny", excerpt_of(unwrapped), tool, "gate")
                         continue
                     g = GUARD_RE.search(body) if invoked_guard(tool, is_error, touched) else None
