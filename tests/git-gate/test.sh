@@ -86,6 +86,10 @@ pay() { # $1 tool  $2 command  $3 cwd
     '{session_id:"gitgate", cwd:$d, tool_name:$t, tool_input:{command:$c}}'
 }
 
+pay_sub() { # pay's arguments; the same payload as a sub-agent's call (Claude Code adds agent_id)
+  pay "$@" | jq -c '. + {agent_id:"agent-test"}'
+}
+
 # Drives the gate with a synthetic payload. Asserts the exit status, the decision, and — when
 # denying — that the reason names the replacement.
 # $1 name  $2 expected ("deny"|"pass")  $3 substring the reason must contain  $4 payload
@@ -218,6 +222,11 @@ mkdir -p "$SPACED/skills/merge-pr/scripts"; : > "$SPACED/skills/merge-pr/scripts
 verdict "K8  a root with a space is quoted" \
   deny "\"$SPACED/skills/merge-pr/scripts/guarded-pr-merge.sh\"" \
   "$(pay Bash 'gh pr merge 12' "$PROF")" "$PATH" "" "$SPACED"
+# A sub-agent's denial points at the relocate fallback (#643) — spelt under the plugin root too, or
+# in a consumer repo it names a relative path that resolves to nothing (#512).
+verdict "K9  a sub-agent's denial names guard-invocation.md by absolute path" \
+  deny "$KIT/skills/_shared/guard-invocation.md" \
+  "$(pay_sub Bash 'git commit -m x' "$PROF")" "$PATH" "" "$KIT"
 
 # ------------------------------------------------------------ 1d. a raw `gh pr merge` (#512)
 # #326 left `gh` out of scope on the premise that `gh pr merge` "is already guarded by
@@ -274,6 +283,16 @@ case "$r" in *'#26 and #280'*) echo "FAIL [G14]: the gh denial claims the #26/#2
 r=$(reason_for "$(pay Bash 'git commit -m x' "$PROF")" "")
 case "$r" in *'GIT_GATE=off gh'*) echo "FAIL [G14]: a git denial advertises the gh escape: $r"; exit 1 ;; esac
 echo "ok: G14 each denial names its own cause and its own escape"
+# A sub-agent's prefix is not honoured (A42s/G8s), so its denial must not offer one: it names the
+# guard fallback instead (#643).
+for c in 'git commit -m x' 'gh pr merge 12'; do
+  r=$(reason_for "$(pay_sub Bash "$c" "$PROF")" "")
+  case "$r" in ''|*'GIT_GATE=off git'*|*'GIT_GATE=off gh'*)
+    echo "FAIL [G15 $c]: a sub-agent's denial is empty or offers the GIT_GATE=off prefix: $r"; exit 1 ;; esac
+  case "$r" in *guard-invocation.md*) ;;
+    *) echo "FAIL [G15 $c]: a sub-agent's denial does not name guard-invocation.md: $r"; exit 1 ;; esac
+done
+echo "ok: G15 a sub-agent's denial offers the fallback, not the prefix"
 
 # ------------------------------------------------- 1e. -R/GH_REPO/URL retarget denies (#533)
 # judge_gh's probe answers only for $eff_dir (the payload's cwd, or wherever a followed `cd`
@@ -575,6 +594,12 @@ verdict "A40 cd into a guard-less repo" pass "" "$(pay Bash "cd $PLAIN && git co
 verdict "A41 cp, cd, init, commit (the walkthrough line)" pass "" \
   "$(pay Bash "cp -r samples/LegacyShop $PLAIN/shop && cd $PLAIN/shop && git init && git add -A && git commit -m legacy" "$PROF")"
 verdict "A42 GIT_GATE=off as a one-command prefix" pass "" "$(pay Bash 'GIT_GATE=off git commit -m x' "$PROF")"
+# ...but only for the main thread (#643): a sub-agent reads the same deny text and cannot ask
+# anyone first, so its prefixed write is judged like the bare one — also inside `$( )`.
+verdict "A42s sub-agent GIT_GATE=off git commit" deny "guarded-commit.sh" "$(pay_sub Bash 'GIT_GATE=off git commit -m x' "$PROF")"
+verdict "G8s sub-agent GIT_GATE=off gh pr merge" deny "guarded-pr-merge.sh" "$(pay_sub Bash 'GIT_GATE=off gh pr merge 12' "$PROF")"
+verdict "A42t sub-agent prefix inside \$( )" deny "guarded-commit.sh" "$(pay_sub Bash 'echo $(GIT_GATE=off git commit -m x)' "$PROF")"
+verdict "A42u env GIT_GATE=off still wins for a sub-agent" pass "" "$(pay_sub Bash 'git commit -m x' "$PROF")" "$PATH" off
 # ...and every cd the hook cannot resolve leaves the probe where it was: a variable, `~`, `cd -`,
 # a bare `cd`, `pushd`, and a `cd` inside `( … )` whose directory change dies with the subshell.
 verdict "D23 cd \$VAR stays put"        deny "guarded-commit.sh" "$(pay Bash 'cd $ELSEWHERE && git commit -m x' "$PROF")"
@@ -751,6 +776,19 @@ grep -qF 'git-write-gate' "$KIT/README.md" \
 grep -qF 'GIT_GATE=off' "$KIT/README.md" \
   || { echo "FAIL: README does not document GIT_GATE=off"; exit 1; }
 echo "ok: README documents the gate and its off-switch"
+
+# S7 — the doctrine a sub-agent reads names the prefixed form too (#643): the gate no longer honours
+# a GIT_GATE=off prefix for a sub-agent, so the never-fall-back sentences must forbid it by name.
+for doc in commands/auto-dev-worker.md commands/auto-dev-merge.md skills/_shared/guard-invocation.md; do
+  # The sentence's own line, not the whole file: a GIT_GATE=off mention elsewhere must not mask it.
+  never_line=$(grep -F 'Never fall back to a bare' "$KIT/$doc" || true)
+  grep -qF 'GIT_GATE=off' <<<"$never_line" \
+    || { echo "FAIL [S7]: $doc's never-fall-back sentence does not name a GIT_GATE=off-prefixed write"; exit 1; }
+done
+readme_off=$(grep -F 'GIT_GATE=off' "$KIT/README.md" || true)
+grep -qF 'sub-agent' <<<"$readme_off" \
+  || { echo "FAIL [S7]: README's GIT_GATE=off text does not say a sub-agent is not offered the prefix"; exit 1; }
+echo "ok: S7 the worker, merge and guard doctrine name the prefixed form"
 
 # S6 — the prior-art credit. Matt Pocock's block-dangerous-git.sh (mattpocock/skills, MIT) is the
 # idea's source and is deliberately not copied; the file has to say both.
