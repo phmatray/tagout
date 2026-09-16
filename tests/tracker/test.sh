@@ -198,15 +198,71 @@ mkdir -p "$BARE"
 echo "== A. the dispatcher and the gh backend"
 
 # ------------------------------------------------------------------------------------------- AC1
+#
+# $PROFILED is outside any git repository (KIT_LIB_TMP is a plain mktemp -d, never nested under
+# this checkout), so `git remote get-url origin` finds nothing there — the "no origin" case for
+# free, and originSlug must be JSON null, never the string "null" or "" (#637).
 run_tracker "$PROFILED" --tracker github repo
 if [ "$RC" -ne 0 ]; then
   note_fail "AC1 repo — exited $RC ($ERR)"
-elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main"}' ]; then
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":null}' ]; then
   note_fail "AC1 repo — wrong stdout
-      want: {\"slug\":\"o/r\",\"host\":\"github.com\",\"defaultBranch\":\"main\"}
+      want: {\"slug\":\"o/r\",\"host\":\"github.com\",\"defaultBranch\":\"main\",\"originSlug\":null}
       got:  $OUT"
 else
-  ok "AC1 repo — normalised {slug, host, defaultBranch}, exit 0"
+  ok "AC1 repo — normalised {slug, host, defaultBranch, originSlug}, no origin -> null, exit 0"
+fi
+
+# ------------------------------------------------------------------------------------------- AC1b/c/d
+#
+# originSlug is read from the LOCAL `origin` remote, never from the stub `gh repo view` answer
+# (which always reports "o/r" regardless) — that is the whole point of the field (#637): it is
+# the fact `gh --search` actually uses, which does not follow a rename the way `gh repo view`
+# does. Each expected originSlug is a hand-written literal, never re-derived by parsing the same
+# URL string the case itself sets (the issue's own "a good test here" testing decision).
+ORIGIN_HTTPS="$WORK/origin-https"
+mkdir -p "$ORIGIN_HTTPS"
+git -C "$ORIGIN_HTTPS" init -q
+git -C "$ORIGIN_HTTPS" remote add origin "https://github.com/acme/widgets.git"
+run_tracker "$ORIGIN_HTTPS" --tracker github repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC1b repo originSlug (https) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":"acme/widgets"}' ]; then
+  note_fail "AC1b repo originSlug (https) — wrong stdout
+      want: originSlug \"acme/widgets\"
+      got:  $OUT"
+else
+  ok "AC1b repo originSlug — https://github.com/OWNER/REPO.git origin"
+fi
+
+ORIGIN_SCP="$WORK/origin-scp"
+mkdir -p "$ORIGIN_SCP"
+git -C "$ORIGIN_SCP" init -q
+git -C "$ORIGIN_SCP" remote add origin "git@github.com:acme/widgets.git"
+run_tracker "$ORIGIN_SCP" --tracker github repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC1c repo originSlug (git@) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":"acme/widgets"}' ]; then
+  note_fail "AC1c repo originSlug (git@) — wrong stdout
+      want: originSlug \"acme/widgets\"
+      got:  $OUT"
+else
+  ok "AC1c repo originSlug — git@github.com:OWNER/REPO.git origin"
+fi
+
+ORIGIN_SSH="$WORK/origin-ssh"
+mkdir -p "$ORIGIN_SSH"
+git -C "$ORIGIN_SSH" init -q
+git -C "$ORIGIN_SSH" remote add origin "ssh://git@github.com/acme/widgets"
+run_tracker "$ORIGIN_SSH" --tracker github repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC1d repo originSlug (ssh://, no .git) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"o/r","host":"github.com","defaultBranch":"main","originSlug":"acme/widgets"}' ]; then
+  note_fail "AC1d repo originSlug (ssh://, no .git) — wrong stdout
+      want: originSlug \"acme/widgets\"
+      got:  $OUT"
+else
+  ok "AC1d repo originSlug — ssh://git@github.com/OWNER/REPO origin (no .git suffix)"
 fi
 
 # ------------------------------------------------------------------------------------------- AC2
