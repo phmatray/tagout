@@ -35,12 +35,24 @@ commit) along **three axes, run in parallel and never merged**:
   **The moment that call returns, before you read a single finding, ask what it changed:**
 
   ```bash
-  git -C "$WORKTREE" status --porcelain            # must be empty — untracked (`??`) included
-  git -C "$WORKTREE" rev-parse HEAD                # must still equal the sha you wrote down
-  git -C "$WORKTREE" diff                          # if that is not empty, READ this before anything
+  "$GUARDS/post-review-check.sh" -C "$WORKTREE" --branch "$BRANCH" --before <the sha you wrote down>
   ```
 
-  Anything there is an **unauthorized write** — you did not ask for an edit, and `--fix` was not
+  Three prior incidents (#477, #560, #578) left this check as three commands the caller had to
+  remember to run and compare by hand; #659 measured that not holding the line — a fourth
+  occurrence where the fork committed twice through bare `git`, and a `status`/`rev-parse` pair run
+  at the wrong moment read as "nothing happened". `post-review-check.sh` is the enforceable
+  replacement — read its exit code, not just its output:
+
+  | Exit | Meaning | What to do |
+  |---:|---|---|
+  | `0` | clean — HEAD is still the sha you wrote down, on `$BRANCH`, and the tree has no changes | Nothing to do — read the findings and apply them yourself, as always |
+  | `1` | the tree is dirty — tracked or untracked changes since the review | Read the printed `status --porcelain` and `diff --stat`; this is the unauthorized-write case below |
+  | `2` | `HEAD` moved off the recorded sha while still on `$BRANCH` | Read the printed `git log --oneline` of the new commits; this is the #477 shape below |
+  | `3` | `HEAD` is not on `$BRANCH`, or is detached | Stop — get back onto `$BRANCH`, in a worktree of its own, before anything else |
+  | `64` | usage error — bad arguments, `-C` not a repository, or `--before` not a commit that resolves (an empty `--before` refuses here rather than silently comparing as equal, which is the failure #659 exists to close) | Nothing was checked; fix the call and re-run |
+
+  Anything exit `1` or `2` surfaces is an **unauthorized write** — you did not ask for an edit, and `--fix` was not
   passed. It is not yours and it is not automatically correct. Do **not** fold it into your next
   commit. Read it in full, check it against the findings the review actually reported (a change
   matching no reported finding is the strongest signal it should be discarded), and re-run the
