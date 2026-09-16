@@ -219,14 +219,34 @@ skip_and_remember() {
   CREATED="$CREATED$path$NL"
 }
 
+# forget_created <path> — remove EVERY entry equal to <path> from $CREATED. A plan may legitimately
+# name the same new path from two different SKIP-producing sites (`create` in one task, a `(new)`-
+# marked mention in another — both legal per plan-shape.md), so $CREATED can hold a path more than
+# once; a single `${CREATED//"$NL$path$NL"/$NL}` substitution only erases ONE of two duplicates; the
+# two copies share their middle newline, so removing the first pass's match leaves the second copy's
+# leading newline behind and it survives (found in review of #640, reproduced against the shipped
+# script). So this rebuilds $CREATED by filtering entries instead, which drops every copy in one
+# pass regardless of how many there are.
+forget_created() {
+  local target="$1" rest entry
+  target=$(strip_anchor "$target")
+  rest="${CREATED#"$NL"}"
+  CREATED="$NL"
+  while [ -n "$rest" ]; do
+    entry="${rest%%"$NL"*}"
+    rest="${rest#*"$NL"}"
+    [ "$entry" = "$target" ] || CREATED="$CREATED$entry$NL"
+  done
+}
+
 # check_span <verb> <span> — resolve against $BASE (after stripping a line anchor), print OK/MISSING.
 # A path an EARLIER task of this same plan already SKIPped (i.e. is about to be created) is read
 # as SKIP here too, never MISSING — $CREATED is the run-wide record skip_and_remember fills in
 # (#640). $CREATED is NOT append-only, though: a `rename` or `delete` CONSUMES the name (the path
 # stops denoting anything, under that name, from here on), so once it is matched here for one of
-# those two verbs it is removed again — otherwise a plan that creates `x`, renames it away, then
-# wrongly references `x` a third time would read SKIP forever instead of catching the stale
-# reference (found in review of #640: a genuinely stale plan silently waved through).
+# those two verbs every trace of it is forgotten again — otherwise a plan that creates `x`, renames
+# it away, then wrongly references `x` a third time would read SKIP forever instead of catching the
+# stale reference (found in review of #640: a genuinely stale plan silently waved through).
 check_span() {
   local verb path
   verb="$1"; path=$(strip_anchor "$2")
@@ -237,7 +257,7 @@ check_span() {
       *"$NL$path$NL"*)
         printf 'SKIP %s %s (Task %s)\n' "$verb" "$path" "$TASK"
         case "$verb" in
-          rename|delete) CREATED="${CREATED//"$NL$path$NL"/$NL}" ;;
+          rename|delete) forget_created "$path" ;;
         esac
         return 0
         ;;

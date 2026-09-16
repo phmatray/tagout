@@ -311,6 +311,49 @@ want_line "C114 …the delete is still SKIP first" "SKIP delete to-delete.sh (Ta
 want_line "C115 …then the stale old-name reference is MISSING, not SKIP" \
   "MISSING modify to-delete.sh (Task 3)"
 
+echo "== …and a path SKIPped from TWO different sites before being renamed away forgets BOTH records, not just one (found in review of #640) =="
+cat > "$WORK/duplicate-then-rename-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `dup.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: its own new test, named again
+
+**Files:** test `dup.sh` (new).
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: rename it away
+
+**Files:** rename `dup.sh` → `dup2.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 4: a stale reference to the old name
+
+**Files:** modify `dup.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C116 duplicate-then-rename-then-stale-modify exits 5" 5 "$WORK/duplicate-then-rename-then-stale.md"
+want_line "C117 …both earlier SKIPs of the duplicate fire" "SKIP create dup.sh (Task 1)"
+want_line "C118 …the second SKIP fires too" "SKIP test dup.sh (Task 2)"
+want_line "C119 …the rename source is still SKIP" "SKIP rename dup.sh (Task 3)"
+want_line "C120 …and the stale reference is MISSING, not SKIP — neither duplicate survives" \
+  "MISSING modify dup.sh (Task 4)"
+
 cat > "$WORK/modify-then-create.md" <<'PLAN'
 ## 🛠️ Implementation plan
 
