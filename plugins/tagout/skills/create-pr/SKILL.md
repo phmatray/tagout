@@ -36,7 +36,7 @@ decision scope: pick the reasonable default, state the assumption, keep going. S
 genuine blocker:
 
 - `gh` not authenticated, or no push rights.
-- A Step 2 refusal — the default branch, nothing ahead of it, a dirty tree. Each one refuses before any write.
+- A Step 2 refusal — the default branch, a dirty tree, nothing ahead of it, a closed issue. Each one refuses before any write.
 - A PR already open for this branch or its issue: report it, open none.
 - A guard exit that is not a success, or a readback that does not match.
 
@@ -47,7 +47,7 @@ A red *Full test* is not a blocker. It opens a draft and says why, so nobody mer
 Create a task per item and work them in order.
 
 1. **Preconditions** — profile, `gh` auth, commit identity.
-2. **Locate the work** — the branch, its issue, and the three refusals, all before any write.
+2. **Locate the work** — the branch, its issue, the refusals and the existing-PR lookup, all before any write.
 3. **Open** — guarded push, ready or draft, the body, then the shared PR-open recipe.
 4. **Recap** — the shared closing shape ([`../_shared/recap.md`](../_shared/recap.md)), Next `/merge-pr #<pr>`.
 
@@ -62,6 +62,6 @@ re-read on every later turn, so the step bodies live under `references/steps/`. 
 checklist item starts; the shared references it names load the same way.
 
 - Step 1 — [`references/steps/01-preconditions.md`](references/steps/01-preconditions.md) · reads [`_shared/preconditions.md`](../_shared/preconditions.md)
-- Step 2 — [`references/steps/02-locate-the-work.md`](references/steps/02-locate-the-work.md)
+- Step 2 — [`references/steps/02-locate-the-work.md`](references/steps/02-locate-the-work.md) · reads [`_shared/open-pr.md`](../_shared/open-pr.md)
 - Step 3 — [`references/steps/03-open.md`](references/steps/03-open.md) · reads [`_shared/open-pr.md`](../_shared/open-pr.md), [`_shared/guard-invocation.md`](../_shared/guard-invocation.md)
 - Step 4 — [`references/steps/04-recap.md`](references/steps/04-recap.md) · reads [`_shared/recap.md`](../_shared/recap.md)

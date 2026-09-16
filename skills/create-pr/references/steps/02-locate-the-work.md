@@ -27,8 +27,14 @@ ISSUE=<N from the request, digits only>
 ```
 
 - `issue-view` exits 0 → keep `$ISSUE`. Step 3 reads the issue's labels from that file to pick the
-  title type.
+  title type. Its `state` is `closed` → **refuse**: *"#N is closed"* — a squash-merged branch keeps
+  commits `origin/$DEFAULT` never sees, so this is the check that stops it being opened twice.
 - It fails for a `#N` the user gave → **stop**: the number names no issue here.
 - It fails for a number read from the branch name → the name was only a guess. Clear `ISSUE`, say so
   in the recap, and go on.
 - Neither gives a number → `ISSUE` stays empty and the PR links no issue.
+
+**Last, look for an existing PR** — run §1 of [`../_shared/open-pr.md`](../../../_shared/open-pr.md)
+with `$BRANCH` and `$ISSUE`. It only reads. It stops on a PR already open for this branch or this
+issue → open nothing, push nothing; hand that PR to Step 4. This runs here, before Step 3's push and
+*Full test*, so a PR opened elsewhere never gets this branch pushed alongside it.

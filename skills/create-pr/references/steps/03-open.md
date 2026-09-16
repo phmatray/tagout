@@ -23,7 +23,8 @@ WORKTREE=$(git rev-parse --show-toplevel)
 - `Closes #$ISSUE.` when `$ISSUE` is set, and no such line when it is empty;
 - on a red *Full test*, one line saying the draft is red and which command failed.
 
-Then **follow [`../_shared/open-pr.md`](../../../_shared/open-pr.md)** with these names:
+Then **follow §2 of [`../_shared/open-pr.md`](../../../_shared/open-pr.md)** — Step 2 already ran
+its §1 — with these names:
 
 ```bash
 BASE=$DEFAULT
@@ -31,7 +32,5 @@ TITLE_PATHS=$(git diff --name-only "origin/$DEFAULT...HEAD")
 ```
 
 `$BRANCH`, `$ISSUE`, `$DRAFT` and `$BODY_FILE` are set above. When `$ISSUE` is set, the title's type
-label comes from `/tmp/create-pr-issue-$ISSUE.json`.
-
-- The recipe's §1 finds a PR already open → open nothing. Hand that PR to Step 4.
-- Otherwise it hands back `number` and `url` from its readback. Carry them to Step 4.
+label comes from `/tmp/create-pr-issue-$ISSUE.json`. The recipe hands back `number` and `url` from its
+readback; carry them to Step 4.

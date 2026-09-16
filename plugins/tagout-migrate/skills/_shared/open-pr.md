@@ -2,7 +2,7 @@
 
 Shared procedure for opening a pull request the way the kit expects. `implement-issue` runs §1 in
 Step 4, before it creates a worktree, and the whole of it in Step 5 for its draft PR; `create-pr`
-runs the whole of it in Step 3 for a finished feature branch. The caller owns
+runs §1 in Step 2, before its push, and §2 in Step 3 for a finished feature branch. The caller owns
 what comes before (the commit, the guarded push) and what to do about a PR that already exists; the
 lookup, the title and `gh pr create` live **here**, once.
 
@@ -163,5 +163,6 @@ stop, not a retry. Hand `number` and `url` back to the caller.
 - `skills/implement-issue/references/github-mechanics.md` — §5 frames the lookup and the draft PR in implement-issue's own terms
 - `skills/implement-issue/references/steps/04-worktree.md` — Step 4 runs §1's issue-scoped guard before creating a worktree
 - `skills/implement-issue/references/steps/05-open-the-draft-pr.md` — Step 5 opens the draft PR through this recipe
-- `skills/create-pr/SKILL.md` — Step 3 names this recipe in the step index
-- `skills/create-pr/references/steps/03-open.md` — Step 3 opens the PR for a finished feature branch through this recipe
+- `skills/create-pr/SKILL.md` — Steps 2 and 3 name this recipe in the step index
+- `skills/create-pr/references/steps/02-locate-the-work.md` — Step 2 runs §1 before any push
+- `skills/create-pr/references/steps/03-open.md` — Step 3 opens the PR for a finished feature branch through §2
