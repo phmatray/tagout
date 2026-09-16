@@ -64,7 +64,7 @@ Create a task per item and work them in order. Step 6 is the loop — one pass p
 2. **Read the plan** — fetch the `🛠️ Implementation plan` from the issue body (or a comment, on older issues); save it and note where it lives.
 3. **Pick the execution mode** — assess complexity → *Inline (Extra)* or *Subagent-per-task (Ultracode)*.
 4. **Create this issue's own worktree** — via `scripts/make-worktree.sh`, off `main`. Never implement from the checkout you were launched in, even if it is already a worktree. If no branch-name match is found, fall back to an issue-scoped GitHub search before scaffolding a new one — a second open PR closing the same issue is the failure this step exists to prevent.
-5. **Open the draft PR** — empty scaffold commit, push, `gh pr create --draft` linking the issue; PR title carries a Conventional Commits prefix (`fix:`/`feat:`/…, CI-enforced) and ends with `(#<issue>)`.
+5. **Open the draft PR** — empty scaffold commit, push, then the shared PR-open recipe (`_shared/open-pr.md`, as a draft) linking the issue; PR title carries a Conventional Commits prefix (`fix:`/`feat:`/…, CI-enforced) and ends with `(#<issue>)`.
 6. **Loop until every task is checked** — implement the next unchecked task → verify green → commit → tick that task on the issue plan *and* the PR description → push.
 7. **Code review** — run the `code-review` skill, apply + commit the fixes, push.
 8. **Sync with `main`** — merge the latest `origin/main` into the branch and resolve conflicts per the profile's *Conflict hot-spots* (version, changelog, snapshots, lockfiles — see reference).
@@ -90,8 +90,8 @@ shared references it names load the same way, from inside that step.
 - Step 1 — [`references/steps/01-preconditions.md`](references/steps/01-preconditions.md) · reads [`_shared/preconditions.md`](../_shared/preconditions.md)
 - Step 2 — [`references/steps/02-read-the-plan.md`](references/steps/02-read-the-plan.md) · reads [`_shared/plan-shape.md`](../_shared/plan-shape.md), [`_shared/untrusted-input-boundary.md`](../_shared/untrusted-input-boundary.md)
 - Step 3 — [`references/steps/03-execution-mode.md`](references/steps/03-execution-mode.md) · reads [`_shared/tdd-loop.md`](../_shared/tdd-loop.md)
-- Step 4 — [`references/steps/04-worktree.md`](references/steps/04-worktree.md) · reads [`_shared/guard-invocation.md`](../_shared/guard-invocation.md), [`_shared/worktree-ignore-check.md`](../_shared/worktree-ignore-check.md)
-- Step 5 — [`references/steps/05-open-the-draft-pr.md`](references/steps/05-open-the-draft-pr.md) · reads [`_shared/sync-with-main.md`](../_shared/sync-with-main.md)
+- Step 4 — [`references/steps/04-worktree.md`](references/steps/04-worktree.md) · reads [`_shared/guard-invocation.md`](../_shared/guard-invocation.md), [`_shared/worktree-ignore-check.md`](../_shared/worktree-ignore-check.md), [`_shared/open-pr.md`](../_shared/open-pr.md)
+- Step 5 — [`references/steps/05-open-the-draft-pr.md`](references/steps/05-open-the-draft-pr.md) · reads [`_shared/open-pr.md`](../_shared/open-pr.md), [`_shared/sync-with-main.md`](../_shared/sync-with-main.md)
 - Step 6 — [`references/steps/06-implementation-loop.md`](references/steps/06-implementation-loop.md) · reads [`_shared/tdd-loop.md`](../_shared/tdd-loop.md), [`_shared/test-seams.md`](../_shared/test-seams.md)
 - Step 7 — [`references/steps/07-review.md`](references/steps/07-review.md)
 - Step 8 — [`references/steps/08-sync-with-main.md`](references/steps/08-sync-with-main.md) · reads [`_shared/sync-with-main.md`](../_shared/sync-with-main.md)

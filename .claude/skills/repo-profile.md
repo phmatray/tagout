@@ -131,7 +131,7 @@ hand-copying it further.
   | `area: create-issue` | `skills/create-issue/`, `skills/triage-backlog/` |
   | `area: migrate` | `skills/migrate-legacy/`, `skills/review-followups/`, `commands/migrate-*.md` |
   | `area: repo-setup` | `skills/setup-repo/`, `skills/profile-repo/`, `.claude/skills/repo-profile.md` |
-  | `area: skills` | `skills/_shared/`, `skills/debug-issue/`, `skills/deliver-issue/`, `skills/review-sessions/`, cross-skill conventions |
+  | `area: skills` | `skills/_shared/`, `skills/create-pr/`, `skills/debug-issue/`, `skills/deliver-issue/`, `skills/review-sessions/`, cross-skill conventions |
   | `area: scripts` | `scripts/` |
   | `area: tests` | `tests/`, `evals/`, the frozen `samples/` fixture |
   | `area: templates` | `templates/` |
