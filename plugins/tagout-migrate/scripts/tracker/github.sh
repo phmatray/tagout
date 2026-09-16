@@ -146,8 +146,26 @@ case "$VERB" in
     # rejected here. Omitted entirely when there is no slug, so gh reads the checkout itself.
     out=$(gh repo view ${KIT_REPO_SLUG:+"$KIT_REPO_SLUG"} --json nameWithOwner,defaultBranchRef) \
       || exit 1
-    printf '%s' "$out" | jq -c --arg host "${GH_HOST:-github.com}" \
-      '{slug: .nameWithOwner, host: $host, defaultBranch: (.defaultBranchRef.name // null)}'
+    # `origin`'s OWNER/REPO, read LOCALLY rather than from gh (#637): unlike `gh repo view` above,
+    # which follows GitHub's rename redirect, the Search API does not — a stale `origin` left over
+    # from a rename makes every `--search` call answer empty while this call looks unremarkable.
+    # Reported alongside `slug` so a caller can compare them; never itself a source for `slug`.
+    # `|| origin_url=""`, not a pipe straight into `sed`: `set -o pipefail` (above) would otherwise
+    # propagate a no-such-remote `git` failure through the whole pipeline even though `sed` itself
+    # succeeds on empty input — the same hazard skills/_shared/scripts/_gh-host.sh's origin parse
+    # guards against for the same reason.
+    origin_url=$(git remote get-url origin 2>/dev/null) || origin_url=""
+    # One `sed -E` call (two -e expressions): strip a trailing `.git`/slash, then capture the last
+    # two `/`-or-`:`-delimited path segments — the same expression `_gh-host.sh` already uses to
+    # read OWNER/REPO out of an https, `git@host:` or `ssh://` origin uniformly, case preserved
+    # (unlike that file's own lower-cased copy, since this value is reported and recapped verbatim).
+    origin_arg=$(printf '%s' "$origin_url" \
+      | sed -E -e 's#(\.git)?/*$##' -e 's#.*[:/]([^/:]+)/([^/:]+)$#\1/\2#')
+    printf '%s' "$out" | jq -c --arg host "${GH_HOST:-github.com}" --arg origin "$origin_arg" \
+      '($origin | split("/")) as $p |
+       {slug: .nameWithOwner, host: $host, defaultBranch: (.defaultBranchRef.name // null),
+        originSlug: (if ($p | length) == 2 and ($p[0] | length) > 0 and ($p[1] | length) > 0
+                     then $origin else null end)}'
     ;;
 
   issue-view)

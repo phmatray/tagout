@@ -56,6 +56,37 @@ gh api user --jq .login                                  # prints a login, or 40
 gh repo view --json nameWithOwner --jq .nameWithOwner    # confirm it's the repo the profile names
 ```
 
+`gh repo view` follows a GitHub rename redirect, so it reports the canonical repository even through
+a stale `origin`. The Search API every `gh … --search` call relies on does **not** follow that
+redirect (#637): a repository renamed since this checkout's `origin` was set makes every search
+silently answer `[]` while both checks above still pass. Compare `origin`'s own slug against the
+canonical one and repoint it before any search runs:
+
+```bash
+repoData=$("<kit>/scripts/tracker.sh" repo)
+slug=$(printf '%s' "$repoData" | jq -r '.slug')
+originSlug=$(printf '%s' "$repoData" | jq -r '.originSlug // empty')
+```
+
+When `originSlug` is non-empty and differs from `slug` case-insensitively (compare with
+`tr '[:upper:]' '[:lower:]'` on both sides), repoint `origin` — same scheme and host, only the
+`OWNER/REPO` path replaced — and read it back to confirm the write landed:
+
+```bash
+url=$(git remote get-url origin)
+prefix=$(printf '%s' "$url" | sed -E 's#(\.git)?/*$##' | sed -E 's#[^:/]+/[^:/]+$##')
+newUrl="$prefix$slug"
+case "$url" in *.git) newUrl="$newUrl.git" ;; esac
+git remote set-url origin "$newUrl"
+git remote get-url origin
+```
+
+Report it in the recap: `origin repointed <old> → <new> — searches were returning []`. A fork whose
+`origin` is the fork itself (not the repository the profile names) reports the same slug for both,
+so nothing changes; a case-only difference is likewise a no-op. This comparison only ever runs
+against the call above **without** `--repo` — a `--repo`-scoped lookup names a different repository
+on purpose and is never compared against `origin`.
+
 If the auth check fails with a 401 error, stop and tell the user to run this in the prompt:
 
 ```bash
