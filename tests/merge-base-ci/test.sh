@@ -304,6 +304,24 @@ printf '%s' "$v" | jq -e '.reason == "cancelled"' > /dev/null || {
   echo "FAIL [cancelled-only]: expected reason 'cancelled', got '$(printf '%s' "$v" | jq -r .reason)'"; exit 1; }
 echo "  ok: cancelled-only — a sha whose only run was cancelled is unverified, not red and not green"
 
+# ------------------------------------------------- 4b. a run awaiting approval is its own NON-verdict
+#
+# `ci.verdict` files a completed run whose conclusion is `action_required` under its third,
+# non-terminal word `needs-approval` (#495) — GitHub's state for a run a maintainer must approve.
+# The post-merge mapping had no arm for it, so it fell through to the catch-all whose own comment
+# calls itself unreachable, and the report read `unexpected-ci-verdict:needs-approval` — an internal
+# error string in place of a fact the caller can act on (#586). It is `unverified` for the same
+# reason `cancelled` is: the merge landed and the run recorded nothing about it. The reason must
+# name the actual condition, because that is the one a human can clear by approving the run.
+reset_case needs-approval
+SHA=a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4a4
+arm "$SHA" "$(page "$(run_obj kit 902 action_required)")"
+v=$(verdict_of "$SHA" --timeout 0 --poll-seconds 0)
+expect_verdict needs-approval unverified "$v"
+printf '%s' "$v" | jq -e '.reason == "needs-approval"' > /dev/null || {
+  echo "FAIL [needs-approval]: expected reason 'needs-approval', got '$(printf '%s' "$v" | jq -r .reason)'"; exit 1; }
+echo "  ok: needs-approval — a run awaiting approval is named, not reported as an unexpected verdict"
+
 # ---------------------------------------------------------------- 5. a SUPERSEDED cancellation is noise
 #
 # The other half of the same rule, and the one that keeps case 4 from becoming "ignore cancelled
