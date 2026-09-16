@@ -64,17 +64,19 @@ deterministic. Branch-name matching cannot catch that; asking GitHub whether thi
 has an open PR can — so run this fallback whenever the branch-name check just found nothing, before
 creating any worktree.
 
-**Run `references/github-mechanics.md` §5's exact recipe, and read its 0/1/2+ decision table there**
-— not a copy here, which is how the worktree-ignore table drifted apart (#71), and this fallback's own
-first draft duplicated the same table once already, immediately going stale when the recipe grew a
-tie-break rule and an empty-fetch guard. §5's recipe queries `gh pr list` for open PRs whose body
-actually *closes* this issue (GitHub's own closing-keyword set, not a bare mention) and writes the
-result to `/tmp/issue-$ISSUE-closers.json`; `tests/pr-existence-guard/test.sh` proves that program's
-behavior against fixtures shaped exactly like #195. The short version: `0` → nothing to resume onto,
-proceed to "Create or reuse, through the guard" below; `1` → resume onto it and skip Step 5's scaffold
-entirely; `2`+ → the exact shape of the #195 incident, resume onto the most-implemented one (§5 has
-the tie-break) and **name the duplicate in the Step 10 recap** — this is not a stop-and-ask case
-under the Autonomy contract, but a standing duplicate PR is worth a human's attention regardless.
+**Run §1 of [`../_shared/open-pr.md`](../../../_shared/open-pr.md#1-look-for-an-existing-pr) exactly,
+and read its 0/1/2+ decision table there** — not a copy here, which is how the worktree-ignore table
+drifted apart (#71), and this fallback's own first draft duplicated the same table once already,
+immediately going stale when the recipe grew a tie-break rule and an empty-fetch guard. That recipe
+queries `gh pr list` for open PRs whose body actually *closes* this issue (GitHub's own closing-keyword
+set, not a bare mention) and writes the result to `/tmp/issue-$ISSUE-closers.json`;
+`tests/pr-existence-guard/test.sh` proves that program's behavior against fixtures shaped exactly like
+#195. The short version: `0` → nothing to resume onto, proceed to "Create or reuse, through the guard"
+below; `1` → resume onto it (`references/github-mechanics.md` §5 says how) and skip Step 5's scaffold
+entirely; `2`+ → the exact shape of the #195 incident, resume onto the most-implemented one
+(`_shared/open-pr.md` has the tie-break) and **name the duplicate in the Step 10 recap** — this is not
+a stop-and-ask case under the Autonomy contract, but a standing duplicate PR is worth a human's
+attention regardless.
 
 ### Create or reuse, through the guard
 
