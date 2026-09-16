@@ -408,10 +408,10 @@ verdict "L30 a backtick sub hidden inside a double-quoted argument" deny "guarde
 verdict "L31 a bare \$ that never opens a substitution stays inert" pass "" \
   "$(pay Bash 'echo "cost is $5, ask gh pr merge team"' "$PROF")"
 
-# ------------------------------------------- 1h. a shell's -c string and eval's argument (#658)
-# The text a launcher's `-c` flag or `eval` hands to a real shell RUNS regardless of where it sits
-# on the line — judged through the same subs[] relay #533 built for `$(...)`/backticks, triggered
-# when a quoted span's close is preceded by a recognised shell word's `-c` cluster, or by `eval`.
+# 1f continued: a shell's -c string and eval's argument are launderings too (#658). The text a
+# launcher's `-c` flag or `eval` hands to a real shell RUNS regardless of where it sits on the
+# line — judged through the same subs[] relay #533 built for `$(...)`/backticks, triggered when a
+# quoted span's close is preceded by a recognised shell word's `-c` cluster, or by `eval`.
 verdict "L32 bash -c 'git commit -m x'"          deny "guarded-commit.sh" \
   "$(pay Bash "bash -c 'git commit -m x'" "$PROF")"
 verdict "L33 bash -lc 'git commit -m x'"         deny "guarded-commit.sh" \
@@ -442,6 +442,33 @@ verdict "L45 GIT_GATE=off bash -c 'git commit -m x' (main thread)" pass "" \
 # ...and stepped over for a sub-agent, which denies like the bare command.
 verdict "L46 GIT_GATE=off bash -c 'git commit -m x' (sub-agent)" deny "guarded-commit.sh" \
   "$(pay_sub Bash "GIT_GATE=off bash -c 'git commit -m x'" "$PROF")"
+# The off-switch match requires a word boundary (a trailing space): GIT_GATE=offbeat must not
+# truncate to the exact off-switch token GIT_GATE=off on the relayed string — the bare-command case
+# match already requires the WHOLE word to equal GIT_GATE=off and would refuse this one too.
+verdict "L47 GIT_GATE=offbeat is not the off-switch (word boundary)" deny "guarded-commit.sh" \
+  "$(pay Bash "GIT_GATE=offbeat bash -c 'git commit -m x'" "$PROF")"
+# A leading word boundary matters just as much as the trailing one: an unrelated, longer assignment
+# that merely ENDS in the off-switch spelling must not be read as it either.
+verdict "L48 FOO_GIT_GATE=off is not the off-switch (leading word boundary)" deny "guarded-commit.sh" \
+  "$(pay Bash "FOO_GIT_GATE=off bash -c 'git commit -m x'" "$PROF")"
+# `bash --norc -c` was already covered (L1x style) at the bare-word level; here it is the trigger
+# for a QUOTED -c string, one flag word ahead of the c-cluster.
+verdict "L49 bash --norc -c 'git commit -m x'"   deny "guarded-commit.sh" \
+  "$(pay Bash "bash --norc -c 'git commit -m x'" "$PROF")"
+# A flag word may also sit AFTER the c-cluster and before the quoted string — a real shell still
+# takes the quote as the -c argument in both shapes (bash -c -x '…', bash -c -- '…').
+verdict "L50 bash -c -x 'git commit -m x' (flag after -c)" deny "guarded-commit.sh" \
+  "$(pay Bash "bash -c -x 'git commit -m x'" "$PROF")"
+verdict "L51 bash -c -- 'git commit -m x' (-- after -c)"  deny "guarded-commit.sh" \
+  "$(pay Bash "bash -c -- 'git commit -m x'" "$PROF")"
+# The launcher list itself: dash and ksh, not just bash/sh/zsh.
+verdict "L52 dash -c 'git commit -m x'"          deny "guarded-commit.sh" \
+  "$(pay Bash "dash -c 'git commit -m x'" "$PROF")"
+verdict "L53 ksh -c 'git commit -m x'"            deny "guarded-commit.sh" \
+  "$(pay Bash "ksh -c 'git commit -m x'" "$PROF")"
+# The off-switch's value list, not just `off`: a non-off value from the same five-way alternation.
+verdict "L54 GIT_GATE=disabled bash -c 'git commit -m x' (main thread)" pass "" \
+  "$(pay Bash "GIT_GATE=disabled bash -c 'git commit -m x'" "$PROF")"
 
 # --------------------------------------------------------- 1g. the allowlist is per-segment (#533)
 # The old allowlist matched `guarded-commit.sh` as a substring ANYWHERE on the line, so a line that
