@@ -775,8 +775,10 @@ echo "ok: README documents the gate and its off-switch"
 # S7 — the doctrine a sub-agent reads names the prefixed form too (#643): the gate no longer honours
 # a GIT_GATE=off prefix for a sub-agent, so the never-fall-back sentences must forbid it by name.
 for doc in commands/auto-dev-worker.md commands/auto-dev-merge.md skills/_shared/guard-invocation.md; do
-  grep -qF 'GIT_GATE=off' "$KIT/$doc" \
-    || { echo "FAIL [S7]: $doc does not name a GIT_GATE=off-prefixed write as forbidden"; exit 1; }
+  # The sentence's own line, not the whole file: a GIT_GATE=off mention elsewhere must not mask it.
+  never_line=$(grep -F 'Never fall back to a bare' "$KIT/$doc" || true)
+  grep -qF 'GIT_GATE=off' <<<"$never_line" \
+    || { echo "FAIL [S7]: $doc's never-fall-back sentence does not name a GIT_GATE=off-prefixed write"; exit 1; }
 done
 readme_off=$(grep -F 'GIT_GATE=off' "$KIT/README.md" || true)
 grep -qF 'sub-agent' <<<"$readme_off" \
