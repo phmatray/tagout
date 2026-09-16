@@ -89,7 +89,7 @@ labels:
     description: "skills/setup-repo/, skills/profile-repo/ and .claude/skills/repo-profile.md"
   - name: "area: skills"
     color: "c5def5"
-    description: "skills/_shared/, debug-issue, deliver-issue, review-sessions and cross-skill conventions"
+    description: "skills/_shared/, create-pr, debug-issue, deliver-issue, review-sessions, cross-skill conventions"
   - name: "area: scripts"
     color: "c5def5"
     description: "scripts/ — the structural gates the kit ships"
