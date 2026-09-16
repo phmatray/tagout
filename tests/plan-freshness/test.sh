@@ -184,6 +184,198 @@ run_case "C8 --base without-a finds a.sh gone" 5 "$WORK/all-present.md" --base w
 want_line "C9 …and names it MISSING          " "MISSING modify a.sh (Task 1)"
 run_case "C10 --base origin/main is the same as the default" 0 "$WORK/all-present.md" --base origin/main
 
+echo "== a path an EARLIER task of the same plan creates is SKIP, not MISSING (#640) =="
+cat > "$WORK/create-then-modify.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: modify it
+
+**Files:** modify `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a new test file
+
+**Files:** test `other.sh` (new).
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 4: modify the new test file
+
+**Files:** modify `other.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 5: rename a.sh
+
+**Files:** rename `a.sh` → `moved.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 6: modify the renamed file and the original
+
+**Files:** modify `moved.sh`, `a.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C102 create-then-modify plan exits 0 " 0 "$WORK/create-then-modify.md"
+want_line "C103 the earlier create stays SKIP  " "SKIP create new.sh (Task 1)"
+want_line "C104 a later modify of it is SKIP   " "SKIP modify new.sh (Task 2)"
+want_line "C105 a later modify of a (new) is SKIP" "SKIP modify other.sh (Task 4)"
+want_line "C106 a later modify of a rename target is SKIP" "SKIP modify moved.sh (Task 6)"
+# a.sh is Task 5's rename SOURCE, not an unrelated path — it reads OK on its own terms (it
+# genuinely resolves at the base ref, out of scope per #640's own Spec: a pre-existing path a plan
+# renames/deletes away is not tracked, same as it was before this fix), not because of $CREATED.
+want_line "C107 a's rename source, pre-existing at base, stays OK on its own terms" "OK modify a.sh (Task 6)"
+
+echo "== …but a path only CREATED-known (never at base) is un-remembered once rename/delete CONSUMES it — referencing the old name after that is still MISSING, not silently SKIPped forever (found in review of #640) =="
+cat > "$WORK/create-then-rename-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `renamed-src.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: rename it away
+
+**Files:** rename `renamed-src.sh` → `renamed-dst.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a stale reference to the old name
+
+**Files:** modify `renamed-src.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C110 create-then-rename-then-stale-modify exits 5" 5 "$WORK/create-then-rename-then-stale.md"
+want_line "C111 …the rename source is still SKIP first" "SKIP rename renamed-src.sh (Task 2)"
+want_line "C112 …then the stale old-name reference is MISSING, not SKIP" \
+  "MISSING modify renamed-src.sh (Task 3)"
+
+cat > "$WORK/create-then-delete-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: delete it
+
+**Files:** delete `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a stale reference to the deleted path
+
+**Files:** modify `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C113 create-then-delete-then-stale-modify exits 5" 5 "$WORK/create-then-delete-then-stale.md"
+want_line "C114 …the delete is still SKIP first" "SKIP delete to-delete.sh (Task 2)"
+want_line "C115 …then the stale old-name reference is MISSING, not SKIP" \
+  "MISSING modify to-delete.sh (Task 3)"
+
+echo "== …and a path SKIPped from TWO different sites before being renamed away forgets BOTH records, not just one (found in review of #640) =="
+cat > "$WORK/duplicate-then-rename-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `dup.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: its own new test, named again
+
+**Files:** test `dup.sh` (new).
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: rename it away
+
+**Files:** rename `dup.sh` → `dup2.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 4: a stale reference to the old name
+
+**Files:** modify `dup.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C116 duplicate-then-rename-then-stale-modify exits 5" 5 "$WORK/duplicate-then-rename-then-stale.md"
+want_line "C117 …both earlier SKIPs of the duplicate fire" "SKIP create dup.sh (Task 1)"
+want_line "C118 …the second SKIP fires too" "SKIP test dup.sh (Task 2)"
+want_line "C119 …the rename source is still SKIP" "SKIP rename dup.sh (Task 3)"
+want_line "C120 …and the stale reference is MISSING, not SKIP — neither duplicate survives" \
+  "MISSING modify dup.sh (Task 4)"
+
+cat > "$WORK/modify-then-create.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: modify before it exists
+
+**Files:** modify `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: create it
+
+**Files:** create `new.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C108 the reverse order (modify then create) exits 5" 5 "$WORK/modify-then-create.md"
+want_line "C109 …and the early modify stays MISSING" "MISSING modify new.sh (Task 1)"
+
 # --------------------------------------------------- 4. the prose that has to CALL the script
 #
 # A shipped script nothing invokes is the same absence-shaped failure ci-wiring-check.py exists for,
