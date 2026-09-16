@@ -265,6 +265,46 @@ else
   ok "AC1d repo originSlug — ssh://git@github.com/OWNER/REPO origin (no .git suffix)"
 fi
 
+# ------------------------------------------------------------------------------------- AC1b2/c2/d2
+#
+# Verification gap (#637 review): skills/_shared/preconditions.md's repoint recipe (the
+# prefix/newUrl computation that turns a stale `origin` into the canonical slug) is prose an agent
+# runs verbatim — nothing else executes it, so tests/skills/test.sh's keyword-only grep would stay
+# green even if the recipe swapped its capture order or dropped the `.git`-suffix restoration. This
+# runs that SAME recipe (copied from preconditions.md's fenced block — keep the two in sync) against
+# each origin form staged above and asserts the resulting `git remote get-url origin`.
+repoint_recipe() {
+  # $1: a scratch dir already carrying an `origin` remote; $2: the slug to repoint to.
+  local dir="$1" slug="$2" url prefix newUrl
+  url=$(git -C "$dir" remote get-url origin)
+  prefix=$(printf '%s' "$url" | sed -E 's#(\.git)?/*$##' | sed -E 's#[^:/]+/[^:/]+$##')
+  newUrl="$prefix$slug"
+  case "$url" in *.git) newUrl="$newUrl.git" ;; esac
+  git -C "$dir" remote set-url origin "$newUrl"
+  git -C "$dir" remote get-url origin
+}
+
+got=$(repoint_recipe "$ORIGIN_HTTPS" "acme/widgets-renamed")
+if [ "$got" != "https://github.com/acme/widgets-renamed.git" ]; then
+  note_fail "AC1b2 preconditions repoint recipe (https) — want https://github.com/acme/widgets-renamed.git, got $got"
+else
+  ok "AC1b2 preconditions repoint recipe — https, .git suffix preserved"
+fi
+
+got=$(repoint_recipe "$ORIGIN_SCP" "acme/widgets-renamed")
+if [ "$got" != "git@github.com:acme/widgets-renamed.git" ]; then
+  note_fail "AC1c2 preconditions repoint recipe (git@) — want git@github.com:acme/widgets-renamed.git, got $got"
+else
+  ok "AC1c2 preconditions repoint recipe — git@, .git suffix preserved"
+fi
+
+got=$(repoint_recipe "$ORIGIN_SSH" "acme/widgets-renamed")
+if [ "$got" != "ssh://git@github.com/acme/widgets-renamed" ]; then
+  note_fail "AC1d2 preconditions repoint recipe (ssh://) — want ssh://git@github.com/acme/widgets-renamed, got $got"
+else
+  ok "AC1d2 preconditions repoint recipe — ssh://, no .git suffix added"
+fi
+
 # ------------------------------------------------------------------------------------------- AC2
 #
 # `gh issue view` answers `"OPEN"`; the verb's contract is a lower-cased state, labels as bare names
