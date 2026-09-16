@@ -207,10 +207,26 @@ is_new_marker() {
   esac
 }
 
+# skip_and_remember <verb> <span> — print the SKIP line for a span already known to be legitimately
+# absent (about to be created, or created earlier in this same plan), and record it in $CREATED so a
+# LATER task's reference to the same path reads SKIP too, not MISSING (#640). The one place all three
+# SKIP-producing sites in handle_span go through, so a fourth one can't add the printf and forget the
+# bookkeeping (found in review of #640).
+skip_and_remember() {
+  local verb path
+  verb="$1"; path=$(strip_anchor "$2")
+  printf 'SKIP %s %s (Task %s)\n' "$verb" "$path" "$TASK"
+  CREATED="$CREATED$path$NL"
+}
+
 # check_span <verb> <span> — resolve against $BASE (after stripping a line anchor), print OK/MISSING.
 # A path an EARLIER task of this same plan already SKIPped (i.e. is about to be created) is read
-# as SKIP here too, never MISSING — $CREATED is the run-wide record handle_span's SKIP branches
-# fill in (#640).
+# as SKIP here too, never MISSING — $CREATED is the run-wide record skip_and_remember fills in
+# (#640). $CREATED is NOT append-only, though: a `rename` or `delete` CONSUMES the name (the path
+# stops denoting anything, under that name, from here on), so once it is matched here for one of
+# those two verbs it is removed again — otherwise a plan that creates `x`, renames it away, then
+# wrongly references `x` a third time would read SKIP forever instead of catching the stale
+# reference (found in review of #640: a genuinely stale plan silently waved through).
 check_span() {
   local verb path
   verb="$1"; path=$(strip_anchor "$2")
@@ -220,6 +236,9 @@ check_span() {
     case "$CREATED" in
       *"$NL$path$NL"*)
         printf 'SKIP %s %s (Task %s)\n' "$verb" "$path" "$TASK"
+        case "$verb" in
+          rename|delete) CREATED="${CREATED//"$NL$path$NL"/$NL}" ;;
+        esac
         return 0
         ;;
     esac
@@ -233,16 +252,15 @@ check_span() {
 # span arrives — see the grammar note above.
 handle_span() {
   local span following
-  span="$1"; following="$2"
 
   # Filtered exactly as the source branch below is: without it ANY span was consumed as the target,
   # so a backticked aside between the two names was eaten and the real target flushed as MISSING
   # (#599 — shipped by #594, which added this filter to the source branch only). The end-of-field
   # flush stays unconditional: a rename whose target never arrives must still resolve its source.
+  span="$1"; following="$2"
   if [ -n "$PEND_SRC" ] && looks_like_path "$span"; then
     check_span rename "$PEND_SRC"
-    printf 'SKIP rename %s (Task %s)\n' "$(strip_anchor "$span")" "$TASK"
-    CREATED="$CREATED$(strip_anchor "$span")$NL"
+    skip_and_remember rename "$span"
     PEND_SRC=""
     return
   fi
@@ -256,13 +274,11 @@ handle_span() {
 
   case "$CURRENT_VERB" in
     create)
-      printf 'SKIP create %s (Task %s)\n' "$(strip_anchor "$span")" "$TASK"
-      CREATED="$CREATED$(strip_anchor "$span")$NL"
+      skip_and_remember create "$span"
       ;;
     *)
       if is_new_marker "$following"; then
-        printf 'SKIP %s %s (Task %s)\n' "$CURRENT_VERB" "$(strip_anchor "$span")" "$TASK"
-        CREATED="$CREATED$(strip_anchor "$span")$NL"
+        skip_and_remember "$CURRENT_VERB" "$span"
       else
         check_span "$CURRENT_VERB" "$span"
       fi

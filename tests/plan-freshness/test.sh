@@ -241,7 +241,75 @@ want_line "C103 the earlier create stays SKIP  " "SKIP create new.sh (Task 1)"
 want_line "C104 a later modify of it is SKIP   " "SKIP modify new.sh (Task 2)"
 want_line "C105 a later modify of a (new) is SKIP" "SKIP modify other.sh (Task 4)"
 want_line "C106 a later modify of a rename target is SKIP" "SKIP modify moved.sh (Task 6)"
-want_line "C107 an unrelated present path stays OK" "OK modify a.sh (Task 6)"
+# a.sh is Task 5's rename SOURCE, not an unrelated path — it reads OK on its own terms (it
+# genuinely resolves at the base ref, out of scope per #640's own Spec: a pre-existing path a plan
+# renames/deletes away is not tracked, same as it was before this fix), not because of $CREATED.
+want_line "C107 a's rename source, pre-existing at base, stays OK on its own terms" "OK modify a.sh (Task 6)"
+
+echo "== …but a path only CREATED-known (never at base) is un-remembered once rename/delete CONSUMES it — referencing the old name after that is still MISSING, not silently SKIPped forever (found in review of #640) =="
+cat > "$WORK/create-then-rename-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `renamed-src.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: rename it away
+
+**Files:** rename `renamed-src.sh` → `renamed-dst.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a stale reference to the old name
+
+**Files:** modify `renamed-src.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C110 create-then-rename-then-stale-modify exits 5" 5 "$WORK/create-then-rename-then-stale.md"
+want_line "C111 …the rename source is still SKIP first" "SKIP rename renamed-src.sh (Task 2)"
+want_line "C112 …then the stale old-name reference is MISSING, not SKIP" \
+  "MISSING modify renamed-src.sh (Task 3)"
+
+cat > "$WORK/create-then-delete-then-stale.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: create it
+
+**Files:** create `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 2: delete it
+
+**Files:** delete `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+
+### Task 3: a stale reference to the deleted path
+
+**Files:** modify `to-delete.sh`.
+
+**Interfaces:** none.
+
+- [ ] **Step 1:** do the thing.
+PLAN
+run_case "C113 create-then-delete-then-stale-modify exits 5" 5 "$WORK/create-then-delete-then-stale.md"
+want_line "C114 …the delete is still SKIP first" "SKIP delete to-delete.sh (Task 2)"
+want_line "C115 …then the stale old-name reference is MISSING, not SKIP" \
+  "MISSING modify to-delete.sh (Task 3)"
 
 cat > "$WORK/modify-then-create.md" <<'PLAN'
 ## 🛠️ Implementation plan
