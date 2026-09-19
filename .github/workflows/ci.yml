@@ -306,7 +306,7 @@ jobs:
           # against a config the real Renovate accepts. An unpinned gate is red on correct input,
           # and its obvious "fix" would silently downgrade the config. Floor is major 40.
           # Bumped by the customManager in renovate.json; tests/renovate-config asserts both.
-          RENOVATE_VALIDATOR_VERSION: 44.75.1
+          RENOVATE_VALIDATOR_VERSION: 44.93.6
         run: |
           # Both flags are load-bearing and both were MEASURED against this pin in #79, not read
           # off the docs. Dropping either one re-opens a hole that leaves CI green.
