@@ -118,9 +118,16 @@ PLUGIN_EXTRAS = {
     LIFECYCLE_PLUGIN: ("tests/auto-dev-never-wait",),
     MIGRATION_PLUGIN: ("docs/backlog.md", "renovate.json", "tests/xunit-v3"),
 }
-# `__pycache__` is gitignored, so it is junk in the working tree rather than a source; copying it
-# would turn a stray .pyc into `build`'s exit 2 for the whole repository.
-COPY_SKIP = frozenset({"__pycache__"})
+# `__pycache__` is gitignored, so it is junk in the working tree rather than a source: copying it
+# would turn a stray .pyc into `build`'s exit 2 for the whole repository, and READING one did the
+# same to `check` on an otherwise clean tree — a .pyc is not UTF-8 (#653). Every walk in this file
+# goes through `is_junk`, which is what keeps `build` and `check` agreeing about what is a source.
+JUNK_DIRS = frozenset({"__pycache__"})
+
+
+def is_junk(path):
+    """A path a walk of the working tree finds but git never ships."""
+    return bool(JUNK_DIRS & set(path.parts))
 REPO_SETUP = ".github/repo-setup.yml"
 
 
@@ -293,7 +300,7 @@ def entry_files(repo, entry):
     source = repo / entry
     if source.is_dir():
         return [p for p in sorted(source.rglob("*"))
-                if p.is_file() and not COPY_SKIP & set(p.parts)]
+                if p.is_file() and not is_junk(p)]
     return [source] if source.is_file() else []
 
 
@@ -509,11 +516,12 @@ def plugin_invariants(repo, files):
         # is unaccounted for. The first is #619 coming back — a link the loader cannot follow on a
         # Windows checkout; the second is a copy that outlived the source it was written from, the
         # way an orphaned `commands/*.toml` outlives its `.md`.
-        for path in sorted(p for p in root.rglob("*") if p.is_symlink()):
+        for path in sorted(p for p in root.rglob("*") if p.is_symlink() and not is_junk(p)):
             refusals.append(f"REFUSE: {plugin}/{path.relative_to(root).as_posix()} is a symlink — a "
                             f"plugin directory ships real files (ADR 0017); a checkout without "
                             f"symlink support gets a text file where a skill belongs (#619); {FIX}")
-        for path in sorted(p for p in root.rglob("*") if p.is_file() and not p.is_symlink()):
+        for path in sorted(p for p in root.rglob("*")
+                           if p.is_file() and not p.is_symlink() and not is_junk(p)):
             rel = f"{plugin}/{path.relative_to(root).as_posix()}"
             if rel not in files and rel != f"{plugin}/.claude-plugin/plugin.json":
                 refusals.append(f"REFUSE: {rel} has no source in the tree — delete it; every other "
@@ -534,7 +542,8 @@ def plugin_invariants(repo, files):
             if name == "_shared" or plugin_for_skill(name) != plugin:
                 continue
             scanned += [p for p in (repo / "skills" / name).rglob("*")
-                        if p.is_file() and (p.suffix == ".md" or "scripts" in p.parts)]
+                        if p.is_file() and not is_junk(p)
+                        and (p.suffix == ".md" or "scripts" in p.parts)]
         # Only the hook scripts this plugin's own map names — each hook ships in one plugin.
         hooks_map_rel = read_json(repo, f"{plugin}/.claude-plugin/plugin.json").get("hooks", "")
         map_rel = f"{plugin}/{hooks_map_rel.removeprefix('./')}" if hooks_map_rel else ""
