@@ -309,6 +309,42 @@ run dangling-c "$COMMIT" -C "$R" -c
 [ "$RC" -eq 2 ] || fail dangling-c "a valueless -c must refuse (2), got $RC"
 echo "  ok: arguments — a malformed invocation never reaches git commit"
 
+# Every one of those refusals said what was WRONG and none of them said what right looks like, so a
+# wrong shape cost a turn instead of a correction (#668). The four measured `guarded-commit` and
+# `guarded-merge` refusals in the field are all the plain git spelling leaking in — `-F`,
+# `--author-name`, a bare message, `origin/main` — which the `--` rule covers and which the usage
+# line now states at the point of refusal.
+for _c in no-branch no-commit-args extra-arg dangling-C dangling-c; do
+  grep -qF -- 'usage: guarded-commit.sh [-C <repo-path>] [-c <key>=<value>]… <expected-branch> -- <git commit args…>' \
+    "$WORK/out.$_c" \
+    || fail "$_c" "the refusal does not carry guarded-commit.sh's usage line"
+done
+# The plain-git spellings from the field, both shapes: args before --, and a git-only flag.
+run usage-bare-message "$COMMIT" -C "$R" a "docs(web): a message that belongs after --"
+[ "$RC" -eq 2 ] || fail usage-bare-message "git commit args before -- must refuse (2), got $RC"
+grep -qF -- 'git commit args go after --' "$WORK/out.usage-bare-message" \
+  || fail usage-bare-message "the refusal no longer names the -- rule"
+grep -qF -- 'usage: guarded-commit.sh' "$WORK/out.usage-bare-message" \
+  || fail usage-bare-message "the refusal does not carry the usage line"
+run usage-git-flag "$COMMIT" -C "$R" --author-name X a -- -m x
+[ "$RC" -eq 2 ] || fail usage-git-flag "a git-only flag before -- must refuse (2), got $RC"
+grep -qF -- 'usage: guarded-commit.sh' "$WORK/out.usage-git-flag" \
+  || fail usage-git-flag "the refusal does not carry the usage line"
+# The first line is the refusal itself, byte for byte what it always was — the usage line goes
+# UNDER it, so every message a suite or a field report already quotes still reads the same.
+_first=$(head -1 "$WORK/out.usage-git-flag")
+[ "$_first" = 'guarded-commit: REFUSED — unknown option: --author-name' ] \
+  || fail usage-git-flag "the refusal's first line changed: $_first"
+run usage-merge "$MERGE" -C "$R" a origin/main
+[ "$RC" -eq 2 ] || fail usage-merge "git merge args before -- must refuse (2), got $RC"
+grep -qF -- 'usage: guarded-merge.sh [-C <repo-path>] [-c <key>=<value>]… <expected-branch> -- <git merge args…>' \
+  "$WORK/out.usage-merge" \
+  || fail usage-merge "the refusal does not carry guarded-merge.sh's usage line"
+_first=$(head -1 "$WORK/out.usage-merge")
+[ "$_first" = 'guarded-merge: REFUSED — unexpected extra argument: origin/main (git merge args go after --)' ] \
+  || fail usage-merge "the refusal's first line changed: $_first"
+echo "  ok: a refusal teaches the shape — the usage line under it, the first line unchanged"
+
 # ---------------------------------------------------------------- 7b. --help documents the codes
 #
 # `usage()` prints the header block. It used to be a hardcoded `sed -n '2,42p'`, which silently

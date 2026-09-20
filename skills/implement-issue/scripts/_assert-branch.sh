@@ -159,9 +159,15 @@ if [ "${BASH_SOURCE[0]:-}" = "$0" ]; then
   exit 2
 fi
 
+# A guard that sets GUARD_USAGE to its one-line shape gets it printed UNDER every refusal (#668).
+# The refusals already named what was wrong and never what right looks like, so a wrong shape cost
+# a turn rather than a correction: 11 refusals across five scripts in 18 days, every one of them
+# recovered on the next call. It goes under, never instead: the first line is what field reports and
+# suites quote, and it does not move.
 refuse() {
   local tool="$1"; shift
   printf '%s: REFUSED — %s\n' "$tool" "$*" >&2
+  [ -z "${GUARD_USAGE-}" ] || printf 'usage: %s\n' "$GUARD_USAGE" >&2
   exit 2
 }
 

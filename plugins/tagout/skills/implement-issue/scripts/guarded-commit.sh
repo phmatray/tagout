@@ -96,6 +96,10 @@ if ! command -v assert_branch >/dev/null 2>&1 || ! command -v refuse >/dev/null 
   exit 2
 fi
 
+# Printed under every refusal by the shared refuse() (#668) — the same line as the `# Usage:`
+# header above, which is what a reader gets from --help.
+GUARD_USAGE="guarded-commit.sh [-C <repo-path>] [-c <key>=<value>]… <expected-branch> -- <git commit args…>"
+
 REPO="."
 EXPECTED=""
 GIT_OPTS=()
