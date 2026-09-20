@@ -94,7 +94,14 @@ key=$(printf '%s' "$fp" | md5 -q 2>/dev/null || printf '%s' "$fp" | md5sum 2>/de
 # leave the key empty, collapsing the marker to one per session: the escape for Foo.cs would then
 # let the next .cs file through on its first read. Fall back to the flattened path.
 [ -n "$key" ] || key=$(printf '%s' "$fp" | tr -c 'A-Za-z0-9._-' '_' | tail -c 120)
-marker="${TMPDIR:-/tmp}/roseline-gate-${sid}-${key}"
+# The `-kit-` segment is a NAMESPACE, not decoration (#666). Without it this path was byte-identical
+# to the one `~/.claude/hooks/roseline-gate` builds — the hand-rolled predecessor this gate is a
+# hardened rewrite of, still registered on `Read` on any host that ever had it. Both hooks then
+# shared one token: one armed it, the other consumed it inside the same tool call, the deny won, and
+# the retry this gate's own message instructs found nothing and was denied again. 264 of 264
+# instructed retries across 2,078 sessions. A PreToolUse hook is handed only the tool payload, so
+# the sibling cannot be detected; owning the path is the only thing available. Do not shorten it.
+marker="${TMPDIR:-/tmp}/roseline-gate-kit-${sid}-${key}"
 
 # Only a RECENT marker counts. A marker is otherwise cleared solely by the retry that consumes it,
 # so the common path — model complies, uses roseline, never retries — leaves one behind forever,

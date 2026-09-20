@@ -81,11 +81,14 @@ shim_path() { # $1 destination dir; $2… stub names
 # denying — the reason.
 # $1 name  $2 expected decision ("deny" or "pass")  $3 substring the reason must contain  $4 payload
 # $5 optional PATH the gate runs under (default: this suite's, which carries the dnx stub above).
+# $6 optional gate script (default: the shipped one) — the mutation guard in §3d drives a scratch
+#    copy of the gate through exactly this driver, so the two cases cannot diverge.
 # `env` rather than a `PATH=… bash …` prefix so the lookup of `bash` itself is unambiguously done
 # against the PATH the case is testing, not the one it is replacing.
 verdict() {
-  local name="$1" want="$2" want_msg="$3" payload="$4" gate_path="${5:-$PATH}" out decision rc=0
-  out=$(printf '%s' "$payload" | env PATH="$gate_path" bash "$GATE" 2>/dev/null) || rc=$?
+  local name="$1" want="$2" want_msg="$3" payload="$4" gate_path="${5:-$PATH}" gate="${6:-$GATE}" \
+        out decision rc=0
+  out=$(printf '%s' "$payload" | env PATH="$gate_path" bash "$gate" 2>/dev/null) || rc=$?
   # Exit status is half the PreToolUse contract — exit 2 blocks the tool regardless of stdout. If
   # we only scored stdout, a regression that turned a fail-open path into `exit 2` would be
   # reported here as "pass" while blocking every Read in production.
@@ -115,7 +118,7 @@ marker_for() { # $1 file_path  $2 session
   local k
   k=$(printf '%s' "$1" | md5 -q 2>/dev/null || printf '%s' "$1" | md5sum 2>/dev/null | cut -d' ' -f1)
   [ -n "$k" ] || k=$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | tail -c 120)
-  printf '%s/roseline-gate-%s-%s' "$TMPDIR" "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._-' '_')" "$k"
+  printf '%s/roseline-gate-kit-%s-%s' "$TMPDIR" "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._-' '_')" "$k"
 }
 
 CS=$(csharp_repo); PL=$(plain_repo); NEST=$(nested_repo)
@@ -159,6 +162,44 @@ mk=$(marker_for "$TTL/Old.cs" ttl-session)
 [ -f "$mk" ] || { echo "FAIL: expected a marker at $mk"; exit 1; }
 touch -t 202001010000 "$mk"
 verdict "a stale marker does not open the gate" deny "search_symbols" "$TP"
+
+# ------------------------------------------- 3d. a SECOND hook on the same Read cannot eat the token
+# The escape's marker path used to carry no namespace of its own, so it was byte-identical to the
+# one `~/.claude/hooks/roseline-gate` builds — the hand-rolled predecessor this gate is a hardened
+# rewrite of, still registered on `Read` on any host that ever had it. Both hooks then shared one
+# token: one armed it, the other found it and removed it inside the same tool call, the deny won,
+# and the retry the deny message instructs found nothing and was denied again. Measured across
+# 2,078 sessions: 264 instructed retries, 264 denied (#666). ADR-0002 says this gate never has a
+# fail-closed path; this was one.
+#
+# The sibling is written out as the HISTORICAL consumer, not as a copy of the shipped gate: a copy
+# would track the fix and the case would stop meaning anything.
+sibling_consume() { # $1 file_path  $2 session — what the predecessor hook does to "its" marker
+  local k s
+  k=$(printf '%s' "$1" | md5 -q 2>/dev/null || printf '%s' "$1" | md5sum 2>/dev/null | cut -d' ' -f1)
+  [ -n "$k" ] || k=$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | tail -c 120)
+  s=$(printf '%s' "$2" | tr -c 'A-Za-z0-9._-' '_')
+  rm -f "$TMPDIR/roseline-gate-$s-$k"
+}
+
+COL=$(csharp_repo)
+CP=$(pay Read "$COL/Coll.cs" "$COL" collide-session)
+verdict "a sibling hook is installed: the first read still denies" deny "search_symbols" "$CP"
+sibling_consume "$COL/Coll.cs" collide-session
+verdict "…and the instructed retry is STILL allowed through"       pass ""              "$CP"
+
+# The mutation guard: strip the namespace back out of a scratch copy and the two verdicts above
+# must stop holding. Without it, a "simplification" that removed `-kit-` would leave this section
+# green, because the sibling would once again be removing the marker the gate had just armed.
+OLDGATE="$WORK/gate-unnamespaced.sh"
+sed 's|roseline-gate-kit-|roseline-gate-|' "$GATE" > "$OLDGATE"
+grep -qF 'roseline-gate-kit-' "$OLDGATE" \
+  && { echo "FAIL: the mutation did not strip the namespace from the scratch copy"; exit 1; }
+MUT=$(csharp_repo)
+MP=$(pay Read "$MUT/Mut.cs" "$MUT" mutant-session)
+verdict "an un-namespaced gate denies first, as always" deny "search_symbols" "$MP" "$PATH" "$OLDGATE"
+sibling_consume "$MUT/Mut.cs" mutant-session
+verdict "…and its retry is denied — the collision, reproduced" deny "search_symbols" "$MP" "$PATH" "$OLDGATE"
 
 # ------------------------------------------------------- 3b. the capability probe (fail open, #112)
 # preflight green + `dnx` absent + the gate denying anyway is the composed failure this closes: the
