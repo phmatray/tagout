@@ -136,6 +136,19 @@ run_case() {   # run_case <label> <child> <pr> <repo>
   CASE="$label"
 }
 
+run_argv() {   # run_argv <label> <argv…> — the raw command line, for the option-shape cases
+  local label="$1"; shift
+  case_n=$((case_n + 1))
+  GH_CALL_LOG="$WORK/calls.$case_n.log"; export GH_CALL_LOG
+  : > "$GH_CALL_LOG"
+  OUT="$WORK/out.$case_n"; ERR="$WORK/err.$case_n"
+  set +e
+  "$SCRIPT" "$@" > "$OUT" 2> "$ERR"
+  RC=$?
+  set -e
+  CASE="$label"
+}
+
 expect_rc() {
   if [ "$RC" -ne "$1" ]; then
     echo "FAIL: [$CASE] expected exit $1, got $RC"; echo "--- stdout"; cat "$OUT"; echo "--- stderr"; cat "$ERR"
@@ -235,16 +248,10 @@ else
 fi
 
 # --------------------------------------------------------------------------- 6. usage errors
-case_n=$((case_n + 1))
-GH_CALL_LOG="$WORK/calls.$case_n.log"; export GH_CALL_LOG
-: > "$GH_CALL_LOG"
-OUT="$WORK/out.$case_n"; ERR="$WORK/err.$case_n"
-set +e
-"$SCRIPT" 42 "$REPO" > "$OUT" 2> "$ERR"   # only 2 positional args — the 3rd (repo) is missing
-RC=$?
-set -e
-CASE="usage-wrong-arg-count"
+run_argv "usage-wrong-arg-count" 42 "$REPO"   # only 2 positionals — the 3rd (repo) is missing
 expect_rc 2 && expect_no_calls && ok "2 arguments instead of 3 is exit 2 and calls gh not at all"
+expect_stderr_contains "expected 3 arguments, got 2" \
+  && ok "…and the no-flag refusal keeps its wording, the one three field reports quote"
 
 run_case "usage-non-numeric-child" abc 76 "$REPO"
 expect_rc 2 && expect_no_calls && ok "a non-numeric child issue number is exit 2, calls nothing"
@@ -254,6 +261,30 @@ expect_rc 2 && expect_no_calls && ok "a non-numeric PR number is exit 2, calls n
 
 run_case "usage-bad-repo" 42 76 "not-a-repo"
 expect_rc 2 && expect_no_calls && ok "a repo not shaped like owner/repo is exit 2, calls nothing"
+
+# ------------------------------- 6b. -R names the repository, the way its two siblings take it (#668)
+# `guarded-pr-merge.sh` and `base-run-verdict.sh` both take `-R <[host/]owner/repo>`, and `merge-pr`
+# reads all three in sequence — so the shape used a call ago was transferred to this one, which took
+# the slug positionally, and the turn was lost. Measured: 11 refusals across 5 scripts in 18 days,
+# three of them this exact call, all under 3.1.0.
+GH_PARENT_JSON='{"parent":{"number":100,"title":"Tracking epic","url":"https://github.com/o/r/issues/100"}}' \
+  GH_PR_JSON='{"title":"fix(z): third slice (#66) (#99)","url":"https://github.com/o/r/pull/99"}' \
+  run_argv "flag-repo-appends" -R "$REPO" 66 99
+expect_rc 0 \
+  && expect_body_contains "- #66 — fix(z): third slice ([#99](https://github.com/o/r/pull/99))" \
+  && ok "-R <repo> <child> <pr> does exactly what <child> <pr> <repo> does"
+
+run_argv "flag-repo-twice" -R "$REPO" 42 76 "$REPO"
+expect_rc 2 && expect_no_calls && expect_stderr_contains "repository given twice" \
+  && ok "a repository given both ways is refused by name, never silently preferred"
+
+run_argv "usage-line-under-refusal" 42 76
+expect_rc 2 && expect_stderr_contains "usage: parent-decision-note.sh [-R <[host/]owner/repo>]" \
+  && ok "a wrong shape prints the script's own usage line under the refusal"
+
+run_argv "unknown-option" --toplevel-check 42 76 "$REPO"
+expect_rc 2 && expect_no_calls && expect_stderr_contains "unknown option" \
+  && ok "an option the script does not have is named, not read as a positional"
 
 # ------------------------------------------------------ 7. a genuine gh failure is a real refusal
 GH_PARENT_VIEW_STATUS=1 run_case "parent-lookup-gh-failure" 42 76 "$REPO"
