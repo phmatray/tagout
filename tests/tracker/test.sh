@@ -423,6 +423,66 @@ else
   ok "AC2 issue-create — gh recorded title+labels+body-file, printed {number,url}"
 fi
 
+# ------------------------------------------------- -R is an alias of --repo, on both sides (#668)
+#
+# `guarded-pr-merge.sh` and `base-run-verdict.sh` take the repository as `-R <[host/]owner/repo>`,
+# and `merge-pr` reads them a call or two before it reaches a tracker verb — so the shape was
+# transferred here and refused: `github: issue-create: unknown option: -R`, twice in the measured
+# 18-day window, once on the same day as a `tracker.sh -R` refused by the router. Both positions
+# are accepted: the router's, beside `--repo`, and the verb's own argv.
+: > "$GH_CALL_LOG"
+run_tracker "$BARE" -R other/repo issue-create --title T --body-file "$BODY_F"
+if [ "$RC" -ne 0 ]; then
+  note_fail "-R before the verb — exited $RC ($ERR)"
+elif ! grep -Fq -- "--repo other/repo" "$GH_CALL_LOG"; then
+  note_fail "-R before the verb — the slug never reached gh:
+      $(cat "$GH_CALL_LOG")"
+else
+  ok "-R before the verb — an alias of --repo, forwarded to the backend"
+fi
+
+: > "$GH_CALL_LOG"
+run_tracker "$BARE" issue-create -R other/repo --title T --body-file "$BODY_F"
+if [ "$RC" -ne 0 ]; then
+  note_fail "-R inside the verb — exited $RC ($ERR)"
+elif ! grep -Fq -- "--repo other/repo" "$GH_CALL_LOG"; then
+  note_fail "-R inside the verb — the slug never reached gh:
+      $(cat "$GH_CALL_LOG")"
+else
+  ok "-R inside the verb — the field's own shape, accepted and forwarded"
+fi
+
+# …and two spellings that DISAGREE are refused, never silently resolved to one of them.
+: > "$GH_CALL_LOG"
+run_tracker "$BARE" --repo one/repo issue-create -R two/repo --title T --body-file "$BODY_F"
+if [ "$RC" -ne 2 ]; then
+  note_fail "--repo and -R disagreeing — expected exit 2, got $RC ($ERR)"
+elif ! printf '%s' "$ERR" | grep -Fq "given twice"; then
+  note_fail "--repo and -R disagreeing — the refusal does not say 'given twice': $ERR"
+elif [ -s "$GH_CALL_LOG" ]; then
+  note_fail "--repo and -R disagreeing — gh was called anyway:
+      $(cat "$GH_CALL_LOG")"
+else
+  ok "--repo and -R disagreeing — refused by name, nothing filed"
+fi
+
+# The same slug both ways is not a disagreement, and is not refused.
+: > "$GH_CALL_LOG"
+run_tracker "$BARE" --repo other/repo issue-create -R other/repo --title T --body-file "$BODY_F"
+[ "$RC" -eq 0 ] \
+  && ok "--repo and -R agreeing — accepted, not refused on a technicality" \
+  || note_fail "--repo and -R agreeing — expected exit 0, got $RC ($ERR)"
+
+# The router's own usage line names -R, so a reader of a refusal sees both spellings.
+run_tracker "$BARE" --nope repo
+if [ "$RC" -ne 2 ]; then
+  note_fail "an unknown router option — expected exit 2, got $RC"
+elif ! printf '%s' "$ERR" | grep -Fq -- "[--repo|-R <slug>]"; then
+  note_fail "the router's usage line does not name -R beside --repo: $ERR"
+else
+  ok "the router's usage line names -R beside --repo"
+fi
+
 # ------------------------------------------------------------------------------------------- AC3
 #
 # The refusal happens BEFORE any gh call — the empty log is the proof, not just the exit code.
