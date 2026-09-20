@@ -22,6 +22,23 @@ SCRIPT="$KIT/skills/review-sessions/scripts/harvest.py"
 [ -f "$SCRIPT" ] || { echo "FAIL: $SCRIPT missing"; exit 1; }
 SKILL="$KIT/skills/review-sessions/SKILL.md"
 
+# ------------------------------------------------------- the hook-deny rule is pinned to the hooks
+# harvest.py keys `hook-deny` on wording only the kit's own gates print (#667). The foreign hook the
+# kit's roseline gate was rewritten from shares its LEAD sentence, so the lead sentence is not the
+# discriminator; these three phrases are. Read them back out of the files that print them, so a
+# reworded gate fails here, loudly, instead of silently making the rule match nothing.
+pin_phrase() { # $1 hook file  $2 the phrase harvest.py matches on
+  grep -qF "$2" "$1" || {
+    echo "FAIL: $(basename "$1") no longer prints '$2'"
+    echo "      harvest.py's hook-deny rule is keyed on exactly that phrase. Change both together,"
+    echo "      or the rule stops counting a real kit deny and says nothing about it."
+    exit 1; }
+}
+pin_phrase "$KIT/hooks/roseline-gate.sh"  'this kit routes all C# analysis through RoselineMCP'
+pin_phrase "$KIT/hooks/git-write-gate.sh" 'To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment'
+pin_phrase "$KIT/hooks/git-write-gate.sh" 'nobody is here to approve a bypass'
+echo "ok   the three kit-gate phrases harvest.py keys on are the ones the hooks print"
+
 # ------------------------------------------------------------------------- fixture writers
 # $1 = out file (appended), $2 = type (user|assistant), $3 = timestamp, $4 = JSON for message.content
 write_line() {
@@ -77,12 +94,33 @@ write_line "$T" user "$D" "$(tool_result t1 'tick-plan: gh api timed out' true)"
 # decoy: an is_error on a non-kit command.
 write_line "$T" assistant "$D" "$(tool_use t2 Bash '{"command":"/usr/bin/foo --bar"}')"
 write_line "$T" user "$D" "$(tool_result t2 'foo: command not found' true)"
-# 2. hook-deny: the kit's write-gate.
+# 2. hook-deny: the kit's write-gate. The reason carries deny()'s own tail, because the real one
+# always does and that tail is what harvest.py keys on (#667) — a fixture trimmed to the lead
+# sentence would be wording the shipped gate never prints on its own.
 write_line "$T" assistant "$D" "$(tool_use t3 Bash '{"command":"git commit -m x"}')"
-write_line "$T" user "$D" "$(tool_result t3 'Blocked by the git write-gate: `git commit -m x` is one of the writes that produced #26 and #280 in a shared checkout.' true)"
+write_line "$T" user "$D" "$(tool_result t3 'Blocked by the git write-gate: `git commit -m x` is one of the writes that produced #26 and #280 in a shared checkout.
+Use guarded-commit.sh instead.
+
+To run this one command anyway, prefix it: `GIT_GATE=off git …`. To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment — an `export` inside a Bash call never reaches this hook.' true)"
+# …and the sub-agent branch of the same deny(), whose tail is the other half of the write-gate rule.
+write_line "$T" assistant "$D" "$(tool_use t3c Bash '{"command":"git push -u origin feat/47-x"}')"
+write_line "$T" user "$D" "$(tool_result t3c 'Blocked by the git write-gate: `git push -u origin feat/47-x` is one of the writes that produced #26 and #280 in a shared checkout.
+Use guarded-push.sh instead.
+
+You are a sub-agent — nobody is here to approve a bypass, and a `GIT_GATE=off` prefix is not honoured for you. If the guard'"'"'s path is refused, follow the guard-invocation doctrine; otherwise stop and report this denial.' true)"
+# …and the roseline gate, which the kit ALSO owns.
+write_line "$T" assistant "$D" "$(tool_use t3d Read '{"file_path":"/repo/src/Foo.cs"}')"
+write_line "$T" user "$D" "$(tool_result t3d 'Blocked by the roseline gate: Foo.cs is C#, and this kit routes all C# analysis through RoselineMCP. Use these instead of Read:
+  - file shape / locate a member  -> mcp__roseline__search_symbols (file: "Foo.cs")' true)"
 # decoy: a deny from a foreign hook.
 write_line "$T" assistant "$D" "$(tool_use t4 Grep '{"pattern":"class Foo"}')"
 write_line "$T" user "$D" "$(tool_result t4 'roseline-nudge: prefer search_symbols over Grep for C#' true)"
+# decoy (#667): the SAME lead sentence, printed by the hand-rolled `~/.claude/hooks/roseline-gate`
+# this gate is a hardened rewrite of — a hook many hosts still have registered. It says "CLAUDE.md
+# requires RoselineMCP"; no kit version, back to 2.0.0, has ever printed that. 1,939 of one real
+# run's 2,395 signals were this line, credited to the kit.
+write_line "$T" assistant "$D" "$(tool_use t4b Read '{"file_path":"/repo/src/Bar.cs"}')"
+write_line "$T" user "$D" "$(tool_result t4b 'Blocked by the roseline gate: Bar.cs is C#, and CLAUDE.md requires RoselineMCP for navigating existing C# code.' true)"
 # decoy: the harness worktree refusal (not the kit) — a main session's wording, on a command that
 # names a kit script (so it actually exercises the drop rather than being dropped for missing that).
 write_line "$T" assistant "$D" "$(tool_use t5 Bash '{"command":"\"$GUARDS/guarded-commit.sh\" -C /x feat/47-x -- -m x"}')"
@@ -97,7 +135,10 @@ write_line "$T" assistant "$D" "$(tool_use t5c Bash '{"command":"\"$GUARDS/guard
 write_line "$T" user "$D" "$(tool_result t5c '<tool_use_error>This agent is isolated in the worktree /x, but this command names git in a form too complex to verify. Refusing to run it.</tool_use_error>' true)"
 # and the same wrap on a hook-deny — must still be RECOGNIZED as one (not dropped, not tool-error).
 write_line "$T" assistant "$D" "$(tool_use t3b Bash '{"command":"git commit -m x"}')"
-write_line "$T" user "$D" "$(tool_result t3b '<tool_use_error>Blocked by the git write-gate: `git commit -m x` is one of the writes that produced #26 and #280 in a shared checkout.</tool_use_error>' true)"
+write_line "$T" user "$D" "$(tool_result t3b '<tool_use_error>Blocked by the git write-gate: `git commit -m x` is one of the writes that produced #26 and #280 in a shared checkout.
+Use guarded-commit.sh instead.
+
+To run this one command anyway, prefix it: `GIT_GATE=off git …`. To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment — an `export` inside a Bash call never reaches this hook.</tool_use_error>' true)"
 # decoys (#645): a harness/dispatch tool failure is not a kit tool-error — only a Bash call's own
 # failure is. Each below is is_error and its tool_use touches a skills/ path, so it counts as a
 # tool-error today; after the fix, none of them may.
@@ -332,7 +373,7 @@ if guard_details != want_guards:
 # the summed count — count, never len(), since a collapse (t3+t3b) is one record worth 2.
 def summed(kind):
     return sum(r["count"] for r in recs if r["kind"] == kind)
-want_summed = {"forbidden-wait": 2, "worker-report": 2, "harness-nudge": 2, "hook-deny": 2, "suite-fail": 1}
+want_summed = {"forbidden-wait": 2, "worker-report": 2, "harness-nudge": 2, "hook-deny": 4, "suite-fail": 1}
 for kind, want_n in want_summed.items():
     got_n = summed(kind)
     if got_n != want_n:
@@ -345,7 +386,7 @@ PY
 MD=$(kit_scratch)/tally.md
 python3 "$SCRIPT" "$PROJ" --markdown --since 2026-08-15 > "$MD" 2>/dev/null || { echo "FAIL: --markdown exited non-zero"; exit 1; }
 grep -q '^## implement-issue$' "$MD" || { echo "FAIL: the tally has no per-skill heading"; cat "$MD"; exit 1; }
-grep -q '^signals: 17 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 17 across 1 sessions'"; tail -3 "$MD"; exit 1; }
+grep -q '^signals: 19 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 19 across 1 sessions'"; tail -3 "$MD"; exit 1; }
 grep -q 'skipped 1 unparseable' "$MD" || { echo "FAIL: the non-JSON line was not counted as skipped"; tail -3 "$MD"; exit 1; }
 echo "ok   the markdown tally groups by skill and kind, counts the skipped line, ends with the signals line"
 
