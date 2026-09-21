@@ -1,7 +1,7 @@
 {
   "name": "tagout",
   "displayName": "Tagout",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "The gate-verified GitHub issue → pull request lifecycle for coding agents: create-issue, implement-issue, merge-pr, auto-dev, triage-backlog and their guards. No bundled MCP server, no .NET prerequisite. Add tagout-migrate for a legacy .NET application.",
   "author": {
     "name": "Philippe Matray"

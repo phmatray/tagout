@@ -8,6 +8,17 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [3.1.1](https://github.com/phmatray/tagout/compare/v3.1.0...v3.1.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **hooks:** namespace the roseline gate's one-shot marker ([#671](https://github.com/phmatray/tagout/issues/671)) ([c6a8f30](https://github.com/phmatray/tagout/commit/c6a8f3011d6dc1c5e39c911090da1db437f88569)), closes [#666](https://github.com/phmatray/tagout/issues/666)
+* **implement-issue:** a backticked command in a Files field is prose, not a path ([#670](https://github.com/phmatray/tagout/issues/670)) ([17d729b](https://github.com/phmatray/tagout/commit/17d729b0e9971f769079383689fdbc2c797d65be)), closes [#654](https://github.com/phmatray/tagout/issues/654)
+* **review-sessions:** count a hook-deny only for the kit's own gates ([#672](https://github.com/phmatray/tagout/issues/672)) ([dc02450](https://github.com/phmatray/tagout/commit/dc02450114a3dffba2304b62cd20c1a20cb24622)), closes [#667](https://github.com/phmatray/tagout/issues/667)
+* **scripts:** host-adapters skips gitignored junk in every tree walk ([#676](https://github.com/phmatray/tagout/issues/676)) ([3c1aeee](https://github.com/phmatray/tagout/commit/3c1aeeed254f2714c1f5c090a101d7b03fcfcc79)), closes [#653](https://github.com/phmatray/tagout/issues/653)
+* **scripts:** one spelling for the repository argument, and a usage line under the refusal ([#668](https://github.com/phmatray/tagout/issues/668)) ([#673](https://github.com/phmatray/tagout/issues/673)) ([c577d6d](https://github.com/phmatray/tagout/commit/c577d6dcd6a93042e61c1461d496e0305469534a))
+
 ## [3.1.0](https://github.com/phmatray/tagout/compare/v3.0.1...v3.1.0) (2026-09-16)
 
 
