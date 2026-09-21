@@ -1,0 +1,19 @@
+{
+  "agent_id": "a000000000000000f",
+  "agent_type": "general-purpose",
+  "cwd": "/path/to/worktree",
+  "effort": {
+    "level": "xhigh"
+  },
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "bypassPermissions",
+  "prompt_id": "11111111-1111-1111-1111-111111111111",
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "tool_input": {
+    "command": "echo hello",
+    "description": "Echo a test string"
+  },
+  "tool_name": "Bash",
+  "tool_use_id": "toolu_01XXXXXXXXXXXXXXXXXXXXXX",
+  "transcript_path": "/path/to/transcript.jsonl"
+}

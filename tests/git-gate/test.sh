@@ -839,6 +839,51 @@ grep -qF 'GIT_GATE=off' "$KIT/README.md" \
   || { echo "FAIL: README does not document GIT_GATE=off"; exit 1; }
 echo "ok: README documents the gate and its off-switch"
 
+# S8 — the synthesised payloads are pinned to a REAL one (#652).
+#
+# Everything above drives a payload this file writes, which is the right seam for forty cases and
+# the wrong one for a single question: what does the host actually SEND? `pay_sub` adds `agent_id`
+# because the suite believes that is the field's name; the gate reads `.agent_id` because #643
+# believed the same. Nothing in the repository had ever seen one. A host that renamed or nested it
+# would turn the fix silently back off — a sub-agent's `GIT_GATE=off` prefix honoured again — with
+# every case above still green. These two fixtures are recorded, not written; see their README for
+# how, and re-capture rather than hand-edit them.
+FIXTURES="$KIT/tests/git-gate/fixtures"
+SUB_FIX="$FIXTURES/pretooluse-subagent.json"
+MAIN_FIX="$FIXTURES/pretooluse-main-thread.json"
+for f in "$SUB_FIX" "$MAIN_FIX"; do
+  [ -f "$f" ] || { echo "FAIL [S8]: $f is missing — $FIXTURES/README.md says how to re-capture it"; exit 1; }
+  jq -e . "$f" > /dev/null 2>&1 || { echo "FAIL [S8]: $f is not valid JSON"; exit 1; }
+done
+
+# 1. the shape itself: that name, at the top level, a non-empty string — and absent, not empty, on
+# the main thread, which is the half "empty means the main thread" rests on.
+jq -e 'has("agent_id") and (.agent_id | type == "string") and (.agent_id | length > 0)' "$SUB_FIX" > /dev/null   || { echo "FAIL [S8]: the captured sub-agent payload has no top-level string agent_id, which is what the gate reads"; exit 1; }
+jq -e 'has("agent_id") | not' "$MAIN_FIX" > /dev/null   || { echo "FAIL [S8]: the captured main-thread payload carries an agent_id — 'absent means main thread' no longer holds"; exit 1; }
+echo "ok: S8 a real sub-agent call carries a top-level string agent_id; a real main-thread call carries none"
+
+# 2. `pay_sub` agrees with the capture about WHERE the field lives — the link that makes the forty
+# synthetic cases above evidence about this host rather than about this file.
+real_path=$(jq -r 'paths(scalars) | select(.[-1] == "agent_id") | join(".")' "$SUB_FIX")
+synth_path=$(pay_sub Bash 'git commit -m x' /tmp | jq -r 'paths(scalars) | select(.[-1] == "agent_id") | join(".")')
+if [ "$real_path" != "agent_id" ] || [ "$synth_path" != "$real_path" ]; then
+  echo "FAIL [S8]: agent_id sits at '$real_path' in the capture and at '$synth_path' in pay_sub"
+  echo "           The gate reads .agent_id. Fix the gate and pay_sub together, or every case above"
+  echo "           is testing a payload this host does not send."
+  exit 1
+fi
+echo "ok: S8 pay_sub puts agent_id exactly where a real sub-agent call does"
+
+# 3. and the real envelope through the real gate: the whole captured object, this suite's command
+# and cwd substituted in, nothing else touched.
+fixture_pay() { # $1 fixture  $2 command  $3 cwd
+  jq -c --arg c "$2" --arg d "$3" '.cwd = $d | .tool_input.command = $c' "$1"
+}
+verdict "S8a captured sub-agent envelope: GIT_GATE=off git commit is denied" deny "guarded-commit.sh" \
+  "$(fixture_pay "$SUB_FIX" 'GIT_GATE=off git commit -m x' "$PROF")"
+verdict "S8b captured main-thread envelope: the same prefix is honoured" pass "" \
+  "$(fixture_pay "$MAIN_FIX" 'GIT_GATE=off git commit -m x' "$PROF")"
+
 # S7 — the doctrine a sub-agent reads names the prefixed form too (#643): the gate no longer honours
 # a GIT_GATE=off prefix for a sub-agent, so the never-fall-back sentences must forbid it by name.
 for doc in commands/auto-dev-worker.md commands/auto-dev-merge.md skills/_shared/guard-invocation.md; do
