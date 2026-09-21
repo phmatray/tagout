@@ -27,7 +27,7 @@ A record:
     {"kind", "skill", "session", "path", "ts", "excerpt", "tool", "detail", "count"}
 
 kind ∈ tool-error      a Bash tool_result flagged is_error — not a harness `<tool_use_error>` — whose command named a kit path or script
-       hook-deny       a PreToolUse deny from one of the kit's two gates (its reason prefix)
+       hook-deny       a PreToolUse deny from one of the kit's two gates (wording only they print)
        forbidden-wait  an assistant turn in the never-wait shape a worker must never end on
        worker-report   a worker's final report line with STATUS PARTIAL | BLOCKED | FAILED
        suite-fail      a tool_result carrying a kit golden suite's FAIL: line
@@ -38,7 +38,9 @@ Every kind requires the kit to have been INVOKED, never merely mentioned. `tool-
 Bash call's own failure — a harness `<tool_use_error>` (a dispatch-depth ceiling, a blocked `sleep`,
 a permission rejection) or a non-Bash tool's error (Agent, Edit, Read, Grep, an MCP tool) is the
 harness's mechanics, not the kit's. `hook-deny` requires `is_error`, so a test's own printed deny
-line is not one. A `guard-refusal` needs a failing Bash call that ran the guard (see `invoked_guard`),
+line is not one, AND wording only the kit's gates print — the `Blocked by the …` lead sentence is
+shared with `~/.claude/hooks/roseline-gate`, the hand-rolled hook the kit's gate was rewritten from,
+and crediting that one to the kit put 1,939 foreign denials in one real run's tally (#667). A `guard-refusal` needs a failing Bash call that ran the guard (see `invoked_guard`),
 and `names_kit_path` counts `--kit-name` only as a standalone identifier, never as part of a longer
 one — a dash-encoded transcript directory or a same-prefixed sibling directory included. And
 `forbidden-wait`, `worker-report` and `harness-nudge` each require an UNQUOTED occurrence (see
@@ -83,9 +85,17 @@ NON_GUARD_KIT_SCRIPTS = (
 )
 KIT_DIRS_ANYWHERE = ("skills/", "hooks/", "commands/")
 KIT_DIRS_IN_KIT = ("scripts/", "tests/", "evals/")
-HOOK_DENY_PREFIXES = (
-    "Blocked by the git write-gate",
-    "Blocked by the roseline gate",
+# Wording ONLY the kit's own gates print, matched anywhere in the reason (#667). The obvious key,
+# the `Blocked by the …` lead sentence, is shared with the hand-rolled `~/.claude/hooks/roseline-gate`
+# a user can still have registered on `Read`, and 1,939 of one run's 2,395 signals turned out to be
+# that hook rather than this kit's. Each phrase below is taken from the ONE function that prints it,
+# never from a call site: `git-write-gate.sh`'s `deny()` varies its middle sentence per command but
+# always closes on one of these two tails, so a new deny is covered the day it is written.
+# tests/review-sessions/test.sh reads all three back out of the hooks.
+KIT_GATE_PHRASES = (
+    "this kit routes all C# analysis through RoselineMCP",
+    "To disable the gate for a whole session, launch Claude with GIT_GATE=off in its environment",
+    "nobody is here to approve a bypass",
 )
 # A main session's wording, then a sub-agent's, then a bare permission rejection — all the harness
 # (or the person at the keyboard), never the kit.
@@ -359,7 +369,7 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                     unwrapped = unwrap(body)
                     if unwrapped.startswith(HARNESS_REFUSAL_PREFIXES):
                         continue   # the harness's own worktree isolation, not the kit
-                    if is_error and any(unwrapped.startswith(p) or ("\n" + p) in unwrapped for p in HOOK_DENY_PREFIXES):
+                    if is_error and any(p in unwrapped for p in KIT_GATE_PHRASES):
                         emit("hook-deny", excerpt_of(unwrapped), tool, "gate")
                         continue
                     g = GUARD_RE.search(body) if invoked_guard(tool, is_error, touched) else None

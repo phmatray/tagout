@@ -58,9 +58,17 @@
 #   - A backtick-quoted span is a PATH only if it contains `/` or `.` — `guard_hint()`, `t7`,
 #     `<kit>`, `CLAUDE_PLUGIN_ROOT` name no file and are silently ignored, not reported and not
 #     counted; a span shaped like a real path (has a slash or a dot) is the only kind ever checked.
+#     A span carrying WHITESPACE is judged by its LAST word instead of by the whole span (#654): a
+#     path may hold spaces (`dir with space/b.sh`, a case this suite has driven since #441) but its
+#     final component still carries the evidence, while a COMMAND written in backticks inside the
+#     field ends on a bare subcommand that carries none. #643's Task 3 wrote "…and their
+#     `plugins/tagout-migrate/` twins where `host-adapters.py build` writes them", and the reader
+#     resolved that last span as a path: `MISSING modify host-adapters.py build`, a false STALE on
+#     a plan that was entirely fresh.
 #     Known, accepted ceiling: an extension-less root file named in backticks with no directory
 #     (`Makefile`, `LICENSE`) has neither and is misread as a symbol, same as an unevidenced dotted
-#     symbol name would be misread as a path — neither has been observed in a real plan.
+#     symbol name would be misread as a path — neither has been observed in a real plan. A path
+#     whose LAST word is extension-less (`dir with space/subdir`) now falls under that same ceiling.
 #   - A trailing `:NN`, `:NN-MM` or `:NN–MM` (en dash) on a path is a line anchor, stripped before
 #     resolving and before it is printed — the kit's own `plan-shape.md` template writes this shape.
 #   - `rename` takes the NEXT TWO path-shaped spans as a pair: the first is the existing name,
@@ -155,8 +163,16 @@ strip_leading_verb() {
 # A backtick-quoted span is a path only if it looks like one: a slash or a dot somewhere in it. A
 # symbol/region name (`t7`, `guard_hint()`, `<kit>`, `CLAUDE_PLUGIN_ROOT`) has neither and is not a
 # path — see the grammar note above the shebang header for the accepted ceiling this leaves.
+#
+# A span carrying whitespace is judged by its LAST word (#654). `dir with space/b.sh` keeps the
+# evidence there; `host-adapters.py build` and `python3 scripts/host-adapters.py build` are commands
+# whose evidence sits on an earlier word, and asking the whole span resolved them as paths that no
+# ref has ever held.
 looks_like_path() {
-  case "$1" in
+  local last="$1"
+  while :; do case "$last" in *[[:space:]]) last=${last%?} ;; *) break ;; esac; done
+  case "$last" in *[[:space:]]*) last="${last##*[[:space:]]}" ;; esac
+  case "$last" in
     */*|*.*) return 0 ;;
     *) return 1 ;;
   esac

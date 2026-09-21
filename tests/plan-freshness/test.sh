@@ -733,6 +733,26 @@ run_case "C74 'and'-joined paths: exit 0        " 0 "$WORK/and-joined.md"
 want_line "C75 …the first path is OK            " "OK modify a.sh (Task 1)"
 want_line "C76 …the second path is OK           " "OK modify dir with space/b.sh (Task 1)"
 
+echo "== …but a backticked COMMAND is prose, not a path (#654) =="
+# #643's Task 3 ended its field with "…and their `plugins/tagout-migrate/` twins where
+# `host-adapters.py build` writes them", and the field's last span was resolved as a path:
+# `MISSING modify host-adapters.py build (Task 3)`, a false STALE on a fresh plan. A span carrying
+# whitespace is a path only if its LAST word carries the same slash-or-dot evidence the predicate
+# already asks of a span. `dir with space/b.sh` does; a command's trailing subcommand never does.
+cat > "$WORK/command-span.md" <<'PLAN'
+## 🛠️ Implementation plan
+
+### Task 1: a regenerate step naming the command that writes the copies
+
+**Files:** modify `a.sh`, `dir with space/b.sh` and their twins where `host-adapters.py build`
+writes them. Then run `python3 scripts/host-adapters.py build`.
+PLAN
+run_case "C127 a backticked command: exit 0     " 0 "$WORK/command-span.md"
+want_line "C128 …the plain path is OK           " "OK modify a.sh (Task 1)"
+want_line "C129 …the path with a space is OK    " "OK modify dir with space/b.sh (Task 1)"
+want_no_line "C130 …the command is not a path     " "MISSING modify host-adapters.py build (Task 1)"
+want_no_line "C131 …nor is the interpreted one    " "MISSING modify python3 scripts/host-adapters.py build (Task 1)"
+
 echo "== …a trailing ':NN' or ':NN-MM'/':NN–MM' line anchor is stripped, not part of the path (#441, #512 shape 5) =="
 #
 # plan-shape.md's own task-block example writes `exact/path/to/existing.py:123-145` — the kit's own

@@ -8,7 +8,8 @@
 # what GitHub can actually say, and a host that cannot say it answers NOT_IMPLEMENTED rather than
 # everyone answering less.
 #
-# The repository comes from TRACKER_REPO (`tracker.sh --repo <slug>`), empty for "this checkout".
+# The repository comes from TRACKER_REPO (`tracker.sh --repo <slug>`, or `-R <slug>` leading the
+# verb's own arguments — #668), empty for "this checkout".
 # The host is resolved through skills/_shared/scripts/_gh-host.sh (#514) rather than left to gh's
 # default: `gh -R OWNER/REPO` takes gh's DEFAULT host even inside a GitHub Enterprise checkout, and
 # `gh api` never infers a host at all, so every kit script addressing a repository by a bare
@@ -49,6 +50,30 @@ fi
 . "$HERE/../../skills/_shared/scripts/_gh-host.sh" || {
   echo "github: REFUSED — cannot load skills/_shared/scripts/_gh-host.sh; reinstall the kit" >&2
   exit 2; }
+
+# `-R <[host/]owner/repo>` LEADING a verb's arguments (#668). Two of the scripts `merge-pr` reads
+# just before it reaches a tracker verb take the repository that way, and the shape was transferred
+# here and refused — `github: issue-create: unknown option: -R`, twice in an 18-day window. It is
+# lifted out of the argv HERE, once for every verb, rather than added to twelve option loops that
+# would each then have to re-resolve the host the line below resolves. Leading only: further in, a
+# `-R` is an option's VALUE, which this pass has no arity table to recognise.
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -R)  [ $# -ge 2 ] || { echo "github: -R needs a <[host/]owner/repo>" >&2; exit 2; }
+         REPO_FLAG="$2"; shift 2 ;;
+    -R*) REPO_FLAG="${1#-R}"; shift ;;
+    *)   break ;;
+  esac
+done
+if [ -n "${REPO_FLAG-}" ]; then
+  # Both spellings at once is fine while they agree; disagreeing, one of two repositories would be
+  # written to and the caller could not tell which.
+  if [ -n "${TRACKER_REPO-}" ] && [ "$TRACKER_REPO" != "$REPO_FLAG" ]; then
+    echo "github: repository given twice and the two disagree: --repo $TRACKER_REPO and -R $REPO_FLAG" >&2
+    exit 2
+  fi
+  TRACKER_REPO="$REPO_FLAG"
+fi
 
 # Sets KIT_REPO_SLUG (empty in, empty out) and exports GH_HOST when a host resolves. Returns 2 on a
 # malformed slug, having called nothing.
