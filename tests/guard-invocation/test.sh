@@ -39,6 +39,15 @@ grep -qi -- 'bare `git commit`\|bare `git push`\|bare `git merge`\|never fall ba
 grep -qi -- 'report' "$DOC" \
   || note_fail "$DOC does not require reporting the deviation"
 
+# #668: five scripts spelled the repository five ways and agents transferred the shape they used a
+# call ago, 11 refusals in 18 days. The doctrine names ONE spelling, and the `--` rule beside it —
+# the four `guarded-commit`/`guarded-merge` refusals in that window were all the plain git spelling
+# leaking in front of `--`.
+grep -qF -- '-R <[host/]owner/repo>' "$DOC" \
+  || note_fail "$DOC does not name -R <[host/]owner/repo> as the one repository spelling"
+grep -qF -- 'after `--`' "$DOC" \
+  || note_fail "$DOC does not state that git/gh's own arguments go after --"
+
 grep -qi -- 'make-worktree\.sh' "$DOC" \
   || note_fail "$DOC does not explicitly exclude make-worktree.sh's pre-worktree \$GUARDS usage"
 

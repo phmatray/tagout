@@ -54,6 +54,17 @@ If invoking a guard at `$GUARDS` is refused:
    belongs in the run's structured report so a supervisor's recap can see it — a deviation that
    surfaces nowhere is indistinguishable from one that never happened.
 
+## How a kit script is told which repository
+
+`-R <[host/]owner/repo>`, leading the arguments. `guarded-pr-merge.sh`, `base-run-verdict.sh`,
+`parent-decision-note.sh`, `tracker.sh` (where `--repo` is the same thing) and every `tracker.sh`
+verb take it that way. Giving the same script a repository twice, by two spellings that disagree, is
+refused rather than resolved to one of them.
+
+Everything `git` or `gh` itself would take goes **after `--`** — `-m`, `-F`, `--author`,
+`origin/main`, `--squash`. A guard's own options come before it. A wrong shape is refused, and the
+refusal prints the script's usage line under it, so the correction is in the same turn (#668).
+
 **Never fall back to a bare — or `GIT_GATE=off`-prefixed — `git commit`, `git push`,
 `git merge` or a raw `gh pr merge`.** That is precisely the failure the guards exist to prevent
 (#26, #280, #41, #512) — a refused guard is a reason to relocate it, not a reason to bypass it.

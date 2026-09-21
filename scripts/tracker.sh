@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # tracker.sh — route a named tracker verb to the backend the profile selects (#505).
 #
-# usage: tracker.sh [--tracker <name>] [--repo <slug>] <verb> [args…]
+# usage: tracker.sh [--tracker <name>] [--repo|-R <slug>] <verb> [args…]
 #        tracker.sh [--tracker <name>] state <skill>
 #        tracker.sh --help
+#
+# `-R` is an alias of `--repo` (#668). The repository had five spellings across the kit's scripts;
+# `-R <[host/]owner/repo>` is the one `guarded-pr-merge.sh` and `base-run-verdict.sh` already take
+# and the one `_gh-host.sh` already parses, so it is the one the rest converge on. A verb's own
+# arguments take it too — the backend lifts it out before resolving the host.
 #
 # WHY THIS EXISTS. Every tracker operation in this kit is a direct `gh` call — 111 lines across 18
 # scripts, 189 across 39 prose files — and `skills/_shared/preconditions.md` could answer only
@@ -75,15 +80,15 @@ while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help)  usage; exit 0 ;;
     --tracker)  [ $# -ge 2 ] || die 2 "--tracker needs a name"; TRACKER="$2"; shift 2 ;;
-    --repo)     [ $# -ge 2 ] || die 2 "--repo needs a slug";    TRACKER_REPO_ARG="$2"; shift 2 ;;
+    --repo|-R)  [ $# -ge 2 ] || die 2 "$1 needs a slug";        TRACKER_REPO_ARG="$2"; shift 2 ;;
     --)         shift; break ;;
-    -*)         die 2 "unexpected option: $1" "usage: tracker.sh [--tracker <name>] [--repo <slug>] <verb> [args…]" ;;
+    -*)         die 2 "unexpected option: $1" "usage: tracker.sh [--tracker <name>] [--repo|-R <slug>] <verb> [args…]" ;;
     *)          VERB="$1"; shift; break ;;
   esac
 done
 
 [ -n "$VERB" ] || die 2 "no verb given" \
-  "usage: tracker.sh [--tracker <name>] [--repo <slug>] <verb> [args…]"
+  "usage: tracker.sh [--tracker <name>] [--repo|-R <slug>] <verb> [args…]"
 
 command -v jq > /dev/null 2>&1 || \
   die 2 "jq is missing — it is a \`required\` prerequisite in requirements.json" \

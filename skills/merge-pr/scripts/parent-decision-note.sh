@@ -5,7 +5,12 @@
 # aren't part of a decomposed epic at all.
 #
 # Usage:
-#   parent-decision-note.sh <child-issue-number> <pr-number> <[host/]owner/repo>
+#   parent-decision-note.sh [-R <[host/]owner/repo>] <child-issue-number> <pr-number> [<[host/]owner/repo>]
+#
+#   The repository is named EITHER by a leading -R, the spelling guarded-pr-merge.sh and
+#   base-run-verdict.sh already take and that `merge-pr` reads two calls before this one, OR
+#   positionally, the way every existing caller writes it. Both at once is refused rather than
+#   silently preferring one (#668).
 #
 #   HOST/OWNER/REPO names a GitHub Enterprise host outright; with a bare OWNER/REPO the host is the
 #   checkout's own origin's, when origin is that repository. Resolved once, before the first gh
@@ -42,8 +47,16 @@ usage() {
   sed -n '2,/^set -euo pipefail/{/^set -euo pipefail/d;s/^# \{0,1\}//;p;}' "$0"
 }
 
+# The one-line shape, printed UNDER every refusal (#668): the refusals already said what was wrong,
+# and none of them said what right looks like, so a wrong shape cost a turn instead of a correction.
+usage_line() {
+  echo "usage: $TOOL.sh [-R <[host/]owner/repo>] <child-issue-number> <pr-number> [<[host/]owner/repo>]" >&2
+  echo "       (the repository is given ONE way or the other, never both)" >&2
+}
+
 refuse() {
   echo "$TOOL: REFUSED — $*" >&2
+  usage_line
   exit 2
 }
 
@@ -59,16 +72,34 @@ is_number() {
   esac
 }
 
-if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
-  usage
-  exit 0
+REPO_OPT=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    -R) [ $# -ge 2 ] || refuse "-R needs a <[host/]owner/repo>"; REPO_OPT="$2"; shift 2 ;;
+    -R*) REPO_OPT="${1#-R}"; shift ;;
+    --) shift; break ;;
+    -*) refuse "unknown option '$1'" ;;
+    *) break ;;
+  esac
+done
+
+if [ -n "$REPO_OPT" ]; then
+  # With -R the slug is already in hand, so only the two numbers are left. A third positional is a
+  # SECOND repository, which is the shape the field reports carry; refusing it by name beats
+  # preferring one of two slugs that may not agree.
+  [ $# -ne 3 ] || refuse "repository given twice: -R $REPO_OPT and positional $3"
+  [ $# -eq 2 ] || refuse "expected 2 arguments after -R <[host/]owner/repo>, got $#: <child-issue-number> <pr-number>"
+  CHILD="$1"
+  PR="$2"
+  REPO="$REPO_OPT"
+else
+  # Unchanged, wording included: three field refusals quote this line verbatim.
+  [ $# -eq 3 ] || refuse "expected 3 arguments, got $#: <child-issue-number> <pr-number> <[host/]owner/repo>"
+  CHILD="$1"
+  PR="$2"
+  REPO="$3"
 fi
-
-[ $# -eq 3 ] || refuse "expected 3 arguments, got $#: <child-issue-number> <pr-number> <[host/]owner/repo>"
-
-CHILD="$1"
-PR="$2"
-REPO="$3"
 
 is_number "$CHILD" || refuse "'$CHILD' is not an issue number"
 is_number "$PR" || refuse "'$PR' is not a PR number"
