@@ -1,7 +1,7 @@
 {
   "name": "ai-migration-kit",
   "displayName": "AI Migration Kit (transition to Tagout)",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "Transition manifest: the whole kit (lifecycle + .NET migration) under its pre-rename name, so installs of ai-migration-kit@ai-migration-kit-marketplace keep loading until the 3.0.0 release. New installs: tagout@tagout-marketplace, plus tagout-migrate for a legacy .NET application.",
   "author": {
     "name": "Philippe Matray"

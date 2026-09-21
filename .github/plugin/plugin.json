@@ -1,7 +1,7 @@
 {
   "name": "tagout",
   "description": "Complete, verified, easy and fast upgrades of legacy .NET applications, powered by RoselineMCP (Roslyn) — a gate-verified pipeline from assessment to verified production — plus generic GitHub issue/PR lifecycle skills (create-issue, implement-issue, merge-pr) parameterized by a per-repo profile.",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "author": {
     "name": "Philippe Matray",
     "url": "https://github.com/phmatray"
