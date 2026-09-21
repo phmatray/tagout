@@ -492,6 +492,19 @@ else
   echo "  skip  index-mode case — no usable git here"
 fi
 
+echo "== AA. gitignored junk a walk finds is not drift (#653) =="
+# python3 leaves a `__pycache__` beside any script it imports, and .gitignore keeps it out of the
+# repository — so a walk of the tree sees a file git would never ship. The check used to READ it
+# (a .pyc is not UTF-8, so: no verdict) and to call the plugin's stray one an orphan, refusing an
+# otherwise clean tree over junk. Both halves here: the source side and the plugin side.
+T="$WORK/aa"; scratch_tree "$T"
+mkdir -p "$T/skills/merge-pr/scripts/__pycache__" "$T/plugins/tagout/scripts/__pycache__"
+printf '\363\377\376junk' > "$T/skills/merge-pr/scripts/__pycache__/x.cpython-313.pyc"
+printf '\363\377\376junk' > "$T/plugins/tagout/scripts/__pycache__/x.cpython-313.pyc"
+run_check "$T"
+[ "$RC" -eq 0 ] && ok "a __pycache__ under skills/ and under a plugin is not drift" || bad "exit $RC over gitignored junk: $OUT $ERR"
+no_traceback "a __pycache__ .pyc"
+
 if [ "$fails" -eq 0 ]; then
   echo "PASS: host-adapters — live tree, edit, rebuild, missing folder, no source, CRLF, encodings, usage, front matter, hooks map, versions, Gemini commands and extension, pi, host table, manifest paths, orphans, plugin copies"
 else
