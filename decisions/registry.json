@@ -74,6 +74,7 @@
     "skills/auto-dev/scripts/usage_report.py": "an offline cost-accounting report, not a control-flow choice",
     "skills/auto-dev/scripts/wait-ci.sh": "blocks until CI is final and prints the result table; it reports state, the caller decides what to do with it",
     "skills/create-issue/scripts/wire-edges.sh": "a guarded GitHub write helper (sub-issue and blocked_by edges, 404 = text fallback); it prints ok/fallback/FAILED per edge, the calling skill decides what a fallback means for its report",
+    "skills/create-pr/scripts/rewind-default.sh": "a guarded ref-move wrapper, same shape as guarded-commit.sh — it moves the local default branch back to origin/<default> once the pushed branch provably carries it, or refuses; not a control-flow choice with a verdict vocabulary of its own (#636)",
     "skills/debug-issue/find-polluter.sh": "a bisection utility a developer runs by hand to find which test creates unwanted state \u2014 it reports the polluter it bisected to, the debugger decides what to do about it; not a control-flow choice the methodology makes",
     "skills/debug-issue/scripts/hitl-loop.template.sh": "a TEMPLATE a debugger copies and edits \u2014 it prompts a human and prints their answers as KEY=VALUE; it has no verdict of its own to register",
     "skills/implement-issue/scripts/_assert-branch.sh": "sourced by the guards, never executed on its own — a shared assertion helper, not an independent decision",

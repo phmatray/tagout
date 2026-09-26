@@ -44,6 +44,7 @@ graph TD
         RS[review-sessions]
         RP[profile-repo]
         SR[setup-repo]
+        DI[debug-issue]
         SH["_shared/<br>preconditions · open-pr · sync-with-main · filing-bar<br>worktree-ignore-check · untrusted-input-boundary<br>test-seams · grilling · prior-rejections<br>brainstorm-and-spec · plan-shape · tdd-loop · recap"]
     end
 
@@ -56,6 +57,7 @@ graph TD
     CI -. "next step: /implement-issue #N" .-> II
     II -. "hand-off: /merge-pr #PR" .-> MP
     CP -. "hand-off: /merge-pr #PR" .-> MP
+    DI -. "left a fix committed: /create-pr" .-> CP
     MP -. "then: /implement-issue #<next>" .-> II
     TB -. "next step: /implement-issue #<kept>" .-> II
     MP -- "files deferred work" --> CI

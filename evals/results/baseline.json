@@ -75,9 +75,9 @@
       "specificity": 1.0
     },
     "create-pr": {
-      "passed": 15,
-      "total": 18,
-      "recall": 0.6666666666666666,
+      "passed": 20,
+      "total": 21,
+      "recall": 0.9166666666666666,
       "specificity": 1.0
     }
   },
