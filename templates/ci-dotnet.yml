@@ -526,7 +526,7 @@ jobs:
           # Version EXACTE, jamais `26.x` ni `26.5.x` : la précondition 2 tombe si Node flotte,
           # et `tests/ci-template/test.sh` refuse toute forme non `N.N.N`.
           # Renovate maintient cette ligne — elle est extraite comme dépendance `node`.
-          node-version: 26.8.2
+          node-version: 26.10.0
 
       - name: Reconstruire le bundle front committé
         if: ${{ hashFiles('.github/bundle-gate.json') != '' }}
