@@ -1191,6 +1191,450 @@ else
   ok "issue-blocked-by-count — a non-403 failure exits 1 rather than answering n/a"
 fi
 
+echo "== F. the Azure DevOps backend (#509)"
+
+# Every az call the stub answers is logged here, one line per call — AC2/AC4's recorded argv and
+# AC3's proof that a refused call never reaches the stub at all.
+AZ_CALL_LOG="$WORK/az-calls.log"
+export AZ_CALL_LOG
+: > "$AZ_CALL_LOG"
+
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/az" <<'AZSTUB'
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [ -n "${AZ_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$AZ_CALL_LOG"; fi
+
+fail() { echo "az stub error: $2 (Status code: $1)" >&2; exit 1; }
+
+# Defaults declared as plain variables first — embedding a literal '{'/'}' JSON body directly in a
+# `${VAR:-default}` expansion trips bash's own brace-matching (it stops at the first unmatched '}'
+# inside the default), truncating the JSON before it ever reaches jq.
+default_repo='{"name":"widgets","project":{"name":"Shop"},"defaultBranch":"refs/heads/main"}'
+default_workitem_tmpl='{"id":ROUTE_ID,"fields":{}}'
+default_create='{"id":42,"_links":{"html":{"href":"https://dev.azure.com/o/p/_workitems/edit/42"}}}'
+default_comments='{"comments":[]}'
+default_tags='{"value":[]}'
+
+# Pull the flags every dispatch below needs, regardless of position.
+resource=""; http_method="GET"; route_id=""; route_type=""; capture=0
+prev=""
+for a in "$@"; do
+  case "$a" in
+    --route-parameters) capture=1; prev="$a"; continue ;;
+    --*) capture=0 ;;
+  esac
+  if [ "$capture" -eq 1 ]; then
+    case "$a" in
+      id=*) route_id="${a#id=}" ;;
+      workItemId=*) route_id="${a#workItemId=}" ;;
+      'type=$'*) route_type="${a#'type=$'}" ;;
+    esac
+  fi
+  case "$prev" in
+    --resource) resource="$a" ;;
+    --http-method) http_method="$a" ;;
+  esac
+  prev="$a"
+done
+
+case "${1-} ${2-}" in
+  "boards query")
+    printf '%s' "${AZ_QUERY_JSON:-[]}"
+    exit 0 ;;
+  "repos show")
+    printf '%s' "${AZ_REPO_JSON:-$default_repo}"
+    exit 0 ;;
+  "devops invoke") : ;;
+  "devops project")
+    if [ -n "${AZ_PROJECT_FAIL:-}" ]; then
+      echo "az stub: ERROR: Please run 'az login' to setup account." >&2
+      exit 1
+    fi
+    case "$*" in
+      *"processTemplate.templateName"*) echo "${AZ_PROCESS:-Agile}" ;;
+      *) echo "TestProject" ;;
+    esac
+    exit 0 ;;
+  *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
+esac
+
+case "$resource $http_method" in
+  "workitems GET")
+    s="${AZ_WORKITEM_STATUS:-200}"
+    case "$s" in
+      2??)
+        if [ -n "${AZ_WORKITEM_JSON:-}" ]; then
+          printf '%s' "$AZ_WORKITEM_JSON"
+        else
+          printf '%s' "${default_workitem_tmpl/ROUTE_ID/$route_id}"
+        fi ;;
+      *) fail "$s" "work item $route_id" ;;
+    esac ;;
+  "workitems POST")
+    printf '%s' "${AZ_CREATE_JSON:-$default_create}"
+    ;;
+  "workitems PATCH")
+    s="${AZ_PATCH_STATUS:-200}"
+    case "$s" in 2??) printf '{}' ;; *) fail "$s" "patch $route_id" ;; esac ;;
+  "comments GET")
+    printf '%s' "${AZ_COMMENTS_JSON:-$default_comments}"
+    ;;
+  "comments POST")
+    printf '{}'
+    ;;
+  "tags GET")
+    printf '%s' "${AZ_TAGS_JSON:-$default_tags}"
+    ;;
+  *) echo "az stub: unsupported invoke: resource=$resource method=$http_method" >&2; exit 1 ;;
+esac
+AZSTUB
+chmod +x "$WORK/bin/az"
+
+if PATH="$WORK/bin:$PATH" az frobnicate >/dev/null 2>&1; then
+  note_fail "the az stub accepted an unsupported call — every assertion below would be vacuous"
+fi
+
+run_az() {
+  # Same shape as run_tracker, but calls the azure-devops backend directly so a test can hand it
+  # TRACKER_REPO (via --repo) without needing a fixture profile for every case.
+  local dir="$1"; shift
+  OUT=$(cd "$dir" && PATH="$WORK/bin:$PATH" "$TRACKER" --tracker azure-devops "$@" 2>"$WORK/err.log")
+  RC=$?
+  ERR=$(cat "$WORK/err.log")
+}
+
+AZBARE="$WORK/az-bare"
+mkdir -p "$AZBARE"
+
+# A fixture repository whose committed profile names an Azure DevOps org/project — proves the
+# repo-profile.sh reading path, not just the $TRACKER_REPO override every other case below uses.
+AZFIX="$WORK/az-profiled"
+mkdir -p "$AZFIX/.claude/skills"
+printf '%s\n' '# Repo profile' '' '## Tracker' \
+  '- **Tracker:** azure-devops (dev.azure.com/acme/Shop) — fixture.' \
+  > "$AZFIX/.claude/skills/repo-profile.md"
+
+# verbs — the introspection call, answered before any org/project resolution.
+: > "$AZ_CALL_LOG"
+run_az "$AZBARE" --repo acme/Shop verbs
+if [ "$RC" -ne 0 ] || ! printf '%s\n' "$OUT" | grep -Fxq 'issue-view'; then
+  note_fail "verbs — expected issue-view among the verbs, exited $RC: $OUT ($ERR)"
+elif [ -s "$AZ_CALL_LOG" ]; then
+  note_fail "verbs — must answer without calling az at all: $(cat "$AZ_CALL_LOG")"
+else
+  ok "verbs — lists every verb this backend implements, without calling az"
+fi
+
+# AC1 — a fixture profile naming azure-devops, and needs(create-issue) covered by implements(this
+# backend), answers capable through the real Step-1 pipe (tracker.sh state | decide.sh
+# tracker.capable) — the same pipe case B's github end-to-end assertion runs.
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state create-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  note_fail "AC1 capable — the Step 1 pipe exited $rc: $out"
+elif [ "$out" != "capable" ]; then
+  note_fail "AC1 capable — expected 'capable' for create-issue on azure-devops, got '$out'"
+else
+  ok "AC1 capable — tracker.sh state create-issue | decide.sh tracker.capable answers capable via the committed profile"
+fi
+
+# repo — org/project + repo name parsed off origin, defaultBranch stripped of refs/heads/.
+git -C "$AZBARE" init -q -b main
+git -C "$AZBARE" remote add origin "https://dev.azure.com/acme/Shop/_git/widgets"
+AZ_REPO_JSON='{"name":"widgets","project":{"name":"Shop"},"defaultBranch":"refs/heads/main"}' \
+  run_az "$AZBARE" --repo acme/Shop repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "repo — exited $RC ($ERR)"
+else
+  got=$(printf '%s' "$OUT" | jq -c '.' 2>/dev/null) || got="<unparseable: $OUT>"
+  want='{"slug":"Shop/widgets","host":"dev.azure.com","defaultBranch":"main","originSlug":"https://dev.azure.com/acme/Shop/_git/widgets"}'
+  if [ "$got" != "$want" ]; then
+    note_fail "repo — wrong stdout
+      want: $want
+      got:  $got"
+  else
+    ok "repo — slug/host/defaultBranch/originSlug, defaultBranch stripped of refs/heads/"
+  fi
+fi
+
+# AC5 — issue-view defaults format to html when multilineFieldsFormat is absent (a work item edited
+# by hand in the browser), splits System.Tags on '; '.
+AZ_WORKITEM_JSON='{"id":7,"fields":{"System.Title":"A stub item","System.State":"Active","System.Description":"body text","System.Tags":"bug; area: skills"}}' \
+  run_az "$AZBARE" --repo acme/Shop issue-view 7
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC5 issue-view — exited $RC ($ERR)"
+else
+  got=$(printf '%s' "$OUT" | jq -c '.' 2>/dev/null) || got="<unparseable: $OUT>"
+  want='{"number":7,"title":"A stub item","state":"open","body":"body text","labels":["bug","area: skills"],"url":"","format":"html"}'
+  if [ "$got" != "$want" ]; then
+    note_fail "AC5 issue-view — wrong normalisation (default format must be html when multilineFieldsFormat is absent; state open/closed like issue-search, not the raw Azure state)
+      want: $want
+      got:  $got"
+  else
+    ok "AC5 issue-view — format defaults to html, System.Tags split on '; ', state open/closed like issue-search"
+  fi
+fi
+
+# issue-search — Done maps to closed.
+AZ_QUERY_JSON='[{"id":12,"fields":{"System.Title":"A stub closed item","System.State":"Done"}}]' \
+  run_az "$AZBARE" --repo acme/Shop issue-search --query csv --state all
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-search — exited $RC ($ERR)"
+else
+  got=$(printf '%s' "$OUT" | jq -c '.' 2>/dev/null) || got="<unparseable: $OUT>"
+  want='[{"number":12,"title":"A stub closed item","state":"closed"}]'
+  if [ "$got" != "$want" ]; then
+    note_fail "issue-search — wrong stdout
+      want: $want
+      got:  $got"
+  else
+    ok "issue-search — System.State 'Done' normalises to 'closed'"
+  fi
+fi
+
+# AC2 — issue-create on an Agile project: the patch sets Description + Markdown format + Tags,
+# posts to the 'User Story' type, and the normalised reply is {number,url}.
+BODY_F="$WORK/body.md"
+printf 'a description\n' > "$BODY_F"
+: > "$AZ_CALL_LOG"
+AZ_PROCESS=Agile run_az "$AZBARE" --repo acme/Shop issue-create --title T \
+  --label "priority: high" --label "area: skills" --body-file "$BODY_F"
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC2 issue-create — exited $RC ($ERR)"
+else
+  got=$(printf '%s' "$OUT" | jq -c '.' 2>/dev/null) || got="<unparseable: $OUT>"
+  want='{"number":42,"url":"https://dev.azure.com/o/p/_workitems/edit/42"}'
+  if [ "$got" != "$want" ]; then
+    note_fail "AC2 issue-create — wrong stdout
+      want: $want
+      got:  $got"
+  elif ! grep -Fq -- '--route-parameters project=Shop type=$User Story' "$AZ_CALL_LOG" \
+    && ! grep -Fq -- 'type=$User' "$AZ_CALL_LOG"; then
+    note_fail "AC2 issue-create — az was not asked for the 'User Story' type on an Agile project:
+      $(cat "$AZ_CALL_LOG")"
+  else
+    ok "AC2 issue-create — Agile -> User Story, {number,url} printed"
+  fi
+fi
+PATCH_SEEN=$(cat "$WORK"/*.json 2>/dev/null || true)
+
+# The patch itself: re-run capturing the --in-file this call built, to assert its operations
+# directly rather than trusting the stub's canned reply alone.
+CAPTURE_DIR=$(kit_scratch)
+cat > "$CAPTURE_DIR/az" <<'CAPSTUB'
+#!/usr/bin/env bash
+set -uo pipefail
+prev=""
+for a in "$@"; do
+  if [ "$prev" = --in-file ]; then cp "$a" "${AZ_PATCH_CAPTURE:?}"; fi
+  prev="$a"
+done
+case "${1-} ${2-}" in
+  "devops project") echo "Agile"; exit 0 ;;
+  "devops invoke") printf '{"id":42,"_links":{"html":{"href":"https://dev.azure.com/o/p/_workitems/edit/42"}}}'; exit 0 ;;
+  *) echo "unsupported"; exit 1 ;;
+esac
+CAPSTUB
+chmod +x "$CAPTURE_DIR/az"
+AZ_PATCH_CAPTURE="$WORK/create-patch.json"
+export AZ_PATCH_CAPTURE
+(cd "$AZBARE" && PATH="$CAPTURE_DIR:$PATH" TRACKER_REPO=acme/Shop \
+  "$KIT_ROOT/scripts/tracker/azure-devops.sh" issue-create --title T --label bug --body-file "$BODY_F" >/dev/null 2>&1)
+if [ ! -s "$AZ_PATCH_CAPTURE" ]; then
+  note_fail "AC2 patch — issue-create sent no --in-file patch to capture"
+else
+  ops=$(jq -c 'map({op,path})' "$AZ_PATCH_CAPTURE" 2>/dev/null) || ops="<unparseable>"
+  want_ops='[{"op":"add","path":"/fields/System.Title"},{"op":"add","path":"/fields/System.Description"},{"op":"add","path":"/multilineFieldsFormat/System.Description"},{"op":"add","path":"/fields/System.Tags"}]'
+  if [ "$ops" != "$want_ops" ]; then
+    note_fail "AC2 patch — wrong operations
+      want: $want_ops
+      got:  $ops"
+  else
+    fmt=$(jq -r '.[] | select(.path == "/multilineFieldsFormat/System.Description") | .value' "$AZ_PATCH_CAPTURE")
+    if [ "$fmt" != "Markdown" ]; then
+      note_fail "AC2 patch — Description and its Markdown format must be written together: $fmt"
+    else
+      ok "AC2 patch — Title, Description, Markdown format and Tags all set in the one patch"
+    fi
+  fi
+fi
+rm -rf "$CAPTURE_DIR" "$AZ_PATCH_CAPTURE"
+
+# AC3 — an inherited process ("Agile - Custom") is refused by name, and az records no request.
+: > "$AZ_CALL_LOG"
+AZ_PROCESS="Agile - Custom" run_az "$AZBARE" --repo acme/Shop issue-create --title T --body-file "$BODY_F"
+if [ "$RC" -ne 2 ]; then
+  note_fail "AC3 issue-create — expected exit 2 for an unmapped process, got $RC ($ERR)"
+elif ! printf '%s' "$ERR" | grep -Fq 'Agile - Custom'; then
+  note_fail "AC3 issue-create — the refusal does not name the process: $ERR"
+else
+  ok "AC3 issue-create — 'Agile - Custom' exits 2, named, no verdict guessed"
+fi
+
+# Basic has no Bug work-item type (only Epic, Issue, Task) — a bug label there still files an Issue
+# rather than a type the API would reject (review finding).
+: > "$AZ_CALL_LOG"
+AZ_PROCESS=Basic run_az "$AZBARE" --repo acme/Shop issue-create --title T --label bug --body-file "$BODY_F"
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-create Basic+bug — exited $RC ($ERR)"
+elif ! grep -Fq -- 'type=$Issue' "$AZ_CALL_LOG"; then
+  note_fail "issue-create Basic+bug — Basic has no Bug type, expected type=\$Issue: $(cat "$AZ_CALL_LOG")"
+else
+  ok "issue-create Basic+bug — Basic has no Bug type, files an Issue instead (review finding)"
+fi
+
+# A failed az call (not logged in, network) while reading the process must surface as a host
+# failure (exit 1) — not be swallowed into the same 'unmapped process' exit 2 a genuinely unknown
+# process name gets (review finding: the two used to collapse, hiding the real error).
+AZ_PROJECT_FAIL=1 run_az "$AZBARE" --repo acme/Shop issue-create --title T --body-file "$BODY_F"
+if [ "$RC" -ne 1 ]; then
+  note_fail "issue-create az-failure-reading-process — expected exit 1 (host failure), got $RC ($ERR)"
+elif ! printf '%s' "$ERR" | grep -Fq 'az login'; then
+  note_fail "issue-create az-failure-reading-process — the real az error is not surfaced: $ERR"
+else
+  ok "issue-create az-failure-reading-process — exit 1, the real az error surfaced, not a misleading 'unmapped process'"
+fi
+
+# issue-edit-body — an empty file refuses before any az call.
+: > "$AZ_CALL_LOG"
+EMPTY_F="$WORK/empty.md"
+: > "$EMPTY_F"
+run_az "$AZBARE" --repo acme/Shop issue-edit-body 7 --body-file "$EMPTY_F"
+if [ "$RC" -ne 2 ]; then
+  note_fail "issue-edit-body empty file — expected exit 2, got $RC ($ERR)"
+elif [ -s "$AZ_CALL_LOG" ]; then
+  note_fail "issue-edit-body empty file — az was called anyway: $(cat "$AZ_CALL_LOG")"
+else
+  ok "issue-edit-body — refuses a missing/empty --body-file before any az call"
+fi
+
+# issue-add-labels — the union of existing and new tags is written.
+AZ_WORKITEM_JSON='{"id":7,"fields":{"System.Tags":"bug"}}' \
+  run_az "$AZBARE" --repo acme/Shop issue-add-labels 7 "area: skills"
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-add-labels — exited $RC ($ERR)"
+else
+  ok "issue-add-labels — reads the current tags and writes the union"
+fi
+
+# AC4 — issue-link-parent and issue-link-blocked-by add the right relation and print ok.
+AZ_WORKITEM_JSON='{"id":21,"relations":[]}' \
+  run_az "$AZBARE" --repo acme/Shop issue-link-parent 20 21
+if [ "$RC" -ne 0 ] || [ "$OUT" != "ok" ]; then
+  note_fail "AC4 issue-link-parent — expected 'ok' exit 0, got '$OUT' exit $RC ($ERR)"
+else
+  ok "AC4 issue-link-parent — new relation added, prints ok"
+fi
+
+AZ_WORKITEM_JSON='{"id":19,"relations":[]}' \
+  run_az "$AZBARE" --repo acme/Shop issue-link-blocked-by 21 19
+if [ "$RC" -ne 0 ] || [ "$OUT" != "ok" ]; then
+  note_fail "AC4 issue-link-blocked-by — expected 'ok' exit 0, got '$OUT' exit $RC ($ERR)"
+else
+  ok "AC4 issue-link-blocked-by — new relation added, prints ok"
+fi
+
+# An existing relation is idempotent: still 'ok', no PATCH needed (the stub only serves GET for
+# 'workitems GET' — a PATCH reaching it here would 400 with 'unsupported invoke', proving none was sent).
+AZ_WORKITEM_JSON='{"id":21,"relations":[{"rel":"System.LinkTypes.Hierarchy-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/20"}]}' \
+  run_az "$AZBARE" --repo acme/Shop issue-link-parent 20 21
+if [ "$RC" -ne 0 ] || [ "$OUT" != "ok" ]; then
+  note_fail "AC4 issue-link-parent (already wired) — expected 'ok' exit 0, got '$OUT' exit $RC ($ERR)"
+else
+  ok "AC4 issue-link-parent — an existing relation is idempotent, still ok, no write sent"
+fi
+
+# --dry-run prints the write it would send and calls az not at all.
+: > "$AZ_CALL_LOG"
+run_az "$AZBARE" --repo acme/Shop issue-link-parent 20 21 --dry-run
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-link-parent --dry-run — exited $RC ($ERR)"
+elif [ -s "$AZ_CALL_LOG" ]; then
+  note_fail "issue-link-parent --dry-run — az was called anyway: $(cat "$AZ_CALL_LOG")"
+elif ! printf '%s' "$OUT" | grep -Fq 'DRY-RUN'; then
+  note_fail "issue-link-parent --dry-run — did not print the write it would send: $OUT"
+else
+  ok "issue-link-parent --dry-run — prints the write it would send, calls az not at all"
+fi
+
+# --resolve-only resolves both ends by a read and writes nothing. Regression: this flag used to be
+# filed as a stray positional and silently ignored (github.sh honours it; wire-edges.sh runs an
+# up-front --resolve-only pass over every edge so a bad id is reported before anything is sent) —
+# falling through to a real write here was exactly the partial-write failure that pass exists to
+# prevent (code-review finding, #509).
+: > "$AZ_CALL_LOG"
+AZ_WORKITEM_JSON='{"id":21,"relations":[]}' \
+  run_az "$AZBARE" --repo acme/Shop issue-link-parent 20 21 --resolve-only
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-link-parent --resolve-only — exited $RC ($ERR)"
+elif grep -q -- '--http-method PATCH' "$AZ_CALL_LOG"; then
+  note_fail "issue-link-parent --resolve-only — a write (PATCH) was sent; nothing may ever be written in this mode: $(cat "$AZ_CALL_LOG")"
+elif [ "$(grep -c -- '--http-method GET' "$AZ_CALL_LOG")" -lt 2 ]; then
+  note_fail "issue-link-parent --resolve-only — expected both ends (child + target) resolved by a GET: $(cat "$AZ_CALL_LOG")"
+else
+  ok "issue-link-parent --resolve-only — resolves both ends, writes nothing (regression, #509 review)"
+fi
+
+# issue-children — a WorkItemLinks reply becomes a de-duplicated array of child ids.
+AZ_QUERY_JSON='[{"source":{"id":10},"target":{"id":21}},{"source":{"id":10},"target":{"id":22}}]' \
+  run_az "$AZBARE" --repo acme/Shop issue-children 10
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-children — exited $RC ($ERR)"
+else
+  got=$(printf '%s' "$OUT" | jq -c '.' 2>/dev/null) || got="<unparseable: $OUT>"
+  if [ "$got" != '[21,22]' ]; then
+    note_fail "issue-children — wrong stdout
+      want: [21,22]
+      got:  $got"
+  else
+    ok "issue-children — a WorkItemLinks reply becomes [21,22]"
+  fi
+fi
+
+# issue-blocked-by-count — counts only OPEN predecessors: #19 (Active) counts, #18 (Closed) does not.
+CAPTURE_DIR2=$(kit_scratch)
+cat > "$CAPTURE_DIR2/az" <<'BLOCKSTUB'
+#!/usr/bin/env bash
+set -uo pipefail
+route_id=""; capture=0
+for a in "$@"; do
+  case "$a" in
+    --route-parameters) capture=1; continue ;;
+    --*) capture=0 ;;
+  esac
+  if [ "$capture" -eq 1 ]; then
+    case "$a" in id=*) route_id="${a#id=}" ;; esac
+  fi
+done
+case "$route_id" in
+  21) printf '{"id":21,"relations":[{"rel":"System.LinkTypes.Dependency-Reverse","url":"https://dev.azure.com/o/p/_apis/wit/workItems/19"},{"rel":"System.LinkTypes.Dependency-Reverse","url":"https://dev.azure.com/o/p/_apis/wit/workItems/18"}]}' ;;
+  19) printf '{"id":19,"fields":{"System.State":"Active"}}' ;;
+  18) printf '{"id":18,"fields":{"System.State":"Closed"}}' ;;
+  *) echo "blocked-by stub: unexpected id $route_id" >&2; exit 1 ;;
+esac
+BLOCKSTUB
+chmod +x "$CAPTURE_DIR2/az"
+run_out=$(cd "$AZBARE" && PATH="$CAPTURE_DIR2:$PATH" TRACKER_REPO=acme/Shop \
+  "$KIT_ROOT/scripts/tracker/azure-devops.sh" issue-blocked-by-count 21 2>"$WORK/err2.log")
+if [ "$run_out" != "1" ]; then
+  note_fail "issue-blocked-by-count — want 1 (only #19 is open), got '$run_out' ($(cat "$WORK/err2.log"))"
+else
+  ok "issue-blocked-by-count — counts only open predecessors (1 of 2)"
+fi
+rm -rf "$CAPTURE_DIR2"
+
+# AC6 — never az boards work-item create|update, the only two calls that cannot set
+# multilineFieldsFormat and would silently land an HTML description.
+if grep -nE 'az boards work-item (create|update)' "$KIT_ROOT/scripts/tracker/azure-devops.sh"; then
+  note_fail "AC6 — az boards work-item create|update must never appear in azure-devops.sh"
+else
+  ok "AC6 — no az boards work-item create|update anywhere in the backend"
+fi
+
+
+
 if [ "$FAILED" -ne 0 ]; then
   echo
   echo "tracker: FAILED"
