@@ -14,7 +14,8 @@ so nothing here is a second copy of a rule. The vocabulary is [`CONTEXT.md`](../
 
 ## Start here
 
-The kit is a Claude Code plugin with **two loops**:
+Tagout ships as two Claude Code plugins, one per **loop** — `tagout` for the first, the
+`tagout-migrate` add-on for the second:
 
 - **The issue lifecycle** — an idea becomes a seeded GitHub issue, the issue becomes a PR, the PR
   lands, the queue is pruned, and the kit's own failures are harvested back into the queue. Hands-off

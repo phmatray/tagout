@@ -22,20 +22,22 @@ too, but were not chosen as an audience to design for.
 
 ## Product Purpose
 
-Tagout is an MIT-licensed Claude Code plugin. It ships agent skills for two loops:
-a seven-phase, gate-verified pipeline that takes a legacy .NET application to verified production
-(assess → baseline → retarget → remediate → modernize → verify → deliver), and a hands-off GitHub
-issue → pull request lifecycle (create-issue → implement-issue → merge-pr, with auto-dev,
-deliver-issue and triage-backlog around them). The site is the methodology's public home: it
-explains the method, proves it ran, and installs it on each host.
+Tagout is MIT-licensed agent skills for two loops, shipped on Claude Code as two plugins. `tagout`
+is a hands-off GitHub issue → pull request lifecycle for any repository (create-issue →
+implement-issue → merge-pr, with auto-dev, deliver-issue and triage-backlog around them).
+`tagout-migrate` is the .NET add-on: a seven-phase, gate-verified pipeline that takes a legacy .NET
+application to verified production (assess → baseline → retarget → remediate → modernize → verify →
+deliver), with RoselineMCP doing every C# analysis and edit. The site is the methodology's public
+home: it explains the method, proves it ran, and installs it on each host.
 
 ## Positioning
 
-Every step of both loops runs behind a gate that refuses by name: a red build/test/diagnostics
-gate stops the pipeline; hooks deny a raw `Read` of a C# file and name the RoselineMCP tool that
-replaces it; guarded git writes check the branch before and after. Pipeline times are read from
-gate commits, not a stopwatch. A neighbouring "upgrade prompt" or skill pack cannot truthfully
-claim measured, gate-enforced verification.
+No green tag, no merge. Every step of both loops runs behind a gate that refuses by name: guarded
+git writes check the branch before and after and a hook denies the raw command; a red
+build/test/diagnostics gate stops the pipeline; a hook denies a raw `Read` of a C# file and names
+the RoselineMCP tool that replaces it. Pipeline times are read from gate commits, not a stopwatch. A
+neighbouring "upgrade prompt" or skill pack cannot truthfully claim measured, gate-enforced
+verification.
 
 ## Operating Context
 

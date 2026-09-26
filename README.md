@@ -1,6 +1,19 @@
-![tagout banner](.github/banner.png)
-
 # Tagout
+
+**The gate-verified issue → pull request lifecycle for coding agents: no green tag, no merge.** An
+idea becomes a planned issue, the issue becomes a pull request, the pull request lands — and every
+destructive step runs behind a gate that refuses by name, saying who locked it and what clears it.
+Add `tagout-migrate` when the thing to upgrade is a legacy .NET application.
+
+Two plugins, one marketplace — install the first everywhere, the second only for .NET:
+
+| Plugin | What it contains | Who installs it | Install (Claude Code) |
+|---|---|---|---|
+| **`tagout`** | The issue → PR lifecycle: `create-issue`, `implement-issue`, `create-pr`, `merge-pr`, `deliver-issue`, `auto-dev`, `triage-backlog`, `debug-issue` and their siblings, with the git write-gate and the auto-dev Stop gate. No .NET, no MCP server. | Anyone with a GitHub repository, in any language. | `claude plugin install tagout@tagout-marketplace` |
+| **`tagout-migrate`** | The .NET migration add-on: the seven-phase `/migrate` pipeline (`/migrate-assess`, `/migrate-audit`, `/migrate-verify`, `/migrate-followups`), the roseline `Read` gate, and the RoselineMCP and AdrMcp servers. | A team upgrading a legacy .NET application. Needs the .NET 10 SDK — RoselineMCP starts with `dnx`. | `claude plugin install tagout-migrate@tagout-marketplace` |
+
+Add the marketplace once first — `claude plugin marketplace add phmatray/tagout`. Every other host
+is under [Install](#install).
 
 <!-- portfolio-badges:start -->
 <!-- Identity -->
@@ -40,15 +53,6 @@
 <!-- portfolio-toc:end -->
 
 
-
-> « Mise à niveau complète, parfaite, facile et rapide de n'importe quelle application legacy » — powered by **RoselineMCP**.
-
-A Claude Code plugin that upgrades legacy .NET applications through a seven-phase, gate-verified pipeline that ends in verified production. RoselineMCP (a Roslyn-powered MCP server) is the engine for every C# analysis and transformation step: solution diagnostics, bulk code fixes, surgical member edits, safe renames, and impact analysis via references and call graphs.
-
-- **Complete** — from first assessment to a verified migration report, not just a csproj bump.
-- **Verified** — every phase ends at a gate (build, tests, diagnostics baseline); a red gate stops the pipeline.
-- **Easy** — one command: `/migrate`. Start read-only with `/migrate-assess`.
-- **Fast** — mechanical fixes are applied in bulk with Roslyn code fixes; agent time is spent only on judgment calls.
 
 ## Why this kit exists
 
@@ -90,14 +94,17 @@ A situational way in, folded from a router-skill proposal declined in the v2 met
 
 ## Features
 
+- **Issue/PR lifecycle skills** — portable `create-issue`, `implement-issue`, `merge-pr` and `profile-repo` skills usable on any repo, driven by a committed per-repo profile.
+- **Backlog burn-down at scale** — `auto-dev` supervises a fleet of N parallel workers, each taking one issue from plan to merged PR, with conflict-avoiding area isolation and a measured token budget.
+- **Root-cause debugging** — `debug-issue` fires before any fix is proposed, so a failure is explained before it is patched.
+
+The .NET migration add-on, `tagout-migrate`:
+
 - **Seven-phase gated pipeline** — Assess → Baseline → Retarget → Remediate → Modernize → Verify → Deliver, each phase ending at a build/test/diagnostics gate before the next one starts.
 - **RoselineMCP-powered C# analysis** — Roslyn-backed solution diagnostics, bulk code fixes, surgical member edits, safe renames and reference/call-graph impact analysis drive every transformation step.
 - **Read-only executive audit** — `/migrate-audit` produces a costed report (effort in days, risk register, recommended target) per app, plus a portfolio value/effort synthesis across several apps.
 - **Resumable migrations** — gate commits and `migration/` artifacts let an interrupted `/migrate` re-enter at the last green phase instead of starting over.
 - **Generated executive dashboard** — phase 6 emits `migration/report.html` and `report.json` with measured per-phase timings derived from gate commits, not a manual stopwatch.
-- **Issue/PR lifecycle skills** — portable `create-issue`, `implement-issue`, `merge-pr` and `profile-repo` skills usable on any repo, driven by a committed per-repo profile.
-- **Backlog burn-down at scale** — `auto-dev` supervises a fleet of N parallel workers, each taking one issue from plan to merged PR, with conflict-avoiding area isolation and a measured token budget.
-- **Root-cause debugging** — `debug-issue` fires before any fix is proposed, so a failure is explained before it is patched.
 - **Preflight safety gate** — `scripts/preflight.sh` verifies required/recommended tools, MCP servers and session skills declared in `requirements.json` before phase 1 starts.
 - **CI/deployment templates** — `templates/ci-dotnet.yml` and `templates/deploy-pages-blazor.yml` wire a migrated app straight into GitHub Actions and Pages. A repo that commits its front-end bundle can also arm the drift gate — see [docs/bundle-gate.md](docs/bundle-gate.md).
 
@@ -271,16 +278,26 @@ The kit is written for Claude Code and installs as a plugin on five more hosts f
 repository; a dozen others load it through a rule file. Which host gets what, and the file that
 adapts it, is one table: [`docs/_data/hosts.yml`](docs/_data/hosts.yml) — the decision behind it is
 [ADR 0014](docs/adr/0014-the-kit-is-claude-code-first-and-reaches-other-hosts-through-thin-adapters.md).
+Only Claude Code installs the two plugins separately; on every other host the manifest ships the
+lifecycle and the .NET migration add-on together.
 
 ### Claude Code
+
+The lifecycle — every repository, any language:
 
 ```bash
 claude plugin marketplace add phmatray/tagout
 claude plugin install tagout@tagout-marketplace
+```
+
+The .NET migration add-on — only to upgrade a legacy .NET application; it brings the RoselineMCP and
+AdrMcp servers and needs the .NET 10 SDK:
+
+```bash
 claude plugin install tagout-migrate@tagout-marketplace
 ```
 
-The first plugin is the issue → pull request lifecycle (no .NET); the second adds the .NET migration pipeline with its RoselineMCP and AdrMcp servers. Inside a session the same two commands work as `/plugin marketplace add` and `/plugin install`.
+Inside a session the same commands work as `/plugin marketplace add` and `/plugin install`.
 
 ### Codex
 
