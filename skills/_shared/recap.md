@@ -126,7 +126,7 @@ checked against it; they are not a second copy to hand-sync.
 | `review-followups` | the open tail presented | `/create-issue <entry>` to convert an entry |
 | `review-sessions` | the harvested clusters filed, recorded, already fixed or declined | `/implement-issue #<filed>` for a cluster it filed, else `—` |
 | `migrate-legacy` | phase 7 delivered | `/migrate-followups` |
-| `debug-issue` | the root cause identified | `—` (it returns to whatever called it) |
+| `debug-issue` | the root cause identified | `/create-pr` when it ran standalone and left a committed fix, `—` when it returns to its caller |
 
 **How the guard reads this table.** Backticked `/<name>` spans in the *Next command* cell are the
 hand-offs; a cell with none is terminal. `<name>` resolves to `skills/<name>/` when that directory

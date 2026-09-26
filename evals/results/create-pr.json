@@ -7,13 +7,25 @@
       "query": "I fixed it by hand on this branch, can you raise a pull request for it",
       "note": "a hand-built fix, no plan",
       "should_trigger": true,
-      "trigger_rate": 0.0,
-      "triggers": 0,
+      "trigger_rate": 1.0,
+      "triggers": 3,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "create-pr": 3
       },
-      "pass": false
+      "pass": true
+    },
+    {
+      "query": "I just fixed the flaky test on main, open a PR for it",
+      "note": "a fix committed straight onto the default branch (debug-issue hand-off, #636)",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
     },
     {
       "query": "create a pull request for my fix",
@@ -40,8 +52,8 @@
       "pass": true
     },
     {
-      "query": "my commits on fix/212-csv-culture are done \u2014 push it and open the PR against #212",
-      "note": "finished branch + issue",
+      "query": "debug-issue found the cause and committed the fix on main, get it into a PR",
+      "note": "explicit debug-issue \u2192 create-pr hand-off (#636)",
       "should_trigger": true,
       "trigger_rate": 1.0,
       "triggers": 3,
@@ -52,15 +64,39 @@
       "pass": true
     },
     {
+      "query": "le correctif est commit\u00e9, ouvre la PR",
+      "note": "FR \u2014 a fix already committed, open the PR (#636)",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "create-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "my commits on fix/212-csv-culture are done \u2014 push it and open the PR against #212",
+      "note": "finished branch + issue",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "fired": {
+        "(none)": 2,
+        "create-pr": 1
+      },
+      "pass": false
+    },
+    {
       "query": "open a PR for this branch",
       "note": "'open a PR for this branch'",
       "should_trigger": true,
-      "trigger_rate": 0.6666666666666666,
-      "triggers": 2,
+      "trigger_rate": 1.0,
+      "triggers": 3,
       "runs": 3,
       "fired": {
-        "create-pr": 2,
-        "(none)": 1
+        "create-pr": 3
       },
       "pass": true
     },
@@ -68,14 +104,13 @@
       "query": "open a draft PR for the branch I'm on, the tests aren't passing yet",
       "note": "--draft",
       "should_trigger": true,
-      "trigger_rate": 0.3333333333333333,
-      "triggers": 1,
+      "trigger_rate": 1.0,
+      "triggers": 3,
       "runs": 3,
       "fired": {
-        "create-pr": 1,
-        "(none)": 2
+        "create-pr": 3
       },
-      "pass": false
+      "pass": true
     },
     {
       "query": "ouvre une PR pour ce correctif",
@@ -93,13 +128,13 @@
       "query": "put up a PR for feat/301-export-json so I can merge it later",
       "note": "open now, merge later",
       "should_trigger": true,
-      "trigger_rate": 0.0,
-      "triggers": 0,
+      "trigger_rate": 1.0,
+      "triggers": 3,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "create-pr": 3
       },
-      "pass": false
+      "pass": true
     },
     {
       "query": "turn this branch into a PR",
@@ -145,7 +180,7 @@
       "triggers": 0,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "implement-issue": 3
       },
       "pass": true
     },
@@ -157,7 +192,7 @@
       "triggers": 0,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "merge-pr": 3
       },
       "pass": true
     },
@@ -169,7 +204,7 @@
       "triggers": 0,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "merge-pr": 3
       },
       "pass": true
     },
@@ -193,7 +228,7 @@
       "triggers": 0,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "deliver-issue": 3
       },
       "pass": true
     },
@@ -205,7 +240,7 @@
       "triggers": 0,
       "runs": 3,
       "fired": {
-        "(none)": 3
+        "debug-issue": 3
       },
       "pass": true
     },
@@ -223,12 +258,12 @@
     }
   ],
   "summary": {
-    "total": 18,
-    "passed": 15,
-    "failed": 3,
-    "should_trigger": 9,
+    "total": 21,
+    "passed": 20,
+    "failed": 1,
+    "should_trigger": 12,
     "should_not": 9,
-    "recall": 0.6666666666666666,
+    "recall": 0.9166666666666666,
     "specificity": 1.0
   }
 }

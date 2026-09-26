@@ -15,7 +15,26 @@ KIT="$PWD"
 kit_init "$KIT"
 
 OPEN="skills/create-pr/references/steps/03-open.md"
+LOCATE="skills/create-pr/references/steps/02-locate-the-work.md"
 [ -f "$KIT/$OPEN" ] || { echo "FAIL: $OPEN missing"; exit 1; }
+[ -f "$KIT/$LOCATE" ] || { echo "FAIL: $LOCATE missing"; exit 1; }
+
+# $1 = a 02-locate-the-work.md-shaped file. Fails, naming the reason, unless it: refuses on a
+# leftover [DEBUG- probe diffed against origin/$DEFAULT, routes leftover commits through
+# guarded-commit.sh, and no longer refuses the default branch outright (#636).
+check_step2_shape() {
+  local f="$1"
+  if grep -q 'nothing to open from the default branch' "$f"; then
+    echo "FAIL: $f still refuses the default branch outright"; return 1
+  fi
+  grep -q '\[DEBUG-' "$f" \
+    || { echo "FAIL: $f carries no [DEBUG- probe check"; return 1; }
+  grep -q 'git diff "origin/' "$f" \
+    || { echo "FAIL: $f does not diff against origin/\$DEFAULT for the probe check"; return 1; }
+  grep -q 'guarded-commit.sh' "$f" \
+    || { echo "FAIL: $f does not route leftover commits through guarded-commit.sh"; return 1; }
+  return 0
+}
 
 # $1 = a root holding skills/. Prints every `gh pr create` command line outside the recipe, as
 # <path>:<line>:<text> relative to that root, and returns 1 when there is one.
@@ -45,6 +64,19 @@ grep -qF 'skills/create-pr/references/steps/03-open.md' "$scratch/red.out" \
   || { echo "FAIL: the one-home check refused without naming the file"; cat "$scratch/red.out"; exit 1; }
 echo "ok   (d) a second \`gh pr create\` under skills/create-pr/ is refused, naming the file"
 
+# ------------------------------------------------------------- (f) a reintroduced default-branch
+# refusal is refused, fail path first (#636)
+scratch2=$(kit_scratch)
+cp "$KIT/$LOCATE" "$scratch2/locate.md"
+printf '\n%s\n' '1. **`$BRANCH` is `$DEFAULT`** -> refuse: "nothing to open from the default branch".' \
+  >> "$scratch2/locate.md"
+if check_step2_shape "$scratch2/locate.md" > "$scratch2/red.out" 2>&1; then
+  echo "FAIL: a reintroduced default-branch refusal in $LOCATE was accepted"; exit 1
+fi
+grep -qF 'still refuses the default branch' "$scratch2/red.out" \
+  || { echo "FAIL: (f) refused for the wrong reason"; cat "$scratch2/red.out"; exit 1; }
+echo "ok   (f) a reintroduced default-branch refusal in $LOCATE is refused, fail path first"
+
 # ------------------------------------------------------------- the real tree
 # (a) step 03 links the recipe, at the depth that resolves from references/steps/.
 grep -qF '../../../_shared/open-pr.md' "$KIT/$OPEN" \
@@ -65,10 +97,19 @@ if [ -s "$bare" ]; then
 fi
 echo "ok   (c) no bare git push or git commit under skills/create-pr/"
 
+# (g) the real tree: 02 refuses [DEBUG- probes, diffs against origin/$DEFAULT, routes leftovers
+# through guarded-commit.sh, and no longer refuses the default branch outright (#636).
+check_step2_shape "$KIT/$LOCATE" || exit 1
+echo "ok   (g) $LOCATE refuses [DEBUG- probes on the default branch, routes leftovers through guarded-commit.sh, and no longer refuses it outright"
+
+# (h) 03-open.md invokes rewind-default.sh once the branch is off the default (#636).
+grep -qF 'rewind-default.sh' "$KIT/$OPEN" \
+  || { echo "FAIL: $OPEN does not invoke rewind-default.sh"; exit 1; }
+echo "ok   (h) $OPEN invokes rewind-default.sh"
+
 # (e) the issue number Step 2 reads from a branch name — the sed script is read out of the step and
 # run, so a dropped -n/p (the whole branch name becomes $ISSUE, issue-view fails, the PR silently
 # links no issue) turns this red.
-LOCATE="skills/create-pr/references/steps/02-locate-the-work.md"
 parse=$(grep -F '"$BRANCH" | sed -nE' "$KIT/$LOCATE" | sed -nE "s/.*sed -nE '([^']*)'.*/\1/p") || true
 [ -n "$parse" ] || { echo "FAIL: no branch-name sed script found in $LOCATE"; exit 1; }
 for case in 'fix/88-null-header 88' 'feat/1234-x 1234' 'main -' 'fix/88 -' 'release/2.0 -'; do
