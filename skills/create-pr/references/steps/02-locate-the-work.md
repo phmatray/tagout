@@ -1,8 +1,8 @@
 ## Step 2 — Locate the work
 
-Two acts here write, and only those two: switching off the default branch, and — when a dirty tree
-remains — one guarded commit. Everything else only reads. A refusal stops the run before either
-write happens: no switch, no commit, no push, no PR. It says which rule refused, and Step 4 reports
+Two acts here write, and only those two: one guarded commit, when a dirty tree remains, and
+switching off the default branch. Everything else only reads. A refusal stops the run before either
+write happens: no commit, no switch, no push, no PR. It says which rule refused, and Step 4 reports
 it with Next `—`.
 
 ```bash
@@ -12,6 +12,15 @@ ISSUE=<N from the request, digits only>
 ```
 
 **Detached HEAD** → refuse: *"no branch to open from"*.
+
+Every commit below goes through the guard, never a bare `git commit`:
+
+```bash
+GUARDS=<kit>/skills/implement-issue/scripts
+```
+
+If a call at `$GUARDS` is refused, see
+[`../_shared/guard-invocation.md`](../../../_shared/guard-invocation.md).
 
 ### On `$DEFAULT` — take the work off it first
 
@@ -25,12 +34,25 @@ git fetch origin "$DEFAULT" --quiet
 ```
 
 1. **Refuse on a leftover debug probe** — read the *lines* of `git diff "origin/$DEFAULT"` (never
-   grep's exit status: "clean" is grep's exit 1, which trips `pipefail`) for any containing
-   `[DEBUG-`, and **name them**. A tagged probe `debug-issue`'s own Phase 4 never got to sweep must
-   never reach a PR.
-2. **Derive `<type>/<slug>`** from the newest commit already on `$DEFAULT`, and keep its message
-   **body** too — when `$ISSUE` is empty, Step 3 quotes it under `## Root cause` in the PR body,
-   because that body is where `debug-issue` Phase 4 step 4 already wrote the confirmed hypothesis:
+   grep's exit status: "clean" is grep's exit 1, which trips `pipefail`; this diff already spans
+   both committed and uncommitted changes) for any containing `[DEBUG-`, and **name them**. A
+   tagged probe `debug-issue`'s own Phase 4 never got to sweep must never reach a PR — before it
+   can be committed by the next step, not after.
+2. **Commit a dirty tree now, before deriving anything from it.** When `debug-issue` leaves the fix
+   *uncommitted*, `HEAD` is still whatever `$DEFAULT` had before the fix — deriving a branch name or
+   a `## Root cause` from that commit would name the wrong one. Commit first, onto `$DEFAULT` itself
+   (still `HEAD`), so the step below always reads the fix, never its predecessor:
+   ```bash
+   if [ -n "$(git status --porcelain)" ]; then
+     "$GUARDS/guarded-commit.sh" -C "$(git rev-parse --show-toplevel)" <commit-identity> "$DEFAULT" \
+       -- -am "fix: <a Conventional subject summarizing THIS diff — read git diff --stat and the
+                changed hunks and describe what they do, never a fixed placeholder>"
+   fi
+   ```
+3. **Derive `<type>/<slug>`** from the newest commit now on `$DEFAULT` (the fix itself, per step 2),
+   and keep its message **body** too — when `$ISSUE` is empty, Step 3 quotes it under
+   `## Root cause` in the PR body, because that body is where `debug-issue` Phase 4 step 4 already
+   wrote the confirmed hypothesis:
    ```bash
    SUBJECT=$(git log -1 --format=%s)
    ROOT_CAUSE=$(git log -1 --format=%b)
@@ -42,23 +64,29 @@ git fetch origin "$DEFAULT" --quiet
    The Conventional prefix (`type(scope): subject` or a bare `type: subject`) gives `<type>`,
    falling back to `fix` when the subject carries none. The rest slugifies exactly the way
    [`../../../implement-issue/references/github-mechanics.md` §5](../../../implement-issue/references/github-mechanics.md)
-   slugifies an issue title — one recipe, two callers.
-3. **Switch**: `git switch -c "$NEW_BRANCH"` — never `-C`, a fresh branch only — at HEAD, carrying
-   whatever `$DEFAULT` already had, committed or not. `BRANCH=$NEW_BRANCH` from here on; nothing
-   below, and nothing in Step 3, reads `$DEFAULT` again except to fetch it or, at the end, to
-   rewind it. Set `FROM_DEFAULT=1` — Step 3 reads it, records the branch-off for the Step 4 recap,
-   and is what tells it to run `rewind-default.sh` once the branch is on `origin`.
+   slugifies an issue title — one recipe, two callers. **Never fold a `#N` into `$NEW_BRANCH` unless
+   `$ISSUE` came from the request above** — an auto-derived slug can start with digits of its own
+   (`fix/500-error-on-missing-header`), and the branch-name lookup below only re-derives `$ISSUE`
+   from `<type>/<N>-<slug>` names Step 4 itself builds this way, never from a slug's own accidental
+   numerals.
+4. **Switch**: `git switch -c "$NEW_BRANCH"` — never `-C`, a fresh branch only — at HEAD, carrying
+   whatever `$DEFAULT` now has (step 2 already committed anything loose). `BRANCH=$NEW_BRANCH` from
+   here on; nothing below, and nothing in Step 3, reads `$DEFAULT` again except to fetch it or, at
+   the end, to rewind it. Set `FROM_DEFAULT=1` — Step 3 reads it, records the branch-off for the
+   Step 4 recap, and is what tells it to run `rewind-default.sh` once the branch is on `origin`, and
+   it is also what the issue-resolution fallback below reads to know its branch name was
+   auto-derived rather than assigned by `create-issue`/`implement-issue`.
 
-### Leftover uncommitted changes, on any branch
+### Leftover uncommitted changes, on an already-existing feature branch
 
-Whether just switched off `$DEFAULT` or already on a feature branch, a dirty tree no longer refuses
-the run — it commits, through the guard, never a bare `git commit`:
+The case above already committed a dirty `$DEFAULT` before switching. When `$BRANCH` was never
+`$DEFAULT` to begin with — the ordinary `create-pr` call on a feature branch someone built by hand —
+a dirty tree no longer refuses the run either; it commits the same way:
 
 ```bash
-GUARDS=<kit>/skills/implement-issue/scripts
-if [ -n "$(git status --porcelain)" ]; then
+if [ "${FROM_DEFAULT:-0}" != 1 ] && [ -n "$(git status --porcelain)" ]; then
   "$GUARDS/guarded-commit.sh" -C "$(git rev-parse --show-toplevel)" <commit-identity> "$BRANCH" \
-    -- -am "${TYPE:-fix}: commit the outstanding changes create-pr found before opening the PR"
+    -- -am "fix: <a Conventional subject summarizing THIS diff, never a fixed placeholder>"
 fi
 ```
 
@@ -68,11 +96,16 @@ What is not committed by this point would not reach the PR.
 `origin/$DEFAULT` first, unless the default-branch path above already did) → refuse: *"nothing
 ahead of origin/$DEFAULT to open a PR for"*.
 
-**Resolve the issue**, when the request above didn't already give one. Take it from a branch named
-by the profile's *Branch naming* (`<type>/<N>-<slug>`) — the same shape the switch above just built:
+**Resolve the issue**, when the request above didn't already give one **and** this branch was not
+just auto-derived (`${FROM_DEFAULT:-0}` is `1`, above, means `$NEW_BRANCH` never carries a `#N`
+unless `$ISSUE` was already set — re-parsing it here would only risk reading a slug's own leading
+digits as an issue number). Otherwise take it from a branch named by the profile's *Branch naming*
+(`<type>/<N>-<slug>`):
 
 ```bash
-[ -n "$ISSUE" ] || ISSUE=$(printf '%s\n' "$BRANCH" | sed -nE 's#^[a-z]+/([0-9]+)-.*#\1#p')
+if [ -z "$ISSUE" ] && [ "${FROM_DEFAULT:-0}" != 1 ]; then
+  ISSUE=$(printf '%s\n' "$BRANCH" | sed -nE 's#^[a-z]+/([0-9]+)-.*#\1#p')
+fi
 [ -z "$ISSUE" ] || "<kit>/scripts/tracker.sh" issue-view "$ISSUE" > "/tmp/create-pr-issue-$ISSUE.json"
 ```
 

@@ -211,6 +211,6 @@ only what **debug-issue** adds on top of them.
 - Hypotheses you refuted belong in **What happened** too, not in **Assumed · skipped ·
   unverified**: a refuted hypothesis is a result that narrows the next search. What goes in the
   third block is what you could not test and why.
-- **Next** is `/create-pr` when it ran standalone and left a committed fix (or one still sitting
-  uncommitted) on the branch it was invoked on; `—` when it returns to its caller (`implement-issue`'s
-  "honest effort" loop) instead of deciding a fix on its own.
+- **Next** is `/create-pr` when it ran standalone and left a committed fix; `—` when it returns to
+  its caller (`implement-issue`'s "honest effort" loop) instead of deciding a fix on its own — the
+  same split `../_shared/recap.md`'s hand-off table states for this row.

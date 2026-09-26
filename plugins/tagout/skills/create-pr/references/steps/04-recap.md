@@ -10,5 +10,8 @@ blocks and the **Next** line, which comes from this skill's row in the hand-off 
   dropped, say so under *Assumed · skipped · unverified*.
 - **An existing PR** — when the recipe's §1 stopped the run, name that PR. Next is still
   `/merge-pr #<pr>`, with its number.
-- **A refusal** — the rule from Step 2 and what it named (the dirty files, the default branch). Nothing
-  was written, and Next is `—`.
+- **Branched off the default** — when `$FROM_DEFAULT` was `1` (a `debug-issue` hand-off), say so, and
+  report `rewind-default.sh`'s outcome: rewound (its `REWOUND <old> -> <new>` line), or left ahead of
+  `origin/$DEFAULT` and why (exit 2/3/4 — never retried).
+- **A refusal** — the rule from Step 2 and what it named (a detached HEAD, a leftover `[DEBUG-`
+  probe on the default branch, a closed issue, nothing ahead). Nothing was written, and Next is `—`.

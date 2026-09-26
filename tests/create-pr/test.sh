@@ -20,19 +20,39 @@ LOCATE="skills/create-pr/references/steps/02-locate-the-work.md"
 [ -f "$KIT/$LOCATE" ] || { echo "FAIL: $LOCATE missing"; exit 1; }
 
 # $1 = a 02-locate-the-work.md-shaped file. Fails, naming the reason, unless it: refuses on a
-# leftover [DEBUG- probe diffed against origin/$DEFAULT, routes leftover commits through
-# guarded-commit.sh, and no longer refuses the default branch outright (#636).
+# leftover [DEBUG- probe diffed against the EXACT origin/$DEFAULT ref, routes every leftover commit
+# through guarded-commit.sh GATED on a `git status --porcelain` dirty-tree check a few lines above
+# it (an unconditional call would commit on every run, not only a dirty one), and no longer refuses
+# the default branch outright (#636).
 check_step2_shape() {
-  local f="$1"
+  local f="$1" line window
   if grep -q 'nothing to open from the default branch' "$f"; then
     echo "FAIL: $f still refuses the default branch outright"; return 1
   fi
   grep -q '\[DEBUG-' "$f" \
     || { echo "FAIL: $f carries no [DEBUG- probe check"; return 1; }
-  grep -q 'git diff "origin/' "$f" \
-    || { echo "FAIL: $f does not diff against origin/\$DEFAULT for the probe check"; return 1; }
-  grep -q 'guarded-commit.sh' "$f" \
+  grep -qF 'git diff "origin/$DEFAULT"' "$f" \
+    || { echo "FAIL: $f does not diff the exact origin/\$DEFAULT ref for the probe check"; return 1; }
+  grep -q 'guarded-commit\.sh' "$f" \
     || { echo "FAIL: $f does not route leftover commits through guarded-commit.sh"; return 1; }
+  while IFS=: read -r line _; do
+    window=$(sed -n "$(( line > 5 ? line - 5 : 1 )),${line}p" "$f")
+    printf '%s\n' "$window" | grep -q 'git status --porcelain' \
+      || { echo "FAIL: $f calls guarded-commit.sh at line $line with no git status --porcelain gate above it"; return 1; }
+  done < <(grep -n 'guarded-commit\.sh' "$f")
+  return 0
+}
+
+# $1 = a 03-open.md-shaped file. Fails unless it invokes rewind-default.sh GATED on a
+# `$FROM_DEFAULT` check a few lines above the call — an unconditional call would rewind the local
+# default on every ordinary PR, not only a debug-issue hand-off (#636).
+check_rewind_gated() {
+  local f="$1" line window
+  line=$(grep -n 'rewind-default\.sh".*-C ' "$f" | head -1 | cut -d: -f1)
+  [ -n "$line" ] || { echo "FAIL: $f does not invoke rewind-default.sh"; return 1; }
+  window=$(sed -n "$(( line > 3 ? line - 3 : 1 )),${line}p" "$f")
+  printf '%s\n' "$window" | grep -q 'FROM_DEFAULT' \
+    || { echo "FAIL: $f calls rewind-default.sh at line $line with no FROM_DEFAULT gate above it"; return 1; }
   return 0
 }
 
@@ -77,6 +97,54 @@ grep -qF 'still refuses the default branch' "$scratch2/red.out" \
   || { echo "FAIL: (f) refused for the wrong reason"; cat "$scratch2/red.out"; exit 1; }
 echo "ok   (f) a reintroduced default-branch refusal in $LOCATE is refused, fail path first"
 
+# ------------------------------------------------------------- (i) an ungated guarded-commit.sh
+# call is refused, fail path first (#636) — check_step2_shape must catch a commit with no
+# dirty-tree gate above it, not just the mere presence of a guarded-commit.sh call anywhere.
+scratch3=$(kit_scratch)
+cat > "$scratch3/ungated.md" <<'FIXTURE'
+[DEBUG- probe check present]
+git diff "origin/$DEFAULT"
+"$GUARDS/guarded-commit.sh" -C "$WORKTREE" <commit-identity> "$BRANCH" -- -am "fix: x"
+FIXTURE
+if check_step2_shape "$scratch3/ungated.md" > "$scratch3/red.out" 2>&1; then
+  echo "FAIL: an ungated guarded-commit.sh call was accepted"; exit 1
+fi
+grep -qF 'no git status --porcelain gate' "$scratch3/red.out" \
+  || { echo "FAIL: (i) refused for the wrong reason"; cat "$scratch3/red.out"; exit 1; }
+echo "ok   (i) an ungated guarded-commit.sh call (no dirty-tree check above it) is refused, fail path first"
+
+cat > "$scratch3/gated.md" <<'FIXTURE'
+[DEBUG- probe check present]
+git diff "origin/$DEFAULT"
+if [ -n "$(git status --porcelain)" ]; then
+  "$GUARDS/guarded-commit.sh" -C "$WORKTREE" <commit-identity> "$BRANCH" -- -am "fix: x"
+fi
+FIXTURE
+check_step2_shape "$scratch3/gated.md" \
+  || { echo "FAIL: (i) a properly gated guarded-commit.sh call was rejected"; exit 1; }
+echo "ok   (i) a gated guarded-commit.sh call passes"
+
+# ------------------------------------------------------------- (j) an ungated rewind-default.sh
+# call is refused, fail path first (#636) — check_rewind_gated must catch an unconditional call.
+cat > "$scratch3/rewind-ungated.md" <<'FIXTURE'
+"<kit>/skills/create-pr/scripts/rewind-default.sh" -C "$WORKTREE" "$DEFAULT" "$BRANCH"
+FIXTURE
+if check_rewind_gated "$scratch3/rewind-ungated.md" > "$scratch3/red2.out" 2>&1; then
+  echo "FAIL: an ungated rewind-default.sh call was accepted"; exit 1
+fi
+grep -qF 'no FROM_DEFAULT gate' "$scratch3/red2.out" \
+  || { echo "FAIL: (j) refused for the wrong reason"; cat "$scratch3/red2.out"; exit 1; }
+echo "ok   (j) an ungated rewind-default.sh call (no \$FROM_DEFAULT check above it) is refused, fail path first"
+
+cat > "$scratch3/rewind-gated.md" <<'FIXTURE'
+if [ "${FROM_DEFAULT:-0}" = 1 ]; then
+  "<kit>/skills/create-pr/scripts/rewind-default.sh" -C "$WORKTREE" "$DEFAULT" "$BRANCH"
+fi
+FIXTURE
+check_rewind_gated "$scratch3/rewind-gated.md" \
+  || { echo "FAIL: (j) a properly gated rewind-default.sh call was rejected"; exit 1; }
+echo "ok   (j) a gated rewind-default.sh call passes"
+
 # ------------------------------------------------------------- the real tree
 # (a) step 03 links the recipe, at the depth that resolves from references/steps/.
 grep -qF '../../../_shared/open-pr.md' "$KIT/$OPEN" \
@@ -97,15 +165,15 @@ if [ -s "$bare" ]; then
 fi
 echo "ok   (c) no bare git push or git commit under skills/create-pr/"
 
-# (g) the real tree: 02 refuses [DEBUG- probes, diffs against origin/$DEFAULT, routes leftovers
-# through guarded-commit.sh, and no longer refuses the default branch outright (#636).
+# (g) the real tree: 02 refuses [DEBUG- probes against the exact origin/$DEFAULT ref, routes every
+# leftover commit through a git-status-gated guarded-commit.sh call, and no longer refuses the
+# default branch outright (#636).
 check_step2_shape "$KIT/$LOCATE" || exit 1
-echo "ok   (g) $LOCATE refuses [DEBUG- probes on the default branch, routes leftovers through guarded-commit.sh, and no longer refuses it outright"
+echo "ok   (g) $LOCATE refuses [DEBUG- probes on the default branch, gates leftover commits on a dirty tree through guarded-commit.sh, and no longer refuses it outright"
 
-# (h) 03-open.md invokes rewind-default.sh once the branch is off the default (#636).
-grep -qF 'rewind-default.sh' "$KIT/$OPEN" \
-  || { echo "FAIL: $OPEN does not invoke rewind-default.sh"; exit 1; }
-echo "ok   (h) $OPEN invokes rewind-default.sh"
+# (h) 03-open.md invokes rewind-default.sh, gated on \$FROM_DEFAULT — not unconditionally (#636).
+check_rewind_gated "$KIT/$OPEN" || exit 1
+echo "ok   (h) $OPEN invokes rewind-default.sh, gated on \$FROM_DEFAULT"
 
 # (e) the issue number Step 2 reads from a branch name — the sed script is read out of the step and
 # run, so a dropped -n/p (the whole branch name becomes $ISSUE, issue-view fails, the PR silently
