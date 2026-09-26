@@ -47,7 +47,24 @@ make_bare_remote "$bare" dev
 
 clone="$WORK/clone-dev"
 git clone -q "$bare" "$clone"
-git -C "$clone" branch -q main   # AC2: a stale local `main`, sitting beside `dev`
+
+# AC1: resolved off origin/dev with NO local `main` at all yet — isolated from AC2 below (its own
+# branch name, run before the stale local `main` is ever created), so a regression that only shows
+# up in the absence of a local `main` can't hide behind AC2's fixture always supplying one.
+BRANCH0="feat/0-no-local-main-at-all"
+git -C "$clone" show-ref --quiet refs/heads/main \
+  && { echo "FAIL [dev-default]: setup bug — local main already exists before AC1 runs"; exit 1; }
+out0=$("$KIT/$HELPER" -C "$clone" "$BRANCH0")
+printf '%s\n' "$out0" | grep -qF 'BASE=origin/dev' \
+  || { echo "FAIL [dev-default]: (AC1) no BASE=origin/dev line:"; echo "$out0"; exit 1; }
+wt0=$(printf '%s\n' "$out0" | sed -n 's/^WORKTREE=//p')
+head0=$(git -C "$wt0" rev-parse "$BRANCH0^{commit}")
+dev_tip_at_clone=$(git -C "$clone" rev-parse origin/dev)
+[ "$head0" = "$dev_tip_at_clone" ] \
+  || { echo "FAIL [dev-default]: (AC1) expected $BRANCH0 at origin/dev's tip, got $head0"; exit 1; }
+echo "  ok: dev-default (AC1) — no local main at all, resolves cleanly off origin/dev"
+
+git -C "$clone" branch -q main   # NOW add it: AC2's stale local `main`, sitting beside `dev`
 
 # AC3: a commit pushed to the remote's dev AFTER the clone must still be included — the fetch has
 # to actually run, not just trust whatever refs/remotes/origin/dev already held at clone time.
@@ -72,7 +89,7 @@ head1=$(git -C "$wt1" rev-parse "$BRANCH1^{commit}")
 [ "$head1" = "$remote_tip" ] \
   || { echo "FAIL [dev-default]: expected $BRANCH1 at origin/dev's tip ($remote_tip), got $head1"; exit 1; }
 
-echo "  ok: dev-default — a stale local main and a post-clone remote commit don't fool it; BASE=origin/dev, at the real tip"
+echo "  ok: dev-default (AC2+AC3) — a stale local main and a post-clone remote commit don't fool it; BASE=origin/dev, at the real tip"
 
 # ---------------------------------------------------------------- 4. --base override
 
