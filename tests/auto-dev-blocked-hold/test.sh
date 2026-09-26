@@ -21,8 +21,10 @@ fail() { echo "FAIL: $1"; exit 1; }
 
 WORKER_MD="$KIT/commands/auto-dev-worker.md"
 SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+PLAN_MD="$KIT/skills/implement-issue/references/steps/02-read-the-plan.md"
 [ -f "$WORKER_MD" ] || fail "missing $WORKER_MD"
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
+[ -f "$PLAN_MD" ] || fail "missing $PLAN_MD"
 
 # --------------------------------------------------------------- Task 2: the worker's final line
 
@@ -91,5 +93,12 @@ STEP6=$(grep -n '^## Step 6' "$SKILL_MD" | head -1 | cut -d: -f1) || true
 if ! tail -n "+$STEP6" "$SKILL_MD" | grep -qF '## Held on a prerequisite'; then
   fail "AC6: Step 6's final summary does not mention '## Held on a prerequisite'"
 fi
+
+# ------------------------------------------------- Task 1: the read-the-plan.md BLOCKED_BY pointer
+
+grep -qF 'BLOCKED_BY:` field rather than `none`' "$PLAN_MD" \
+  || fail "02-read-the-plan.md does not name the BLOCKED_BY: field rather than none"
+grep -qF 'writes it back as a hold instead of a blind re-dispatch' "$PLAN_MD" \
+  || fail "02-read-the-plan.md does not say it writes back as a hold instead of a blind re-dispatch"
 
 echo "PASS: auto-dev-blocked-hold"

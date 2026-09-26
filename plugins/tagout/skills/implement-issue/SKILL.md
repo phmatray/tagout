@@ -63,7 +63,7 @@ Create a task per item and work them in order. Step 6 is the loop — one pass p
 1. **Preconditions** — `gh` works, you're in the target repo, resolve the issue number.
 2. **Read the plan** — fetch the `🛠️ Implementation plan` from the issue body (or a comment, on older issues); save it and note where it lives.
 3. **Pick the execution mode** — assess complexity → *Inline (Extra)* or *Subagent-per-task (Ultracode)*.
-4. **Create this issue's own worktree** — via `scripts/make-worktree.sh`, off `main`. Never implement from the checkout you were launched in, even if it is already a worktree. If no branch-name match is found, fall back to an issue-scoped GitHub search before scaffolding a new one — a second open PR closing the same issue is the failure this step exists to prevent.
+4. **Create this issue's own worktree** — via `scripts/make-worktree.sh`, off the resolved default branch (`BASE=` in its receipt, #678) — never a hardcoded or stale local `main`. Never implement from the checkout you were launched in, even if it is already a worktree. If no branch-name match is found, fall back to an issue-scoped GitHub search before scaffolding a new one — a second open PR closing the same issue is the failure this step exists to prevent.
 5. **Open the draft PR** — empty scaffold commit, push, then the shared PR-open recipe (`_shared/open-pr.md`, as a draft) linking the issue; PR title carries a Conventional Commits prefix (`fix:`/`feat:`/…, CI-enforced) and ends with `(#<issue>)`.
 6. **Loop until every task is checked** — implement the next unchecked task → verify green → commit → tick that task on the issue plan *and* the PR description → push.
 7. **Code review** — run the `code-review` skill, apply + commit the fixes, push.

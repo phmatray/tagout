@@ -190,6 +190,13 @@ else
   ok "each issue's database id is resolved exactly once"
 fi
 
+# --tracker <name> on wire-edges.sh's own CLI pins the backend outright (#603) — resolve_tracker()
+# short-circuits on it instead of re-reading the profile — and produces the identical SUB line the
+# flag-less equivalent above does.
+run_case "explicit-tracker" --tracker github --repo o/r --parent 10 --child 11
+expect_rc 0 && expect_line '^SUB 10←11 ok' \
+  && ok "--tracker github explicit on the CLI produces the same SUB line as the flag-less run"
+
 # ----------------------------------------------------- 2. sub-issues endpoint is off (404) → fallback
 GH_SUB_STATUS=404 run_case "sub-issues-404" --repo o/r --parent 10 --child 11 --child 12:blocked-by=11
 expect_rc 0 \
@@ -411,6 +418,18 @@ run_case "missing-helper" --repo o/r --parent 1 --child 2
 SCRIPT="$SCRIPT_KEEP"
 expect_rc 2 && expect_no_calls && expect_stderr_contains "_shared/scripts/_gh-host.sh; reinstall the kit" \
   && ok "without its host helper: exit 2, the missing file named, calls nothing"
+
+# ------------------------------------------ 10. one home for the DRY-RUN format (#603, AC1)
+#
+# The DRY-RUN line used to be hand-formatted a second time in this script, duplicating the string
+# scripts/tracker/github.sh's own issue-link-parent/issue-link-blocked-by --dry-run already prints.
+case_n=$((case_n + 1)); CASE="dry-run-format"
+if grep -qF 'DRY-RUN POST' "$KIT_ROOT/$SCRIPT_KEEP"; then
+  echo "FAIL: [$CASE] $SCRIPT_KEEP still hand-formats a DRY-RUN line — should relay the verb's own"
+  fails=$((fails + 1))
+else
+  ok "the DRY-RUN format has exactly one home (scripts/tracker/github.sh), not two"
+fi
 
 # ------------------------------------------------------------------------------------------ verdict
 if [ "$fails" -ne 0 ]; then
