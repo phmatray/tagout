@@ -261,7 +261,14 @@ else
         tracker_rc=$?
         set -e
         if [ "$tracker_rc" -eq 0 ]; then
+          # `set +e`/`set -e` around the parse too, like every other fallible call in this block:
+          # `jq -r` exits non-zero (5) on stdout that fails to parse as JSON, and a bare assignment
+          # under `set -euo pipefail` would let a malformed tracker response kill this script with
+          # jq's own exit code instead of falling through to the ls-remote/origin-HEAD/refuse chain
+          # below (a future non-github backend is exactly the case the kit's own header names).
+          set +e
           BASE_BRANCH=$(printf '%s' "$TRACKER_OUT" | jq -r '.defaultBranch // empty' 2>/dev/null)
+          set -e
         fi
       fi
       if [ -z "$BASE_BRANCH" ] && [ "$HAS_ORIGIN" -eq 1 ]; then
