@@ -13,7 +13,8 @@
 # This script closes that gap the way #26 closed the same gap for `git commit`: replace a bare
 # command that "exits 0 whatever happens" with a program that asserts, acts, and prints a receipt.
 # It runs the ignore proof through worktrees-ignored.sh and no other spelling, then creates or
-# reuses this issue's worktree off `main` and prints the WORKTREE=/BRANCH= receipt Steps 5-9 need.
+# reuses this issue's worktree off the remote's real default branch (#678) and prints the
+# WORKTREE=/BRANCH=/BASE= receipt Steps 5-9 need.
 #
 # NEVER writes to the repository's .gitignore. worktree-ignore-check.md's "Never edit the
 # repository's .gitignore unasked" applies here precisely: on a refusal the fix belongs in the
@@ -32,21 +33,25 @@
 #   --base <branch> the branch to create fresh off. Skips the resolution below. Without it,
 #                   resolved in order (#678): the tracker's `repo` verb (`defaultBranch`, scoped to
 #                   the repository -C names, never this script's own caller's cwd); otherwise
-#                   `git symbolic-ref --short refs/remotes/origin/HEAD` with `origin/` stripped;
-#                   otherwise, only when the repository carries no `origin` remote at all, the
-#                   local branch `main` (there is no remote to disagree with it); otherwise
-#                   REFUSED. Whichever source answers, the branch is fetched
-#                   (`git fetch -q origin <branch>`) and the worktree is created off
-#                   `origin/<branch>` — never a local ref that may be stale. Ignored entirely on
-#                   the reuse/attach paths below, which never create anything off a base.
+#                   `git ls-remote --symref origin HEAD` (the remote's own advertised default,
+#                   asked directly — no `gh`/auth needed, and unlike a local remote-tracking ref it
+#                   needs no prior `clone`/`fetch`), falling back to the local, possibly-stale
+#                   `refs/remotes/origin/HEAD` only if that call itself cannot run; otherwise, only
+#                   when the repository carries no `origin` remote at all, the local branch `main`
+#                   (there is no remote to disagree with it); otherwise REFUSED. Whichever source
+#                   answers, the branch is fetched (`git fetch -q origin <branch>`) and the
+#                   worktree is created off `origin/<branch>` — never a local ref that may be
+#                   stale. Ignored entirely on the reuse/attach paths below, which never create
+#                   anything off a base.
 #   <branch>        the branch this issue owns, already derived via the SLUG recipe
 #                   (references/github-mechanics.md §5) — never composed here.
 #
 # Exit codes:
-#   0  a worktree for <branch> exists — created fresh off `main`, or reused because a worktree
-#      already matched <branch> exactly. Prints, in order:
+#   0  a worktree for <branch> exists — created fresh off the resolved default branch, or reused
+#      because a worktree already matched <branch> exactly. Prints, in order:
 #        WORKTREE=<absolute path>
 #        BRANCH=<branch>
+#        BASE=<origin/branch>       (only on a fresh create — reuse/attach resolve no base, #678)
 #      A `2` (over-broad ignore rule) verdict from worktrees-ignored.sh does not change this exit
 #      code — see its own contract: a different finding, not a worse one. Its note is relayed to
 #      stderr.
@@ -259,7 +264,20 @@ else
           BASE_BRANCH=$(printf '%s' "$TRACKER_OUT" | jq -r '.defaultBranch // empty' 2>/dev/null)
         fi
       fi
+      if [ -z "$BASE_BRANCH" ] && [ "$HAS_ORIGIN" -eq 1 ]; then
+        # Ask the remote directly rather than trust a local cache: `refs/remotes/origin/HEAD` is
+        # only ever written by `git clone` or `git remote set-head` — a remote added by hand and
+        # pushed to (never cloned) leaves nothing there even though the remote itself answers
+        # immediately. `ls-remote --symref` asks it, one lightweight round trip (or none at all for
+        # a local path), no `gh`/auth needed, and it also self-heals a rename `origin/HEAD` missed.
+        set +e
+        SYMREF_OUT=$(git -C "$REPO_ROOT" ls-remote --symref origin HEAD 2>/dev/null)
+        set -e
+        BASE_BRANCH=$(printf '%s\n' "$SYMREF_OUT" | awk '$1=="ref:"{print $2; exit}')
+        BASE_BRANCH="${BASE_BRANCH#refs/heads/}"
+      fi
       if [ -z "$BASE_BRANCH" ]; then
+        # Last-ditch offline fallback if `ls-remote` itself could not be run.
         set +e
         HEAD_REF=$(git -C "$REPO_ROOT" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
         set -e

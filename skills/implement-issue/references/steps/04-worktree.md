@@ -1,7 +1,9 @@
 ## Step 4 — Create **this issue's own** worktree
 
 **This issue gets a worktree of its own, always.** Not "a worktree" — *this* one, created or reused
-through `scripts/make-worktree.sh` below (#280), off `main`. Name the branch for the issue, e.g.
+through `scripts/make-worktree.sh` below (#280), off the repository's real default branch — the
+remote's, as it is right now, never a hardcoded or stale local `main` (#678: `BASE=` in the
+receipt names what it resolved). Name the branch for the issue, e.g.
 `feat/<issue>-<short-slug>` (slug from the issue title).
 
 ⛔ **Never implement from the checkout you were launched in**, even when that checkout is already a
@@ -101,7 +103,7 @@ verdict was reached). Either way: **stop here, before Step 5's scaffold** — th
 contract's genuine blocker, not a default to pick past.
 
 **If the fallback above resumed onto an existing PR whose branch has no local worktree yet**,
-`make-worktree.sh` does not cover that case — it only creates fresh off `main` or reuses an exact
+`make-worktree.sh` does not cover that case — it only creates fresh off the resolved default branch or reuses an exact
 branch-name match. Fetch and check it out by hand instead (existing local branch: `git worktree add`
 from it; remote-only: `git worktree add -b "$BRANCH" "origin/$BRANCH"`), into a home the same call
 above has already proven ignored.

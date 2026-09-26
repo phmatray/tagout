@@ -98,6 +98,9 @@ echo "  ok: base-override — --base feature/x creates off origin/feature/x, not
 
 # ---------------------------------------------------------------- 5. no source resolves → refuse
 
+emptyBare="$WORK/empty-origin.git"
+git init -q --bare "$emptyBare"   # no commits, no branches: HEAD advertises nothing at all
+
 caseNoSource="$WORK/case-no-source"
 git init -q -b main "$caseNoSource"
 git -C "$caseNoSource" config user.email t@example.com
@@ -105,10 +108,10 @@ git -C "$caseNoSource" config user.name "Golden Test"
 printf '%s' "$IGNORE_LINES" > "$caseNoSource/.gitignore"
 git -C "$caseNoSource" add -A
 git -C "$caseNoSource" commit -qm base
-# An origin IS configured (so there is something to disagree with) but never fetched — no
-# refs/remotes/origin/HEAD exists, and the tracker call fails offline (a local path, not a known
-# GitHub host) — so nothing resolves a name at all.
-git -C "$caseNoSource" remote add origin "$bare"
+# An origin IS configured (so there is something to disagree with) but it is empty — `ls-remote
+# --symref` advertises nothing, `refs/remotes/origin/HEAD` was never fetched either, and the
+# tracker call fails offline (a local path, not a known GitHub host) — so nothing resolves a name.
+git -C "$caseNoSource" remote add origin "$emptyBare"
 
 BRANCH5="feat/5-no-source"
 wt_count_before=$(git -C "$caseNoSource" worktree list --porcelain | grep -c '^worktree ')
