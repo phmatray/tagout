@@ -128,9 +128,15 @@ _join_comma() {
   printf '%s' "$out"
 }
 
-# Shared by the read verbs: GitLab spells a state "opened", the contract spells it "open" — the
-# same normalisation github.sh applies by lower-casing GitHub's OPEN/CLOSED.
-_state_open() { if [ "$1" = opened ]; then echo open; else printf '%s' "$1"; fi; }
+# Same shape as _join_comma, `&`-separated — issue-search's own query-string parameters, built as
+# an array precisely so a filter that is absent never leaves a stray leading/trailing separator.
+_join_amp() {
+  local out="" a
+  for a in "$@"; do
+    if [ -z "$out" ]; then out="$a"; else out="$out&$a"; fi
+  done
+  printf '%s' "$out"
+}
 
 # The numeric project id the issue-links endpoint's `target_project_id` field wants (GitLab types
 # it an integer, not a path) — resolved once per invocation and cached, the same shape as
@@ -159,7 +165,16 @@ _link_post() {
   local endpoint="$1"; shift
   local -a fields=()
   local f
-  for f in "$@"; do fields+=(-f "$f"); done
+  # A field prefixed "F:" goes through -F (typed — an integer stays an integer, per the header's
+  # own note that target_project_id/target_issue_iid are GitLab-typed integers, not paths);
+  # anything else goes through -f (a plain string), the same split every other verb in this file
+  # already makes between an id and a label.
+  for f in "$@"; do
+    case "$f" in
+      F:*) fields+=(-F "${f#F:}") ;;
+      *)   fields+=(-f "$f") ;;
+    esac
+  done
   local err code msg
   if err=$(_api -X POST --silent "$endpoint" "${fields[@]}" 2>&1 >/dev/null); then
     echo "ok"; return 0
@@ -232,18 +247,23 @@ case "$VERB" in
         *) echo "gitlab: issue-search: unknown option: $1" >&2; exit 2 ;;
       esac
     done
-    ep="projects/$(_id)/issues?in=title,description"
-    [ -n "$Q" ] && ep="$ep&search=$(_urlenc "$Q")"
+    # `in` scopes `search` and GitLab documents it as meaningless without one — sent only
+    # alongside a `search=` term, never on a bare label/state-only search (Step 3's open-refactor
+    # scan calls this with --label and no --query, exactly the case that must stay a plain list).
+    # Built as an array and `&`-joined so an absent filter never leaves a stray leading `&` or `?`
+    # in the query string, whichever filters are present.
+    qp=()
+    [ -n "$Q" ] && qp+=("in=title,description" "search=$(_urlenc "$Q")")
     case "$ST" in
-      open) ep="$ep&state=opened" ;;
-      closed) ep="$ep&state=closed" ;;
+      open) qp+=("state=opened") ;;
+      closed) qp+=("state=closed") ;;
       all|"") ;;
       *) echo "gitlab: issue-search: unknown --state: $ST" >&2; exit 2 ;;
     esac
-    if [ "${#LBLS[@]}" -gt 0 ]; then
-      ep="$ep&labels=$(_urlenc "$(_join_comma "${LBLS[@]}")")"
-    fi
-    [ -n "$LIM" ] && ep="$ep&per_page=$(_urlenc "$LIM")"
+    [ "${#LBLS[@]}" -gt 0 ] && qp+=("labels=$(_urlenc "$(_join_comma "${LBLS[@]}")")")
+    [ -n "$LIM" ] && qp+=("per_page=$(_urlenc "$LIM")")
+    ep="projects/$(_id)/issues"
+    [ "${#qp[@]}" -gt 0 ] && ep="$ep?$(_join_amp "${qp[@]}")"
     out=$(_api "$ep") || exit 1
     printf '%s' "$out" | jq -c '[.[] | {number: .iid, title, state: (if .state == "opened" then "open" else .state end)}]'
     ;;
@@ -378,14 +398,14 @@ case "$VERB" in
     [ -n "$C" ] && [ -n "$B" ] \
       || { echo "gitlab: issue-link-blocked-by needs <child> <blocker>" >&2; exit 2; }
     if [ "$DRY" -eq 1 ]; then
-      echo "DRY-RUN POST projects/$(_id)/issues/$C/links -f target_project_id=<numeric project id> -f target_issue_iid=$B -f link_type=is_blocked_by"
+      echo "DRY-RUN POST projects/$(_id)/issues/$C/links -F target_project_id=<numeric project id> -F target_issue_iid=$B -f link_type=is_blocked_by"
       exit 0
     fi
     pid=$(_project_id) \
       || { echo "gitlab: issue-link-blocked-by: cannot resolve this project's numeric id — $pid" >&2; exit 1; }
     [ "$RESOLVE_ONLY" -eq 1 ] && exit 0
     _link_post "projects/$(_id)/issues/$C/links" \
-      "target_project_id=$pid" "target_issue_iid=$B" "link_type=is_blocked_by"
+      "F:target_project_id=$pid" "F:target_issue_iid=$B" "link_type=is_blocked_by"
     ;;
 
   # No sub-issue relation (see issue-link-parent) — nothing to list, and never a request.
@@ -398,7 +418,7 @@ case "$VERB" in
   issue-blocked-by-count)
     n="${1-}"
     [ -n "$n" ] || { echo "gitlab: issue-blocked-by-count needs an issue number" >&2; exit 2; }
-    if out=$(_api "projects/$(_id)/issues/$n/links" 2>&1); then
+    if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
       printf '%s' "$out" | jq -c '[.[] | select(.link_type == "is_blocked_by" and .state == "opened")] | length'
     elif printf '%s' "$out" | grep -qE '\(HTTP 403\)|^glab: HTTP 403$'; then
       printf 'n/a\n'

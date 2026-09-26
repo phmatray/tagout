@@ -871,6 +871,20 @@ for a in "$@"; do
   prev="$a"
 done
 
+# Normalises the project token to the fixed placeholder `:id` for DISPATCH purposes only (the
+# stub's own answers never depend on which project was named) — a `--repo` call reaches this stub
+# with a percent-encoded `owner%2Frepo` in place of `:id` (gitlab.sh's own `_id()`), and every
+# pattern below is written once, against `:id`, rather than duplicated per possible project token.
+endpoint_dispatch="$endpoint"
+case "$endpoint_dispatch" in
+  projects/*)
+    rest="${endpoint_dispatch#projects/}"
+    proj="${rest%%[/?]*}"
+    tail="${rest#"$proj"}"
+    endpoint_dispatch="projects/:id$tail"
+    ;;
+esac
+
 # A literal `{`/`}` inside a `${VAR:-default}` word is NOT nesting-aware in bash — the FIRST
 # unescaped `}` (the JSON object's own closing brace) ends the expansion early, truncating the
 # fixture and splicing the rest of the source text onto it. `_pl` (pick-literal) sidesteps the
@@ -879,7 +893,7 @@ done
 _pl() { local v; eval "v=\"\${$1:-}\""; if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "$2"; fi; }
 
 payload=""
-case "$method $endpoint" in
+case "$method $endpoint_dispatch" in
   "GET user")
     s="${GLAB_AUTH_STATUS:-200}"
     case "$s" in 2??) payload=$(_pl GLAB_USER_JSON '{"username":"glab_stub_user"}') ;; *) fail_http "$s" ;; esac ;;
@@ -889,7 +903,7 @@ case "$method $endpoint" in
     payload=$(_pl GLAB_SEARCH_JSON '[{"iid":12,"title":"A stub closed issue","state":"closed"}]') ;;
   "GET projects/:id/issues/"[0-9]*"/notes"\?*)
     payload=$(_pl GLAB_NOTES_JSON '[{"body":"first note","system":false},{"body":"a system note","system":true},{"body":"second note","system":false}]') ;;
-  "GET projects/:id/issues/"[0-9]*"/links")
+  "GET projects/:id/issues/"[0-9]*"/links"|"GET projects/:id/issues/"[0-9]*"/links"\?*)
     s="${GLAB_LINKS_STATUS:-200}"
     case "$s" in 2??) payload=$(_pl GLAB_LINKS_JSON '[]') ;; *) fail_http "$s" "${GLAB_LINKS_MESSAGE:-}" ;; esac ;;
   "GET projects/:id/issues/"[0-9]*)
@@ -956,6 +970,38 @@ elif [ "$OUT" != '{"slug":"acme/widgets","host":"gitlab.com","defaultBranch":"ma
 else
   ok "repo — path_with_namespace -> slug, default_branch -> defaultBranch, host gitlab.com"
 fi
+
+# ---------------------------------------------------------------- --repo/-R: [host/]owner/repo (#668)
+#
+# The 2-vs-3-segment split gitlab.sh's own header claims (mirroring _gh-host.sh's rule for github),
+# exercised through the one seam that is observable either way: `repo`'s own `host` field for the
+# 3-segment (explicit host) case, and the call log's percent-encoded project path for both — a
+# `projects/:id` call never reaches the stub once --repo names a slug, so a wrong _id() would show
+# up as a literal, unencoded `projects/other/widgets` instead.
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo other/widgets repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/other%2Fwidgets' "$GLAB_CALL_LOG" \
+  && ok "--repo (2 segments) — owner/repo percent-encoded into the project path, no :id" \
+  || note_fail "--repo (2 segments) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo gitlab.example.com/other/widgets repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "--repo (3 segments, explicit host) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"acme/widgets","host":"gitlab.example.com","defaultBranch":"main","originSlug":null}' ]; then
+  note_fail "--repo (3 segments, explicit host) — wrong stdout: $OUT"
+elif ! grep -Fq -- '--hostname gitlab.example.com' "$GLAB_CALL_LOG"; then
+  note_fail "--repo (3 segments, explicit host) — --hostname never reached glab:
+      $(cat "$GLAB_CALL_LOG")"
+else
+  ok "--repo (3 segments) — the leading segment is the host, passed as --hostname and reported back"
+fi
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo a/b/c/d repo
+[ "$RC" -eq 2 ] && [ ! -s "$GLAB_CALL_LOG" ] \
+  && ok "--repo (4 segments) — malformed slug refused before any glab call, exit 2" \
+  || note_fail "--repo (4 segments) — expected exit 2 with no call, got $RC, log: $(cat "$GLAB_CALL_LOG")"
 
 # ------------------------------------------------------------------------------------------- AC5 (issue-view)
 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-view 9
@@ -1112,14 +1158,14 @@ GLAB_LINK_STATUS=409 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-
 : > "$GLAB_CALL_LOG"
 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10
 [ "$RC" -eq 0 ] && [ "$OUT" = ok ] \
-  && grep -Fq -- 'projects/:id/issues/11/links -f target_project_id=501 -f target_issue_iid=10 -f link_type=is_blocked_by' "$GLAB_CALL_LOG" \
+  && grep -Fq -- 'projects/:id/issues/11/links -F target_project_id=501 -F target_issue_iid=10 -f link_type=is_blocked_by' "$GLAB_CALL_LOG" \
   && ok "AC4 issue-link-blocked-by — the resolved numeric project id reached target_project_id" \
   || note_fail "AC4 issue-link-blocked-by — exit $RC, out '$OUT', log: $(cat "$GLAB_CALL_LOG")"
 
 : > "$GLAB_CALL_LOG"
 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10 --dry-run
 [ "$RC" -eq 0 ] \
-  && [ "$OUT" = 'DRY-RUN POST projects/:id/issues/11/links -f target_project_id=<numeric project id> -f target_issue_iid=10 -f link_type=is_blocked_by' ] \
+  && [ "$OUT" = 'DRY-RUN POST projects/:id/issues/11/links -F target_project_id=<numeric project id> -F target_issue_iid=10 -f link_type=is_blocked_by' ] \
   && [ ! -s "$GLAB_CALL_LOG" ] \
   && ok "issue-link-blocked-by --dry-run — prints the POST, calls glab not at all" \
   || note_fail "issue-link-blocked-by --dry-run — got '$OUT' exit $RC, log: $(cat "$GLAB_CALL_LOG")"
