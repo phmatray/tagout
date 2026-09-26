@@ -167,7 +167,8 @@ function endsw(s, suf,    ls, lu) { ls = length(s); lu = length(suf); return (ls
 # and once for the double-quoted one, so a future edit to the matching algorithm could land on one
 # twin and silently miss the other in a security gate. One implementation, called from both places.
 # `paren_end(s, dollar_i)`: `s` has a `$(` starting at `dollar_i`; returns the index of the matching
-# `)` by depth-count (not quote-aware inside a substitution — unchanged, ponytail-flagged scope).
+# `)` by depth-count (not quote-aware inside a substitution — unchanged, ponytail-flagged scope), or
+# `n + 1` if unmatched.
 function paren_end(s, dollar_i,    depth, j, cc, n) {
   n = length(s); depth = 1; j = dollar_i + 2
   while (j <= n && depth > 0) {
