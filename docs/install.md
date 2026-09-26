@@ -10,6 +10,9 @@ nav_order: 1.5
 
 The kit is written for Claude Code and installs as a plugin on {{ plugin_hosts.size | minus: 1 }}
 more hosts from the same repository. Hosts that read a rules file instead load it from a clone.
+On Claude Code it is two plugins — `tagout`, the issue → pull request lifecycle, and
+`tagout-migrate`, the .NET migration add-on, installed only to upgrade a legacy .NET application; on
+every host but Claude Code the manifest ships the lifecycle and the .NET migration add-on together.
 Every command below carries a copy button; the full capability table is on [Platforms](platforms.md).
 
 ## Plugin hosts

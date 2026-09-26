@@ -89,6 +89,19 @@
   letter-spacing: 0.02em;
 }
 
+// The two plugins, named as typed: a package name keeps its case, and each install line sits on
+// its own row and may break anywhere rather than push the tag wider than a phone.
+.kit-plugins dt {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.kit-plugins dd code:last-child {
+  display: block;
+  margin-top: calc(var(--unit) * 0.5);
+  overflow-wrap: anywhere;
+}
+
 .kit-denial .kit-fields {
   font-size: 0.875rem;
 }
