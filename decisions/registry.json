@@ -62,6 +62,7 @@
     "scripts/run-all-tests.sh": "the test-suite orchestrator; it runs gates and suites in sequence, it does not itself decide anything",
     "scripts/session-retro.sh": "a scheduler: it runs review-sessions' harvest.py on a timer, writes a dated report when the harvest returned records, and installs/removes the systemd user unit that calls it \u2014 the record count is a fact it reports, not a control-flow choice, and the clustering, already-fixed check and filing bar all stay with the review-sessions skill it hands off to",
     "scripts/tracker.sh": "the verb dispatcher and state report; routes a verb to a backend and decides nothing, `tracker.capable` decides",
+    "scripts/tracker/azure-devops.sh": "a backend: translates a verb into az boards/repos calls and normalises the reply; decides nothing",
     "scripts/tracker/github.sh": "a backend: translates a verb into gh calls and normalises the reply; decides nothing",
     "scripts/worktrees-ignored.sh": "a structural guard (worktree homes are ignored), not a control-flow choice with a verdict vocabulary",
     "skills/_shared/scripts/_gh-host.sh": "sourced by the kit's gh-calling scripts, never executed on its own — resolves which host gh talks to, not a decision",
