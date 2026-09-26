@@ -402,6 +402,16 @@ verdict "L29 \$(...) hidden inside a double-quoted argument" deny "guarded-pr-me
   "$(pay Bash 'echo "$(gh pr merge 12)"' "$PROF")"
 verdict "L30 a backtick sub hidden inside a double-quoted argument" deny "guarded-pr-merge.sh" \
   "$(pay Bash 'echo "`gh pr merge 12`"' "$PROF")"
+# #602: the unquoted and double-quoted `$(...)` walks used to be hand-copied twins; a NESTED
+# substitution (depth > 1) run through both quote states must deny identically, or the two walks
+# have silently diverged. Characterizes today's behaviour as the safety net BEFORE the refactor
+# that shares paren_end()/tick_end() between them, then keeps proving it after.
+# NOTE: labelled L55/L56 rather than sequentially after L30 — L31/L32 were already taken further
+# down by the time this landed.
+verdict "L55 a nested \$(...) hidden unquoted"       deny "guarded-pr-merge.sh" \
+  "$(pay Bash 'echo $(echo $(gh pr merge 12))' "$PROF")"
+verdict "L56 a nested \$(...) hidden inside a double-quoted argument" deny "guarded-pr-merge.sh" \
+  "$(pay Bash 'echo "$(echo $(gh pr merge 12))"' "$PROF")"
 # Outer verb is `echo`, not `git commit` (the issue's own illustrative example) — a bare `git
 # commit` denies unconditionally regardless of its message content (D-series above), so it cannot
 # isolate this specific "$5 is not a substitution opener" question, empirically confirmed pre-fix.
