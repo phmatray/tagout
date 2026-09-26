@@ -39,6 +39,10 @@ command -v jq >/dev/null 2>&1 || { echo "azure-devops: jq is missing" >&2; exit 
 command -v az >/dev/null 2>&1 || { echo "azure-devops: az CLI is missing" >&2; exit 2; }
 
 # --------------------------------------------------------------------- org/project resolution
+#
+# Falls back to reading the committed profile itself (rather than `scripts/tracker.sh` handing it
+# the detail it already resolved) — filed as #693 to fix at the dispatcher, since that would help
+# every future non-GitHub backend, not just this one.
 ORG=""
 PROJECT=""
 _org_project() {
@@ -106,16 +110,34 @@ _wiql_escape() { printf '%s' "$1" | sed "s/'/''/g"; }
 
 # The project's process template name — Basic | Agile | Scrum | CMMI | anything else (an
 # inherited process reports its own name and is refused by name, per the Spec's edge case).
+# Sets the globals $PROC_NAME (result) / $PROCESS_NAME_ERR (failure text) rather than printing to
+# stdout — called plain, never as `x=$(_process_name)`, because a command substitution runs in a
+# subshell and any variable it sets there is gone the moment it returns (review finding: the first
+# version of this did exactly that, so the caller's own error message always read empty). Returns 1
+# when the `az` call itself fails — not logged in, no network, wrong org/project — so a caller can
+# tell that apart from "logged in fine, this process just isn't one of the four built-ins" (a
+# second review finding: the two used to collapse into the same misleading 'unmapped process' exit
+# 2, hiding a real auth/network failure behind it).
+PROC_NAME=""
+PROCESS_NAME_ERR=""
 _process_name() {
-  az devops project show --org "$(_base_url)" --project "$PROJECT" \
-    --query "capabilities.processTemplate.templateName" -o tsv 2>/dev/null
+  local out
+  if out=$(az devops project show --org "$(_base_url)" --project "$PROJECT" \
+      --query "capabilities.processTemplate.templateName" -o tsv 2>&1); then
+    PROC_NAME="$out"
+    return 0
+  fi
+  PROCESS_NAME_ERR="$out"
+  return 1
 }
 
 # $1 = process name, $2 = 1 when the caller asked for the bug type. Prints the work-item type on
-# stdout; returns 1 (nothing printed) for a process this backend does not map.
+# stdout; returns 1 (nothing printed) for a process this backend does not map. Basic has no Bug
+# type (only Epic, Issue, Task) — a bug label there still files an Issue rather than a type the
+# API would reject (review finding).
 _wi_type() {
   local proc="$1" bug="${2:-0}"
-  if [ "$bug" = 1 ]; then printf 'Bug'; return 0; fi
+  if [ "$bug" = 1 ] && [ "$proc" != Basic ]; then printf 'Bug'; return 0; fi
   case "$proc" in
     Basic) printf 'Issue' ;;
     Agile) printf 'User Story' ;;
@@ -176,7 +198,7 @@ case "$VERB" in
     printf '%s' "$out" | jq -c '
       .fields as $f |
       { number: .id, title: $f."System.Title",
-        state: ($f."System.State" | ascii_downcase),
+        state: (if ($f."System.State" | IN("Closed","Done","Removed")) then "closed" else "open" end),
         body: ($f."System.Description" // ""),
         labels: (($f."System.Tags" // "") | if . == "" then [] else split("; ") end),
         url: (._links.html.href // (.url // "")),
@@ -254,7 +276,8 @@ case "$VERB" in
     [ -n "$TITLE" ] || { echo "azure-devops: issue-create needs --title" >&2; exit 2; }
     [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
       || { echo "azure-devops: issue-create needs a non-empty --body-file" >&2; exit 2; }
-    PROC=$(_process_name) || true
+    _process_name || { echo "azure-devops: issue-create: cannot read the project's process: $PROCESS_NAME_ERR" >&2; exit 1; }
+    PROC="$PROC_NAME"
     BUG=0
     for l in "${LBLS[@]:-}"; do
       case "$(printf '%s' "$l" | tr '[:upper:]' '[:lower:]')" in bug) BUG=1 ;; esac
@@ -353,7 +376,8 @@ PY
     [ -n "$n" ] || { echo "azure-devops: issue-reopen needs a work-item number" >&2; exit 2; }
     [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
       || { echo "azure-devops: issue-reopen refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
-    PROC=$(_process_name) || true
+    _process_name || { echo "azure-devops: issue-reopen: cannot read the project's process: $PROCESS_NAME_ERR" >&2; exit 1; }
+    PROC="$PROC_NAME"
     STATE=$(_first_state "$PROC") \
       || { echo "azure-devops: issue-reopen: '$PROC' is not a process this backend maps to a first state" >&2; exit 2; }
     PATCH_FILE=$(mktemp)
@@ -402,10 +426,11 @@ PY
 
   issue-link-parent|issue-link-blocked-by)
     LVERB="$VERB"
-    DRY=0; POS=()
+    DRY=0; RESOLVE_ONLY=0; POS=()
     for a in "$@"; do
       case "$a" in
         --dry-run) DRY=1 ;;
+        --resolve-only) RESOLVE_ONLY=1 ;;
         *) POS+=("$a") ;;
       esac
     done
@@ -424,9 +449,18 @@ PY
       echo "DRY-RUN PATCH wit/workitems/$CHILD_ID add relation $RELTYPE -> $TARGET_URL"
       exit 0
     fi
+    # Both ends are resolved by a read before anything is ever written. --resolve-only (honoured by
+    # github.sh; wire-edges.sh runs an up-front pass in this mode over every edge so a bad id is
+    # reported before anything is sent) stops right here, having written nothing — it used to be
+    # filed as a stray positional and ignored, silently falling through to a real write (review
+    # finding: the exact partial-write failure that pass exists to prevent).
     existing=$(_invoke "$LVERB: read relations" --area wit --resource workitems \
       --route-parameters project="$PROJECT" id="$CHILD_ID" --query-parameters '$expand=relations' \
       --http-method GET --api-version 7.1) || exit 1
+    _invoke "$LVERB: resolve target" --area wit --resource workitems \
+      --route-parameters project="$PROJECT" id="$TARGET_ID" \
+      --http-method GET --api-version 7.1 >/dev/null || exit 1
+    [ "$RESOLVE_ONLY" -eq 1 ] && exit 0
     already=$(printf '%s' "$existing" | jq -r --arg rel "$RELTYPE" --arg url "$TARGET_URL" \
       '[.relations[]? | select(.rel == $rel and .url == $url)] | length')
     if [ "$already" -gt 0 ]; then
@@ -436,19 +470,19 @@ PY
     PATCH_FILE=$(mktemp)
     jq -n --arg rel "$RELTYPE" --arg url "$TARGET_URL" \
       '[{op:"add", path:"/relations/-", value:{rel:$rel, url:$url}}]' > "$PATCH_FILE"
-    if out=$(az devops invoke --org "$(_base_url)" -o json --area wit --resource workitems \
+    if _invoke "$LVERB: write" --area wit --resource workitems \
         --route-parameters project="$PROJECT" id="$CHILD_ID" \
         --http-method PATCH --api-version 7.1 \
-        --media-type application/json-patch+json --in-file "$PATCH_FILE" 2>&1 >/dev/null); then
+        --media-type application/json-patch+json --in-file "$PATCH_FILE" >/dev/null; then
       rm -f "$PATCH_FILE"
       echo "ok"
     else
       rm -f "$PATCH_FILE"
-      code=$(_http_code "$out")
+      code=$(_http_code "$AZ_ERR")
       if [ -n "$code" ]; then
-        echo "FAILED (HTTP $code: $out)"
+        echo "FAILED (HTTP $code: $AZ_ERR)"
       else
-        echo "FAILED (no HTTP status in az's answer: $out)"
+        echo "FAILED (no HTTP status in az's answer: $AZ_ERR)"
       fi
       exit 1
     fi
@@ -487,6 +521,9 @@ PY
     fi
     ids=$(printf '%s' "$out" | jq -r '.relations[]? | select(.rel == "System.LinkTypes.Dependency-Reverse") | .url | split("/") | last')
     count=0
+    # ponytail: one az call per predecessor (N+1) rather than a single WIQL `[System.Id] IN (...)`
+    # batch — fine at the handful-of-predecessors scale this verb is used at; batch it if an item
+    # with dozens of blockers makes this measurably slow.
     for id in $ids; do
       st=$(az devops invoke --org "$(_base_url)" -o json --area wit --resource workitems \
         --route-parameters project="$PROJECT" id="$id" --query-parameters 'fields=System.State' \

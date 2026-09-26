@@ -860,6 +860,10 @@ case "${1-} ${2-}" in
     exit 0 ;;
   "devops invoke") : ;;
   "devops project")
+    if [ -n "${AZ_PROJECT_FAIL:-}" ]; then
+      echo "az stub: ERROR: Please run 'az login' to setup account." >&2
+      exit 1
+    fi
     case "$*" in
       *"processTemplate.templateName"*) echo "${AZ_PROCESS:-Agile}" ;;
       *) echo "TestProject" ;;
@@ -975,13 +979,13 @@ if [ "$RC" -ne 0 ]; then
   note_fail "AC5 issue-view — exited $RC ($ERR)"
 else
   got=$(printf '%s' "$OUT" | jq -c '.' 2>/dev/null) || got="<unparseable: $OUT>"
-  want='{"number":7,"title":"A stub item","state":"active","body":"body text","labels":["bug","area: skills"],"url":"","format":"html"}'
+  want='{"number":7,"title":"A stub item","state":"open","body":"body text","labels":["bug","area: skills"],"url":"","format":"html"}'
   if [ "$got" != "$want" ]; then
-    note_fail "AC5 issue-view — wrong normalisation (default format must be html when multilineFieldsFormat is absent)
+    note_fail "AC5 issue-view — wrong normalisation (default format must be html when multilineFieldsFormat is absent; state open/closed like issue-search, not the raw Azure state)
       want: $want
       got:  $got"
   else
-    ok "AC5 issue-view — format defaults to html, System.Tags split on '; '"
+    ok "AC5 issue-view — format defaults to html, System.Tags split on '; ', state open/closed like issue-search"
   fi
 fi
 
@@ -1081,6 +1085,30 @@ else
   ok "AC3 issue-create — 'Agile - Custom' exits 2, named, no verdict guessed"
 fi
 
+# Basic has no Bug work-item type (only Epic, Issue, Task) — a bug label there still files an Issue
+# rather than a type the API would reject (review finding).
+: > "$AZ_CALL_LOG"
+AZ_PROCESS=Basic run_az "$AZBARE" --repo acme/Shop issue-create --title T --label bug --body-file "$BODY_F"
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-create Basic+bug — exited $RC ($ERR)"
+elif ! grep -Fq -- 'type=$Issue' "$AZ_CALL_LOG"; then
+  note_fail "issue-create Basic+bug — Basic has no Bug type, expected type=\$Issue: $(cat "$AZ_CALL_LOG")"
+else
+  ok "issue-create Basic+bug — Basic has no Bug type, files an Issue instead (review finding)"
+fi
+
+# A failed az call (not logged in, network) while reading the process must surface as a host
+# failure (exit 1) — not be swallowed into the same 'unmapped process' exit 2 a genuinely unknown
+# process name gets (review finding: the two used to collapse, hiding the real error).
+AZ_PROJECT_FAIL=1 run_az "$AZBARE" --repo acme/Shop issue-create --title T --body-file "$BODY_F"
+if [ "$RC" -ne 1 ]; then
+  note_fail "issue-create az-failure-reading-process — expected exit 1 (host failure), got $RC ($ERR)"
+elif ! printf '%s' "$ERR" | grep -Fq 'az login'; then
+  note_fail "issue-create az-failure-reading-process — the real az error is not surfaced: $ERR"
+else
+  ok "issue-create az-failure-reading-process — exit 1, the real az error surfaced, not a misleading 'unmapped process'"
+fi
+
 # issue-edit-body — an empty file refuses before any az call.
 : > "$AZ_CALL_LOG"
 EMPTY_F="$WORK/empty.md"
@@ -1141,6 +1169,24 @@ elif ! printf '%s' "$OUT" | grep -Fq 'DRY-RUN'; then
   note_fail "issue-link-parent --dry-run — did not print the write it would send: $OUT"
 else
   ok "issue-link-parent --dry-run — prints the write it would send, calls az not at all"
+fi
+
+# --resolve-only resolves both ends by a read and writes nothing. Regression: this flag used to be
+# filed as a stray positional and silently ignored (github.sh honours it; wire-edges.sh runs an
+# up-front --resolve-only pass over every edge so a bad id is reported before anything is sent) —
+# falling through to a real write here was exactly the partial-write failure that pass exists to
+# prevent (code-review finding, #509).
+: > "$AZ_CALL_LOG"
+AZ_WORKITEM_JSON='{"id":21,"relations":[]}' \
+  run_az "$AZBARE" --repo acme/Shop issue-link-parent 20 21 --resolve-only
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-link-parent --resolve-only — exited $RC ($ERR)"
+elif grep -q -- '--http-method PATCH' "$AZ_CALL_LOG"; then
+  note_fail "issue-link-parent --resolve-only — a write (PATCH) was sent; nothing may ever be written in this mode: $(cat "$AZ_CALL_LOG")"
+elif [ "$(grep -c -- '--http-method GET' "$AZ_CALL_LOG")" -lt 2 ]; then
+  note_fail "issue-link-parent --resolve-only — expected both ends (child + target) resolved by a GET: $(cat "$AZ_CALL_LOG")"
+else
+  ok "issue-link-parent --resolve-only — resolves both ends, writes nothing (regression, #509 review)"
 fi
 
 # issue-children — a WorkItemLinks reply becomes a de-duplicated array of child ids.
