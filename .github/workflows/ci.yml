@@ -559,6 +559,9 @@ jobs:
       - name: Implement-issue worktree-step golden test (Step 4 as one call, never a re-spelling, #280)
         run: ./tests/implement-issue-worktree-step/test.sh
 
+      - name: Make-worktree base-branch golden test (the remote default, never a hardcoded local main, #678)
+        run: ./tests/make-worktree-base/test.sh
+
       - name: Plan-freshness golden test (every modify path verified against main before a task runs, #322)
         run: ./tests/plan-freshness/test.sh
 
