@@ -1,3 +1,5 @@
+![Tagout — the gate-verified issue → PR lifecycle for coding agents](.github/banner.svg)
+
 # Tagout
 
 **The gate-verified issue → pull request lifecycle for coding agents: no green tag, no merge.** An
