@@ -163,6 +163,28 @@ agent_id=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || ag
 awkout=$(printf '%s' "$cmd" | tr '\n' ';' | awk '
 BEGIN { sq = sprintf("%c", 39); dq = sprintf("%c", 34); bs = sprintf("%c", 92) }
 function endsw(s, suf,    ls, lu) { ls = length(s); lu = length(suf); return (ls >= lu && substr(s, ls-lu+1) == suf) }
+# Shared by both quote states (#602): each walk used to be hand-copied once for the unquoted branch
+# and once for the double-quoted one, so a future edit to the matching algorithm could land on one
+# twin and silently miss the other in a security gate. One implementation, called from both places.
+# `paren_end(s, dollar_i)`: `s` has a `$(` starting at `dollar_i`; returns the index of the matching
+# `)` by depth-count (not quote-aware inside a substitution — unchanged, ponytail-flagged scope).
+function paren_end(s, dollar_i,    depth, j, cc, n) {
+  n = length(s); depth = 1; j = dollar_i + 2
+  while (j <= n && depth > 0) {
+    cc = substr(s, j, 1)
+    if (cc == "(") depth++
+    else if (cc == ")") depth--
+    if (depth > 0) j++
+  }
+  return j
+}
+# `tick_end(s, tick_i)`: `s` has an opening backtick at `tick_i`; returns the index of the next
+# unescaped backtick, or `n + 1` if unmatched.
+function tick_end(s, tick_i,    j, n) {
+  n = length(s); j = tick_i + 1
+  while (j <= n && substr(s, j, 1) != "`") j++
+  return j
+}
 # The emitted text of the current segment: `out` after its last `;`, `|` or `&` — a plain backward
 # scan, since POSIX awk has no rindex-of-a-set. Used only to test what PRECEDES a quote that is
 # about to close, never what is inside it (#658). No apostrophes in this comment block: it sits
@@ -204,20 +226,13 @@ function segtail(s,    p, cch) {
       # (not left for the generic "(" handling below) so the outer command is judged exactly as it
       # would be without the substitution.
       if (c == "$" && substr($0, i+1, 1) == "(") {
-        depth = 1; j = i + 2; start = j
-        while (j <= n && depth > 0) {
-          cc = substr($0, j, 1)
-          if (cc == "(") depth++
-          else if (cc == ")") depth--
-          if (depth > 0) j++
-        }
+        start = i + 2; j = paren_end($0, i)
         subs[nsubs++] = substr($0, start, j - start)
         out = out " @P@ "; prev = " "; i = j + 1; continue
       }
       # Backtick command substitution: first matching backtick (no nesting without escaping).
       if (c == "`") {
-        j = i + 1
-        while (j <= n && substr($0, j, 1) != "`") j++
+        j = tick_end($0, i)
         subs[nsubs++] = substr($0, i + 1, j - i - 1)
         out = out " @P@ "; prev = " "; i = j + 1; continue
       }
@@ -238,16 +253,11 @@ function segtail(s,    p, cch) {
       # #559: real shell still expands `$(...)`/backticks INSIDE a double-quoted argument (only
       # single quotes suppress that) — so a substitution hidden there is extracted for the same
       # recursive subs[] relay the unquoted branch above already feeds, instead of being silently
-      # absorbed into qbuf and collapsing to an opaque, never-checked @Q@ placeholder. Verbatim
-      # copies of the two extraction blocks above; only `sq` never gets this (real shell agrees).
+      # absorbed into qbuf and collapsing to an opaque, never-checked @Q@ placeholder. Calls the
+      # same `paren_end`/`tick_end` walk the unquoted branch above uses (#602); only `sq` never
+      # gets this (real shell agrees).
       if (q == dq && c == "$" && substr($0, i+1, 1) == "(") {
-        depth = 1; j = i + 2; start = j
-        while (j <= n && depth > 0) {
-          cc = substr($0, j, 1)
-          if (cc == "(") depth++
-          else if (cc == ")") depth--
-          if (depth > 0) j++
-        }
+        start = i + 2; j = paren_end($0, i)
         subs[nsubs++] = substr($0, start, j - start)
         # Never drop the extracted span with nothing in its place (see the code comment two blocks
         # up on the unquoted @P@ append): a stray `"gh` + trailing `"` either side of a silently
@@ -255,8 +265,7 @@ function segtail(s,    p, cch) {
         qbuf = qbuf "@P@"; i = j + 1; continue
       }
       if (q == dq && c == "`") {
-        j = i + 1
-        while (j <= n && substr($0, j, 1) != "`") j++
+        j = tick_end($0, i)
         subs[nsubs++] = substr($0, i + 1, j - i - 1)
         qbuf = qbuf "@P@"; i = j + 1; continue
       }
