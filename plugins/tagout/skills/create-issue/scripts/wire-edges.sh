@@ -5,7 +5,8 @@
 # files the parent and the children first (blockers before the children they block) and then runs
 # this once with the numbers it got back.
 #
-#   wire-edges.sh --repo <[host/]owner/repo> [--parent <N>] --child <C>[:blocked-by=<A>[,<B>…]] … [--dry-run]
+#   wire-edges.sh --repo <[host/]owner/repo> [--parent <N>] --child <C>[:blocked-by=<A>[,<B>…]] …
+#     [--tracker <name>] [--dry-run]
 #
 #   Without --parent, no SUB-ISSUE edge is wired at all — only the DEP (blocked_by) edges — so
 #   every --child in that mode must carry a blocked-by=; a --child with no blocker and no parent
@@ -43,7 +44,11 @@
 #     reader would file under "feature off".
 #   * `--dry-run` prints the POSTs it would send and makes no API call — not even the id lookups —
 #     so a skill can show the plan before a single write. The host helper's one gh call, `gh auth
-#     token`, is a local credential lookup, so --dry-run still touches nothing on GitHub.
+#     token`, is a local credential lookup, so --dry-run still touches nothing on GitHub. The line
+#     itself is the tracker verb's own `--dry-run` output (issue-link-parent/issue-link-blocked-by,
+#     scripts/tracker/github.sh), relayed rather than re-formatted here — one home for the string.
+#   * `--tracker <name>` pins the backend outright, skipping the one-time profile probe below
+#     (mainly a test seam; a caller that already knows the tracker may use it too).
 #
 # Sources: ported from mattpocock/skills (MIT) — `engineering/to-tickets` (publish blockers first
 # so edges can reference real identifiers; native blocking where the tracker has it) and
@@ -76,6 +81,7 @@ is_number() {
 REPO=""
 PARENT=""
 DRY_RUN=0
+TRACKER=""
 CHILD_SPECS=""      # newline-separated "<child> <blocker> <blocker>…" records (bash 3.2: no arrays of arrays)
 CHILD_COUNT=0
 
@@ -115,6 +121,9 @@ while [ $# -gt 0 ]; do
 "
       CHILD_COUNT=$((CHILD_COUNT + 1)) ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --tracker)
+      [ $# -ge 2 ] || refuse "--tracker needs a value"
+      TRACKER="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) refuse "unknown argument '$1' (see --help)" ;;
   esac
@@ -176,15 +185,33 @@ REPO="$KIT_REPO_SLUG"
 TRACKER_SH="$SCRIPT_DIR/../../../scripts/tracker.sh"
 [ -x "$TRACKER_SH" ] || refuse "cannot find $TRACKER_SH; reinstall the kit"
 
+# ---------------------------------------------------------------- resolve the tracker, once (#603)
+#
+# Every "$TRACKER_SH" call below re-resolves the backend from the committed profile unless told
+# otherwise (tracker.sh's own resolve_tracker(), which re-reads and re-parses
+# .claude/skills/repo-profile.md) — one profile probe per edge, for no benefit, since the answer
+# is the same every time within a single run. Resolved here ONCE — via the `state` verb, which runs
+# that exact resolution and reports what it decided — and threaded through every later call as
+# `--tracker`, which resolve_tracker() short-circuits on instantly. --tracker on this script's own
+# command line pins it outright and skips this probe entirely.
+if [ -z "$TRACKER" ]; then
+  state=$("$TRACKER_SH" state create-issue) || refuse "cannot resolve the tracker: $state"
+  TRACKER=$(printf '%s' "$state" | jq -r '.tracker // empty')
+  [ -n "$TRACKER" ] || refuse "the tracker state probe named no tracker"
+fi
+
 # ------------------------------------------------------------------------------------- dry run
+#
+# Each line is the tracker verb's own --dry-run output (issue-link-parent/issue-link-blocked-by),
+# relayed rather than reformatted here — one home for that line's shape, not two.
 if [ "$DRY_RUN" -eq 1 ]; then
   printf '%s' "$CHILD_SPECS" | while read -r child blockers; do
     [ -n "$child" ] || continue
     if [ -n "$PARENT" ]; then
-      echo "DRY-RUN POST repos/$REPO/issues/$PARENT/sub_issues -F sub_issue_id=<database id of #$child>"
+      "$TRACKER_SH" --tracker "$TRACKER" --repo "$REPO" issue-link-parent "$PARENT" "$child" --dry-run
     fi
     for b in $blockers; do
-      echo "DRY-RUN POST repos/$REPO/issues/$child/dependencies/blocked_by -F issue_id=<database id of #$b>"
+      "$TRACKER_SH" --tracker "$TRACKER" --repo "$REPO" issue-link-blocked-by "$child" "$b" --dry-run
     done
   done
   echo "$TOOL: dry run — nothing was sent"
@@ -208,11 +235,11 @@ export TRACKER_ID_CACHE="$IDS"
 while read -r child blockers; do
   [ -n "$child" ] || continue
   if [ -n "$PARENT" ]; then
-    out=$("$TRACKER_SH" --repo "$REPO" issue-link-parent "$PARENT" "$child" --resolve-only 2>&1) \
+    out=$("$TRACKER_SH" --tracker "$TRACKER" --repo "$REPO" issue-link-parent "$PARENT" "$child" --resolve-only 2>&1) \
       || { echo "$TOOL: cannot resolve the database id of #$PARENT or #$child — $out" >&2; exit 1; }
   fi
   for b in $blockers; do
-    out=$("$TRACKER_SH" --repo "$REPO" issue-link-blocked-by "$child" "$b" --resolve-only 2>&1) \
+    out=$("$TRACKER_SH" --tracker "$TRACKER" --repo "$REPO" issue-link-blocked-by "$child" "$b" --resolve-only 2>&1) \
       || { echo "$TOOL: cannot resolve the database id of #$child or #$b — $out" >&2; exit 1; }
   done
 done <<EOF
@@ -239,7 +266,7 @@ count() {
 while read -r child blockers; do
   [ -n "$child" ] || continue
   if [ -n "$PARENT" ]; then
-    verdict=$("$TRACKER_SH" --repo "$REPO" issue-link-parent "$PARENT" "$child") || true
+    verdict=$("$TRACKER_SH" --tracker "$TRACKER" --repo "$REPO" issue-link-parent "$PARENT" "$child") || true
     # Braced on purpose: macOS /bin/bash 3.2 reads the UTF-8 bytes of the arrow that follows a bare
     # `$PARENT` as part of the variable name and dies under `set -u` ("PARENT�: unbound variable")
     # — every edge, every run, while CI's bash 5 printed the line fine. `bash -n` cannot see this.
@@ -247,7 +274,7 @@ while read -r child blockers; do
     count "$verdict"
   fi
   for b in $blockers; do
-    verdict=$("$TRACKER_SH" --repo "$REPO" issue-link-blocked-by "$child" "$b") || true
+    verdict=$("$TRACKER_SH" --tracker "$TRACKER" --repo "$REPO" issue-link-blocked-by "$child" "$b") || true
     echo "DEP ${child}⇐${b} $verdict"
     count "$verdict"
   done
