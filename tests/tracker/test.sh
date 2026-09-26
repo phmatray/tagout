@@ -335,15 +335,16 @@ run_tracker "$PROFILED" --tracker github frobnicate
   && ok "AC3a unknown verb — exit 2 before any backend runs" \
   || note_fail "AC3a unknown verb — expected exit 2, got $RC ('$OUT')"
 
-run_tracker "$PROFILED" --tracker gitlab repo
+# gitlab now has a backend (#508) — a tracker with genuinely no backend file is bitbucket.
+run_tracker "$PROFILED" --tracker bitbucket repo
 if [ "$RC" -ne 3 ]; then
   note_fail "AC3b missing backend — expected exit 3, got $RC ('$OUT')"
-elif ! printf '%s\n%s\n' "$OUT" "$ERR" | grep -Fq 'NOT_IMPLEMENTED gitlab repo'; then
-  note_fail "AC3b missing backend — exit 3 but no 'NOT_IMPLEMENTED gitlab repo'
+elif ! printf '%s\n%s\n' "$OUT" "$ERR" | grep -Fq 'NOT_IMPLEMENTED bitbucket repo'; then
+  note_fail "AC3b missing backend — exit 3 but no 'NOT_IMPLEMENTED bitbucket repo'
       stdout: $OUT
       stderr: $ERR"
 else
-  ok "AC3b missing backend — exit 3, NOT_IMPLEMENTED gitlab repo"
+  ok "AC3b missing backend — exit 3, NOT_IMPLEMENTED bitbucket repo"
 fi
 
 # A verb the contract declares but the RESOLVED backend does not implement is also exit 3, and that
@@ -697,7 +698,7 @@ $(printf '%s\n' "$out" | sed 's/^/      /')"
 capable github.json capable/github-reference \
   'GitHub answers capable for any skill, because an unmigrated skill is still correct there'
 
-capable gitlab-no-backend.json unsupported/no-backend \
+capable bitbucket-no-backend.json unsupported/no-backend \
   'a tracker with no backend at all is unsupported, not merely missing a verb'
 
 capable skill-not-on-contract.json missing/skill-not-on-contract \
@@ -801,6 +802,393 @@ if [ -n "$real_gh_out" ]; then
       $real_gh_out"
 else
   ok "AC3 real tree — no gh api|issue|label|repo|pr spelling anywhere under skills/create-issue"
+fi
+
+echo "== E. the gitlab backend (#508)"
+
+# A fixture repository carrying a committed profile whose Tracker line names gitlab.
+GITLAB_PROFILED="$WORK/gitlab-profiled"
+mkdir -p "$GITLAB_PROFILED/.claude/skills"
+printf '%s\n' '# Repo profile' '' '## Tracker' \
+  '- **Tracker:** gitlab (gitlab.com) — the lifecycle skills drive GitLab semantics through `glab`.' \
+  > "$GITLAB_PROFILED/.claude/skills/repo-profile.md"
+
+GLAB_CALL_LOG="$WORK/glab-calls.log"
+export GLAB_CALL_LOG
+: > "$GLAB_CALL_LOG"
+
+# Every `-F`/`-f key=@file` field's BYTES, captured to $GLAB_CAPTURE_DIR/<key>.bin — never
+# re-derived from the logged argv (a text join), which is exactly the gap AC2 exists to close: a
+# body sent as an ARGUMENT rather than read from the file could still look right in a log line.
+GLAB_CAPTURE_DIR="$WORK/glab-captures"
+export GLAB_CAPTURE_DIR
+mkdir -p "$GLAB_CAPTURE_DIR"
+
+cat > "$WORK/bin/glab" <<'STUB'
+#!/usr/bin/env bash
+set -uo pipefail
+
+if [ -n "${GLAB_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$GLAB_CALL_LOG"; fi
+
+if [ -n "${GLAB_CAPTURE_DIR:-}" ]; then
+  prev=""
+  for a in "$@"; do
+    case "$prev" in
+      -F|--field|-f|--raw-field)
+        case "$a" in
+          *=@*)
+            key="${a%%=@*}"; path="${a#*=@}"
+            [ -r "$path" ] && cp "$path" "$GLAB_CAPTURE_DIR/$key.bin" ;;
+        esac ;;
+    esac
+    prev="$a"
+  done
+fi
+
+fail_http() {
+  # Reproduces glab's own two shapes (commands/api/api.go's processResponse): a JSON body with a
+  # `message` field prints "glab: <message> (HTTP <code>)"; anything else prints the bare
+  # "glab: HTTP <code>" — both on stderr, exit 1. _link_post and issue-blocked-by-count parse
+  # exactly these two shapes.
+  local code="$1" msg="${2:-}"
+  if [ -n "$msg" ]; then printf 'glab: %s (HTTP %s)\n' "$msg" "$code" >&2
+  else printf 'glab: HTTP %s\n' "$code" >&2
+  fi
+  exit 1
+}
+
+if [ "${1-}" = auth ] && [ "${2-}" = status ]; then
+  exit "${GLAB_AUTH_STATUS_RC:-0}"
+fi
+
+[ "${1-}" = api ] || { echo "glab stub: unsupported call: $*" >&2; exit 1; }
+shift
+
+method=GET; endpoint=""; prev=""
+for a in "$@"; do
+  case "$prev" in --method|-X) method="$a" ;; esac
+  case "$a" in projects/*|user) endpoint="$a" ;; esac
+  prev="$a"
+done
+
+# Normalises the project token to the fixed placeholder `:id` for DISPATCH purposes only (the
+# stub's own answers never depend on which project was named) — a `--repo` call reaches this stub
+# with a percent-encoded `owner%2Frepo` in place of `:id` (gitlab.sh's own `_id()`), and every
+# pattern below is written once, against `:id`, rather than duplicated per possible project token.
+endpoint_dispatch="$endpoint"
+case "$endpoint_dispatch" in
+  projects/*)
+    rest="${endpoint_dispatch#projects/}"
+    proj="${rest%%[/?]*}"
+    tail="${rest#"$proj"}"
+    endpoint_dispatch="projects/:id$tail"
+    ;;
+esac
+
+# A literal `{`/`}` inside a `${VAR:-default}` word is NOT nesting-aware in bash — the FIRST
+# unescaped `}` (the JSON object's own closing brace) ends the expansion early, truncating the
+# fixture and splicing the rest of the source text onto it. `_pl` (pick-literal) sidesteps the
+# whole hazard: the fallback is an ordinary single-quoted function ARGUMENT, never nested inside a
+# `${...}` construct, so no brace inside it is ever mistaken for the expansion's own delimiter.
+_pl() { local v; eval "v=\"\${$1:-}\""; if [ -n "$v" ]; then printf '%s' "$v"; else printf '%s' "$2"; fi; }
+
+payload=""
+case "$method $endpoint_dispatch" in
+  "GET user")
+    s="${GLAB_AUTH_STATUS:-200}"
+    case "$s" in 2??) payload=$(_pl GLAB_USER_JSON '{"username":"glab_stub_user"}') ;; *) fail_http "$s" ;; esac ;;
+  "GET projects/:id")
+    payload=$(_pl GLAB_PROJECT_JSON '{"id":501,"path_with_namespace":"acme/widgets","default_branch":"main"}') ;;
+  "GET projects/:id/issues"\?*)
+    payload=$(_pl GLAB_SEARCH_JSON '[{"iid":12,"title":"A stub closed issue","state":"closed"}]') ;;
+  "GET projects/:id/issues/"[0-9]*"/notes"\?*)
+    payload=$(_pl GLAB_NOTES_JSON '[{"body":"first note","system":false},{"body":"a system note","system":true},{"body":"second note","system":false}]') ;;
+  "GET projects/:id/issues/"[0-9]*"/links"|"GET projects/:id/issues/"[0-9]*"/links"\?*)
+    s="${GLAB_LINKS_STATUS:-200}"
+    case "$s" in 2??) payload=$(_pl GLAB_LINKS_JSON '[]') ;; *) fail_http "$s" "${GLAB_LINKS_MESSAGE:-}" ;; esac ;;
+  "GET projects/:id/issues/"[0-9]*)
+    payload=$(_pl GLAB_ISSUE_JSON '{"iid":9,"title":"A stub GitLab issue","state":"opened","description":"body text","labels":["bug","area: skills"],"web_url":"https://gitlab.example.invalid/acme/widgets/-/issues/9"}') ;;
+  "GET projects/:id/labels"\?*)
+    payload=$(_pl GLAB_LABELS_JSON '[{"name":"bug"},{"name":"area: skills"}]') ;;
+  "POST projects/:id/issues")
+    payload=$(_pl GLAB_CREATE_JSON '{"iid":42,"web_url":"https://gitlab.example.invalid/acme/widgets/-/issues/42"}') ;;
+  "PUT projects/:id/issues/"[0-9]*) : ;;
+  "POST projects/:id/issues/"[0-9]*"/notes") : ;;
+  "POST projects/:id/issues/"[0-9]*"/links")
+    s="${GLAB_LINK_STATUS:-201}"
+    case "$s" in 2??) : ;; *) fail_http "$s" "${GLAB_LINK_MESSAGE:-}" ;; esac ;;
+  "POST projects/:id/labels") : ;;
+  *) echo "glab stub: unexpected api call: $method $endpoint" >&2; exit 1 ;;
+esac
+
+[ -n "$payload" ] && printf '%s\n' "$payload"
+exit 0
+STUB
+chmod +x "$WORK/bin/glab"
+
+if PATH="$WORK/bin:$PATH" glab frobnicate >/dev/null 2>&1; then
+  note_fail "the glab stub accepted an unsupported call — every assertion below would be vacuous"
+fi
+
+# ------------------------------------------------------------------------------------------- AC1
+#
+# Every verb create-issue needs (contract.json's skills.create-issue, 17 entries — including
+# label-create, which the issue's own table omits but Step 7's taxonomy-growth path needs) is on
+# gitlab.sh's `verbs` list — the REAL backend, reached through the REAL dispatcher, never a
+# hand-written state fixture, so a forgotten verb here fails this test rather than only showing up
+# the day create-issue actually reaches it.
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state create-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  note_fail "AC1 create-issue on gitlab — the Step 1 pipe exited $rc: $out"
+elif [ "$out" != "capable" ]; then
+  note_fail "AC1 create-issue on gitlab — expected 'capable', got '$out'"
+else
+  ok "AC1 create-issue on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
+fi
+
+# merge-pr has not migrated (#508's own Out of scope) — missing, not capable, and not unsupported:
+# the backend exists, this skill's verbs just are not on the contract yet.
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  note_fail "AC1 merge-pr on gitlab — the Step 1 pipe exited $rc: $out"
+elif [ "$out" != "missing" ]; then
+  note_fail "AC1 merge-pr on gitlab — expected 'missing', got '$out'"
+else
+  ok "AC1 merge-pr on gitlab — not yet migrated, missing rather than capable or unsupported"
+fi
+
+# ------------------------------------------------------------------------------------------- repo
+run_tracker "$GITLAB_PROFILED" --tracker gitlab repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "repo — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"acme/widgets","host":"gitlab.com","defaultBranch":"main","originSlug":null}' ]; then
+  note_fail "repo — wrong stdout
+      want: {\"slug\":\"acme/widgets\",\"host\":\"gitlab.com\",\"defaultBranch\":\"main\",\"originSlug\":null}
+      got:  $OUT"
+else
+  ok "repo — path_with_namespace -> slug, default_branch -> defaultBranch, host gitlab.com"
+fi
+
+# ---------------------------------------------------------------- --repo/-R: [host/]owner/repo (#668)
+#
+# The 2-vs-3-segment split gitlab.sh's own header claims (mirroring _gh-host.sh's rule for github),
+# exercised through the one seam that is observable either way: `repo`'s own `host` field for the
+# 3-segment (explicit host) case, and the call log's percent-encoded project path for both — a
+# `projects/:id` call never reaches the stub once --repo names a slug, so a wrong _id() would show
+# up as a literal, unencoded `projects/other/widgets` instead.
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo other/widgets repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/other%2Fwidgets' "$GLAB_CALL_LOG" \
+  && ok "--repo (2 segments) — owner/repo percent-encoded into the project path, no :id" \
+  || note_fail "--repo (2 segments) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo gitlab.example.com/other/widgets repo
+if [ "$RC" -ne 0 ]; then
+  note_fail "--repo (3 segments, explicit host) — exited $RC ($ERR)"
+elif [ "$OUT" != '{"slug":"acme/widgets","host":"gitlab.example.com","defaultBranch":"main","originSlug":null}' ]; then
+  note_fail "--repo (3 segments, explicit host) — wrong stdout: $OUT"
+elif ! grep -Fq -- '--hostname gitlab.example.com' "$GLAB_CALL_LOG"; then
+  note_fail "--repo (3 segments, explicit host) — --hostname never reached glab:
+      $(cat "$GLAB_CALL_LOG")"
+else
+  ok "--repo (3 segments) — the leading segment is the host, passed as --hostname and reported back"
+fi
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo a/b/c/d repo
+[ "$RC" -eq 2 ] && [ ! -s "$GLAB_CALL_LOG" ] \
+  && ok "--repo (4 segments) — malformed slug refused before any glab call, exit 2" \
+  || note_fail "--repo (4 segments) — expected exit 2 with no call, got $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+# ------------------------------------------------------------------------------------------- AC5 (issue-view)
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-view 9
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-view — exited $RC ($ERR)"
+else
+  got=$(printf '%s' "$OUT" | jq -r '[(.number|tostring), .state, .format, (.labels|join("+")), .body] | join("|")' 2>/dev/null) \
+    || got="<unparseable: $OUT>"
+  want='9|open|markdown|bug+area: skills|body text'
+  if [ "$got" != "$want" ]; then
+    note_fail "issue-view — wrong normalisation
+      want: $want
+      got:  $got"
+  else
+    ok "issue-view — iid -> number, opened -> open, description -> body, format markdown"
+  fi
+fi
+
+# ------------------------------------------------------------------------------------------- AC5 (issue-search)
+GLAB_SEARCH_JSON='[{"iid":12,"title":"A stub closed issue","state":"closed"},{"iid":13,"title":"A stub open issue","state":"opened"}]' \
+  run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-search --query "csv export" --state all --limit 10
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC5 issue-search — exited $RC ($ERR)"
+elif [ "$OUT" != '[{"number":12,"title":"A stub closed issue","state":"closed"},{"number":13,"title":"A stub open issue","state":"open"}]' ]; then
+  note_fail "AC5 issue-search — wrong stdout
+      want: iid 12 stays closed, iid 13 opened -> open, both iid -> number
+      got:  $OUT"
+else
+  ok "AC5 issue-search — opened -> open, iid -> number"
+fi
+
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-comments 9
+[ "$RC" -eq 0 ] && [ "$OUT" = '["first note","second note"]' ] \
+  && ok "issue-comments — a system note is dropped" \
+  || note_fail "issue-comments — expected the two non-system notes, got '$OUT' exit $RC ($ERR)"
+
+run_tracker "$GITLAB_PROFILED" --tracker gitlab label-list
+[ "$RC" -eq 0 ] && [ "$OUT" = $'bug\narea: skills' ] \
+  && ok "label-list — one name per line" \
+  || note_fail "label-list — expected 'bug\\narea: skills', got '$OUT' exit $RC ($ERR)"
+
+# ------------------------------------------------------------------------------------------- AC2
+#
+# The captured bytes prove the body reached glab as a FILE (`-F description=@…`), never as an
+# argument — a description containing a literal `=` or a newline would otherwise silently corrupt
+# under the wrong flag. The call log proves title and the comma-joined labels reached the same call.
+: > "$GLAB_CALL_LOG"
+rm -f "$GLAB_CAPTURE_DIR/description.bin"
+BODY_F_GL="$WORK/gitlab-issue-body.md"
+printf 'a body\n' > "$BODY_F_GL"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-create --title T --label a --label b --body-file "$BODY_F_GL"
+if [ "$RC" -ne 0 ]; then
+  note_fail "AC2 issue-create — exited $RC ($ERR)"
+elif [ "$OUT" != '{"number":42,"url":"https://gitlab.example.invalid/acme/widgets/-/issues/42"}' ]; then
+  note_fail "AC2 issue-create — wrong stdout
+      want: {\"number\":42,\"url\":\"https://gitlab.example.invalid/acme/widgets/-/issues/42\"}
+      got:  $OUT"
+elif ! grep -Fq -- '-f title=T' "$GLAB_CALL_LOG" || ! grep -Fq -- '-f labels=a,b' "$GLAB_CALL_LOG"; then
+  note_fail "AC2 issue-create — title/labels did not reach glab as expected:
+      $(cat "$GLAB_CALL_LOG")"
+elif ! cmp -s "$BODY_F_GL" "$GLAB_CAPTURE_DIR/description.bin" 2>/dev/null; then
+  note_fail "AC2 issue-create — description bytes are not byte-identical to the body file"
+else
+  ok "AC2 issue-create — title, comma-joined labels and a byte-identical description reached glab"
+fi
+
+# ------------------------------------------------------------------------------------------- AC3
+: > "$GLAB_CALL_LOG"
+EMPTY_F_GL="$WORK/gitlab-empty-body.md"
+: > "$EMPTY_F_GL"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-edit-body 5 --body-file "$EMPTY_F_GL"
+if [ "$RC" -ne 2 ]; then
+  note_fail "AC3 issue-edit-body — expected exit 2 on an empty --body-file, got $RC ('$OUT')"
+elif [ -s "$GLAB_CALL_LOG" ]; then
+  note_fail "AC3 issue-edit-body — refused, but glab was still called:
+      $(cat "$GLAB_CALL_LOG")"
+else
+  ok "AC3 issue-edit-body — refuses an empty --body-file, exit 2, no glab call"
+fi
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-add-labels 9 x y
+[ "$RC" -eq 0 ] && grep -Fq -- '-f add_labels=x,y' "$GLAB_CALL_LOG" \
+  && ok "issue-add-labels — both labels comma-joined into add_labels" \
+  || note_fail "issue-add-labels — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-remove-labels 9 x
+[ "$RC" -eq 0 ] && grep -Fq -- '-f remove_labels=x' "$GLAB_CALL_LOG" \
+  && ok "issue-remove-labels — the label reached remove_labels" \
+  || note_fail "issue-remove-labels — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+rm -f "$GLAB_CAPTURE_DIR/body.bin"
+COMMENT_F_GL="$WORK/gitlab-comment-body.md"
+printf 'still failing\n' > "$COMMENT_F_GL"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-reopen 9 --body-file "$COMMENT_F_GL"
+if [ "$RC" -ne 0 ]; then
+  note_fail "issue-reopen — exited $RC ($ERR)"
+elif ! grep -Fq -- '-f state_event=reopen' "$GLAB_CALL_LOG"; then
+  note_fail "issue-reopen — state_event=reopen was not sent: $(cat "$GLAB_CALL_LOG")"
+elif ! cmp -s "$COMMENT_F_GL" "$GLAB_CAPTURE_DIR/body.bin" 2>/dev/null; then
+  note_fail "issue-reopen — the reopening note's body is not byte-identical to the file"
+else
+  ok "issue-reopen — state_event=reopen PUT, then a byte-identical note POST"
+fi
+
+: > "$GLAB_CALL_LOG"
+rm -f "$GLAB_CAPTURE_DIR/body.bin"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-comment 9 --body-file "$COMMENT_F_GL"
+[ "$RC" -eq 0 ] && cmp -s "$COMMENT_F_GL" "$GLAB_CAPTURE_DIR/body.bin" \
+  && ok "issue-comment — the body file reached the note as bytes" \
+  || note_fail "issue-comment — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab label-create "area: export" --color c5def5 --description "new sub-area"
+[ "$RC" -eq 0 ] && grep -Fq -- '-f name=area: export' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '-f color=#c5def5' "$GLAB_CALL_LOG" \
+  && ok "label-create — name, #-prefixed color and description reached glab" \
+  || note_fail "label-create — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+# ------------------------------------------------------------------------------------------- AC4
+#
+# GitLab has no issue -> issue sub-issue relation reachable this way — always fallback, never a
+# request (unlike github.sh's own issue-link-parent, which resolves database ids first).
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-parent 10 11
+[ "$RC" -eq 0 ] && [ "$OUT" = fallback ] && [ ! -s "$GLAB_CALL_LOG" ] \
+  && ok "AC4 issue-link-parent — fallback, no request logged" \
+  || note_fail "AC4 issue-link-parent — got '$OUT' exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-children 10
+[ "$RC" -eq 0 ] && [ "$OUT" = fallback ] && [ ! -s "$GLAB_CALL_LOG" ] \
+  && ok "AC4 issue-children — fallback, no request logged" \
+  || note_fail "AC4 issue-children — got '$OUT' exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+GLAB_LINK_STATUS=403 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10
+[ "$RC" -eq 0 ] && [ "$OUT" = fallback ] \
+  && ok "AC4 issue-link-blocked-by — a 403 on the POST is fallback, exit 0" \
+  || note_fail "AC4 issue-link-blocked-by 403 — expected 'fallback' exit 0, got '$OUT' exit $RC ($ERR)"
+
+GLAB_LINK_STATUS=500 GLAB_LINK_MESSAGE="Internal Server Error" \
+  run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10
+[ "$RC" -eq 1 ] && [ "$OUT" = "FAILED (HTTP 500: Internal Server Error)" ] \
+  && ok "AC4 issue-link-blocked-by — a 500 is FAILED, exit 1" \
+  || note_fail "AC4 issue-link-blocked-by 500 — expected FAILED exit 1, got '$OUT' exit $RC ($ERR)"
+
+GLAB_LINK_STATUS=409 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10
+[ "$RC" -eq 0 ] && [ "$OUT" = "ok (already linked)" ] \
+  && ok "AC4 issue-link-blocked-by — a 409 (already linked) is ok, exit 0" \
+  || note_fail "AC4 issue-link-blocked-by 409 — expected 'ok (already linked)' exit 0, got '$OUT' exit $RC ($ERR)"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10
+[ "$RC" -eq 0 ] && [ "$OUT" = ok ] \
+  && grep -Fq -- 'projects/:id/issues/11/links -F target_project_id=501 -F target_issue_iid=10 -f link_type=is_blocked_by' "$GLAB_CALL_LOG" \
+  && ok "AC4 issue-link-blocked-by — the resolved numeric project id reached target_project_id" \
+  || note_fail "AC4 issue-link-blocked-by — exit $RC, out '$OUT', log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-link-blocked-by 11 10 --dry-run
+[ "$RC" -eq 0 ] \
+  && [ "$OUT" = 'DRY-RUN POST projects/:id/issues/11/links -F target_project_id=<numeric project id> -F target_issue_iid=10 -f link_type=is_blocked_by' ] \
+  && [ ! -s "$GLAB_CALL_LOG" ] \
+  && ok "issue-link-blocked-by --dry-run — prints the POST, calls glab not at all" \
+  || note_fail "issue-link-blocked-by --dry-run — got '$OUT' exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+# ------------------------------------------------------------------------------------------- (Task 3) issue-blocked-by-count
+GLAB_LINKS_JSON='[{"link_type":"is_blocked_by","state":"opened"},{"link_type":"is_blocked_by","state":"opened"},{"link_type":"relates_to","state":"opened"}]' \
+  run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-blocked-by-count 9
+[ "$RC" -eq 0 ] && [ "$OUT" = 2 ] \
+  && ok "issue-blocked-by-count — two open is_blocked_by links out of three" \
+  || note_fail "issue-blocked-by-count — expected '2', got '$OUT' exit $RC ($ERR)"
+
+GLAB_LINKS_STATUS=403 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-blocked-by-count 9
+[ "$RC" -eq 0 ] && [ "$OUT" = n/a ] \
+  && ok "issue-blocked-by-count — n/a on a 403 (the dependencies feature is off)" \
+  || note_fail "issue-blocked-by-count 403 — expected 'n/a' exit 0, got '$OUT' exit $RC ($ERR)"
+
+GLAB_LINKS_STATUS=500 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-blocked-by-count 9
+if [ "$RC" -eq 0 ]; then
+  note_fail "issue-blocked-by-count 500 — exited 0 with '$OUT'; a real failure read as a degraded host"
+elif [ "$OUT" = n/a ]; then
+  note_fail "issue-blocked-by-count 500 — answered 'n/a' for a real failure"
+else
+  ok "issue-blocked-by-count — a non-403 failure exits 1 rather than answering n/a"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

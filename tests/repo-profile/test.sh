@@ -460,6 +460,38 @@ grep -qF "tracker: gitlab (gitlab.example.com)" <<<"$out" \
 reported as 'gitlab (gitlab.example.com)':
 $out"
 
+# AC7 (#508): a GitLab markdown issue template is listed under *Issue templates*, GitHub's own
+# YAML forms are unaffected, and a repo with neither still gets the TODO — three fixtures, one
+# section, so a GitLab-only repo cannot silently read as "no templates at all" (issue-template.md's
+# GitHub/GitLab mapping is two different things, and this section is where a reader learns which
+# one applies).
+glt=$(kit_scratch)
+git -C "$glt" init -q -b main
+git -C "$glt" -c user.email=t@test -c user.name=T commit -q --allow-empty -m base
+mkdir -p "$glt/.gitlab/issue_templates"
+printf '## Problem\n' > "$glt/.gitlab/issue_templates/Feature.md"
+sec=$(section_of "$(PATH="$NOCLAUDE" bash "$SCRIPT" detect "$glt")" "Issue templates")
+grep -qF "Feature.md" <<<"$sec" \
+  || fail "detect: a .gitlab/issue_templates/Feature.md was not listed under Issue templates:
+$sec"
+
+# A GitHub form alongside it is unaffected — both list, each under its own line.
+mkdir -p "$glt/.github/ISSUE_TEMPLATE"
+printf 'name: Bug\n' > "$glt/.github/ISSUE_TEMPLATE/bug_report.yml"
+sec=$(section_of "$(PATH="$NOCLAUDE" bash "$SCRIPT" detect "$glt")" "Issue templates")
+grep -qF "Feature.md" <<<"$sec" && grep -qF "bug_report.yml" <<<"$sec" \
+  || fail "detect: a GitLab template and a GitHub form did not both list under Issue templates:
+$sec"
+
+# Neither directory: the TODO names both paths, not only GitHub's.
+none=$(kit_scratch)
+git -C "$none" init -q -b main
+git -C "$none" -c user.email=t@test -c user.name=T commit -q --allow-empty -m base
+sec=$(section_of "$(PATH="$NOCLAUDE" bash "$SCRIPT" detect "$none")" "Issue templates")
+grep -qF ".gitlab/issue_templates" <<<"$sec" \
+  || fail "detect: the no-templates TODO does not name .gitlab/issue_templates/ alongside GitHub's:
+$sec"
+
 # 8f. Azure DevOps remotes (#504): three real-world shapes all name the same tracker line.
 for adospec in \
   "https://acme@dev.azure.com/acme/Shop/_git/widgets" \

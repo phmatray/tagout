@@ -1,6 +1,6 @@
 {
-  "tracker": "gitlab",
-  "detail": "gitlab.com",
+  "tracker": "bitbucket",
+  "detail": "bitbucket.org",
   "skill": "create-issue",
   "needs": ["issue-view"],
   "implements": null
