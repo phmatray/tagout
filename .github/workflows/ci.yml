@@ -260,6 +260,14 @@ jobs:
       - name: Recap-wiring guard golden test (refusal paths, and 'no verdict' kept distinct)
         run: ./tests/recap-wiring/test.sh
 
+      # docs/methodology.md hand-copies recap.md's hand-off table (its own header note says so),
+      # and nothing checked the two agreed — #636 changed create-pr and debug-issue's actual
+      # behaviour and recap.md's row for it; docs/methodology.md kept the pre-#636 wording in
+      # three spots until #689 (#689 is this test's own issue, not a generalization of the wiring
+      # guard above — that stays scoped to recap.md vs. ARCHITECTURE.md).
+      - name: docs/methodology.md matches recap.md's current create-pr/debug-issue behaviour
+        run: ./tests/methodology-drift/test.sh
+
       # The eval runner stages skills into .claude/skills/ so detection measures the REPO's own
       # SKILL.md, not the plugin cache's. It staged by symlink, which needs a privilege Windows
       # does not grant by default (#624) — this pins the staging and its leave-alone teardown.
