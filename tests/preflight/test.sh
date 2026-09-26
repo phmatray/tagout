@@ -19,19 +19,32 @@ echo "$out" | python3 -m json.tool >/dev/null
 
 # 2. Every manifest entry appears in the output — nothing is silently skipped. A `tools` entry
 #    carrying `for` (#642) is scoped to one caller and this default call passes no `--for`, so it
-#    is expected to be ABSENT here, not present.
-python3 - "$out" <<'PY'
+#    is expected to be ABSENT here, not present. Likewise a `tracker`-scoped entry (#504, #508)
+#    whose tracker isn't THIS repository's own (read the same way preflight.sh itself reads it) —
+#    this repo is github-tracked, so the gitlab-only `glab CLI` entry is expected ABSENT here, the
+#    github-only `gh CLI` entry expected PRESENT; case 11 below pins the reverse on a gitlab fixture.
+profile_tracker=$(skills/profile-repo/scripts/repo-profile.sh tracker 2>/dev/null | awk 'NR==1{print $1}')
+[ -n "$profile_tracker" ] || profile_tracker=github
+python3 - "$out" "$profile_tracker" <<'PY'
 import json, sys
 out = json.loads(sys.argv[1])
+tracker = sys.argv[2]
 req = json.load(open("requirements.json"))
 names = {c["name"] for c in out["checks"]}
-expected = [t["name"] for t in req["tools"] if not t.get("for")] + [m["name"] for m in req["mcps"]] \
+def in_scope(e):
+    return not e.get("for") and e.get("tracker") in (None, tracker)
+expected = [t["name"] for t in req["tools"] if in_scope(t)] \
+         + [m["name"] for m in req["mcps"]] \
          + ["skill " + s["name"] for s in req["sessionSkills"]]
 missing = [n for n in expected if n not in names]
 assert not missing, f"manifest entries absent from the output: {missing}"
-# 3. requiredBy survives the round-trip (manifest → preflight → JSON).
+# 3. requiredBy survives the round-trip (manifest → preflight → JSON) — for every entry actually
+#    in scope on this tracker; one scoped to a different tracker is case 2's absence, not this
+#    round-trip's concern (it is not IN by_name at all on this github-tracked repo).
 by_name = {c["name"]: c for c in out["checks"]}
 for entry in req["tools"] + req["mcps"] + req["sessionSkills"]:
+    if entry in req["tools"] and not in_scope(entry):
+        continue
     want = entry.get("requiredBy")
     if want:
         name = entry["name"] if entry in req["tools"] + req["mcps"] else "skill " + entry["name"]
@@ -467,5 +480,25 @@ printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert
   || { echo "FAIL [for-scoped/d]: 'runtime six' must stay absent under an unrelated --for"; exit 1; }
 
 echo "  ok: for-scoped — an entry carrying 'for' is asked for only when --for names it"
+
+# 11. AC6 (#508): the REAL requirements.json's `glab CLI (authenticated)` entry (tracker: gitlab)
+#     is asked for on a gitlab-tracked profile, and the REAL `gh CLI (authenticated)` entry
+#     (tracker: github) is not — case 8's tracker-scoping mechanism, now pinned against the actual
+#     manifest (not a synthetic one) so a wrong or missing `tracker` value on the new entry fails
+#     here. No PATH stubbing: like case 1, this tolerates either exit status and reads the report.
+gitlab_real_fx=$(kit_scratch)
+mkdir -p "$gitlab_real_fx/.claude/skills"
+printf -- '# Repo profile\n\n## Tracker\n- **Tracker:** gitlab (gitlab.com) — fixture.\n' \
+  > "$gitlab_real_fx/.claude/skills/repo-profile.md"
+out=$(cd "$gitlab_real_fx" && "$KIT/scripts/preflight.sh" --json 2>/dev/null || true)
+printf '%s' "$out" | python3 -c '
+import json, sys
+checks = {c["name"]: c for c in json.load(sys.stdin)["checks"]}
+assert "glab CLI (authenticated)" in checks, \
+    f"a gitlab-tracked profile must be asked for the real glab CLI entry: {checks}"
+assert "gh CLI (authenticated)" not in checks, \
+    f"a gitlab-tracked profile must not be asked for the GitHub-only gh CLI: {checks}"
+' || { echo "FAIL [AC6]: see above"; exit 1; }
+echo "  ok: AC6 — a gitlab profile lists glab CLI and not gh CLI (the real requirements.json)"
 
 echo "preflight golden test OK"

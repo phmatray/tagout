@@ -180,3 +180,26 @@ profile's *Labels* section defines an area axis, pick the dropdown option that a
 Only use this template when the user is filing a defect (something emits wrong/crashes), not an idea.
 Read `bug_report.yml` the same way and map its fields (repro steps, expected vs actual, version, etc.)
 to headings. Its declared labels apply via `--label`.
+
+## GitLab markdown templates (#508)
+
+A GitLab project (the profile's Tracker line reads `gitlab`) has no YAML *form* to translate — its
+`.gitlab/issue_templates/*.md` (listed by `repo-profile.sh detect` under *Issue templates*) is
+already the plain markdown body a new issue starts from, the same shape `create-issue` writes.
+
+| GitHub YAML form | GitLab markdown template |
+|---|---|
+| `body:` array of typed fields | a plain `.md` file, opened as-is |
+| `type: markdown` (skip, instructional text) | prose ABOVE the first `## ` heading — still skip it, same reason |
+| `## <attributes.label>` heading per field | each `## ` heading in the file, verbatim |
+| `validations.required: true` | no such flag exists — **every heading in a GitLab template is
+  treated as required**, since the template author had no way to mark one optional |
+| top-level `labels:` | GitLab templates carry none — labels still apply via `--label` from the
+  profile's live taxonomy, exactly as on GitHub, never read from the template file |
+
+Read the `.md` file, fill in the content under each `## ` heading it already has (adding no heading
+of your own — unlike a GitHub form's synthesized fields, a GitLab template's headings are the
+complete field list), then append the brainstorm/spec/plan sections below it exactly as the GitHub
+path does. Filed through the same `tracker.sh issue-create --body-file` call; the backend
+(`scripts/tracker/gitlab.sh`) is what turns that into a GitLab REST v4 call, never this file's
+concern.
