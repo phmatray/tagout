@@ -631,6 +631,9 @@ jobs:
       - name: Create-pr golden test (gh pr create has one home in skills/_shared/open-pr.md, and no bare git push or commit) (#635)
         run: ./tests/create-pr/test.sh
 
+      - name: Rewind-default golden test (the local default only moves once the pushed branch provably carries it) (#636)
+        run: ./tests/rewind-default/test.sh
+
       - name: Session-retro golden test (the weekly harvest trigger — harvest's footer is not a signal, install resolves the main checkout)
         run: ./tests/session-retro/test.sh
 
