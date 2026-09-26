@@ -201,10 +201,19 @@ case "$CMD" in
         --jq '.[] | "  " + .name + (if .description != "" then " — " + .description else "" end)' 2>/dev/null)"
 
     section "Issue templates"
+    # GitHub's YAML forms and GitLab's markdown templates (#508) are two different mappings — see
+    # skills/create-issue/references/issue-template.md — so each lists under its own directory
+    # rather than one merged "found some templates" line a GitLab-only repo would otherwise get
+    # for free with no GitHub directory to have earned it.
+    found_templates=0
     if [ -d .github/ISSUE_TEMPLATE ]; then
-      for t in .github/ISSUE_TEMPLATE/*; do [ -e "$t" ] && echo "  $(basename "$t")"; done
-    else
-      echo "  TODO: no .github/ISSUE_TEMPLATE/ directory"
+      for t in .github/ISSUE_TEMPLATE/*; do [ -e "$t" ] && echo "  $(basename "$t")" && found_templates=1; done
+    fi
+    if [ -d .gitlab/issue_templates ]; then
+      for t in .gitlab/issue_templates/*; do [ -e "$t" ] && echo "  $(basename "$t") (GitLab markdown template)" && found_templates=1; done
+    fi
+    if [ "$found_templates" -eq 0 ]; then
+      echo "  TODO: no .github/ISSUE_TEMPLATE/ or .gitlab/issue_templates/ directory"
     fi
 
     section "Tracker"

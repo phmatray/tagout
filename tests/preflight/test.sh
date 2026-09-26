@@ -19,12 +19,15 @@ echo "$out" | python3 -m json.tool >/dev/null
 
 # 2. Every manifest entry appears in the output — nothing is silently skipped. A `tools` entry
 #    carrying `for` (#642) is scoped to one caller and this default call passes no `--for`, so it
-#    is expected to be ABSENT here, not present. Likewise a `tracker`-scoped entry naming a tracker
-#    other than this repository's own (#504/#509: gh CLI matches here, az CLI does not) is expected
-#    to be ABSENT — case 8 below pins the scoping itself against synthetic fixtures; this is just
-#    the real manifest agreeing with the real profile.
-PROFILE_TRACKER_HERE=$(./skills/profile-repo/scripts/repo-profile.sh tracker 2>/dev/null | awk '{print $1}')
-python3 - "$out" "$PROFILE_TRACKER_HERE" <<'PY'
+#    is expected to be ABSENT here, not present. Likewise a `tracker`-scoped entry (#504, #508,
+#    #509) whose tracker isn't THIS repository's own (read the same way preflight.sh itself reads
+#    it) is expected to be ABSENT — this repo is github-tracked, so the gitlab-only `glab CLI` and
+#    azure-devops-only `az CLI` entries are expected ABSENT here, the github-only `gh CLI` entry
+#    expected PRESENT; case 8 below pins the scoping itself against synthetic fixtures and case 11
+#    pins the reverse on a gitlab fixture.
+profile_tracker=$(./skills/profile-repo/scripts/repo-profile.sh tracker 2>/dev/null | awk 'NR==1{print $1}')
+[ -n "$profile_tracker" ] || profile_tracker=github
+python3 - "$out" "$profile_tracker" <<'PY'
 import json, sys
 out = json.loads(sys.argv[1])
 profile_tracker = sys.argv[2]
@@ -505,5 +508,25 @@ printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert
   || { echo "FAIL [for-scoped/d]: 'runtime six' must stay absent under an unrelated --for"; exit 1; }
 
 echo "  ok: for-scoped — an entry carrying 'for' is asked for only when --for names it"
+
+# 11. AC6 (#508): the REAL requirements.json's `glab CLI (authenticated)` entry (tracker: gitlab)
+#     is asked for on a gitlab-tracked profile, and the REAL `gh CLI (authenticated)` entry
+#     (tracker: github) is not — case 8's tracker-scoping mechanism, now pinned against the actual
+#     manifest (not a synthetic one) so a wrong or missing `tracker` value on the new entry fails
+#     here. No PATH stubbing: like case 1, this tolerates either exit status and reads the report.
+gitlab_real_fx=$(kit_scratch)
+mkdir -p "$gitlab_real_fx/.claude/skills"
+printf -- '# Repo profile\n\n## Tracker\n- **Tracker:** gitlab (gitlab.com) — fixture.\n' \
+  > "$gitlab_real_fx/.claude/skills/repo-profile.md"
+out=$(cd "$gitlab_real_fx" && "$KIT/scripts/preflight.sh" --json 2>/dev/null || true)
+printf '%s' "$out" | python3 -c '
+import json, sys
+checks = {c["name"]: c for c in json.load(sys.stdin)["checks"]}
+assert "glab CLI (authenticated)" in checks, \
+    f"a gitlab-tracked profile must be asked for the real glab CLI entry: {checks}"
+assert "gh CLI (authenticated)" not in checks, \
+    f"a gitlab-tracked profile must not be asked for the GitHub-only gh CLI: {checks}"
+' || { echo "FAIL [AC6]: see above"; exit 1; }
+echo "  ok: AC6 — a gitlab profile lists glab CLI and not gh CLI (the real requirements.json)"
 
 echo "preflight golden test OK"

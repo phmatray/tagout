@@ -64,6 +64,7 @@
     "scripts/tracker.sh": "the verb dispatcher and state report; routes a verb to a backend and decides nothing, `tracker.capable` decides",
     "scripts/tracker/azure-devops.sh": "a backend: translates a verb into az devops invoke / az boards / az repos calls and normalises the reply; decides nothing",
     "scripts/tracker/github.sh": "a backend: translates a verb into gh calls and normalises the reply; decides nothing",
+    "scripts/tracker/gitlab.sh": "a backend: translates a verb into GitLab REST v4 calls over `glab api` and normalises the reply; decides nothing",
     "scripts/worktrees-ignored.sh": "a structural guard (worktree homes are ignored), not a control-flow choice with a verdict vocabulary",
     "skills/_shared/scripts/_gh-host.sh": "sourced by the kit's gh-calling scripts, never executed on its own — resolves which host gh talks to, not a decision",
     "skills/auto-dev/scripts/analyze_cache.py": "an offline token-usage analysis report, not a control-flow choice",
