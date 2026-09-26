@@ -73,8 +73,9 @@ Only then take one of the two branches:
 WORKTREE=<absolute path of the matched worktree>
 git -C "$WORKTREE" pull --ff-only
 
-# Or created by hand — implement-issue's make-worktree.sh only creates fresh off main, never from a
-# remote branch, so a PR built elsewhere is checked out this way:
+# Or created by hand — implement-issue's make-worktree.sh only creates fresh off the repository's
+# resolved default branch (#678), never from an arbitrary remote branch, so a PR built elsewhere is
+# checked out this way:
 git fetch origin "$HEAD_BRANCH"
 WORKTREE="$REPO_ROOT/.claude/worktrees/merge-$PR"   # same root the guard just cleared
 git worktree add "$WORKTREE" "$HEAD_BRANCH"    # checks out the existing branch (tracks origin/$HEAD_BRANCH)

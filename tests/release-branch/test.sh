@@ -37,7 +37,12 @@ fail() { echo "FAIL [$1]: $2"; exit 1; }
 # new_repo <dir> — a main checkout on `main` with one commit, pushed to a bare `origin` beside it.
 new_repo() {
   local dir="$1"
-  git init -q --bare "$dir-origin.git"
+  # `-b main` on the BARE side too (#678, via-make-worktree): otherwise its HEAD symref follows
+  # whatever this host's own `init.defaultBranch` happens to be, which `main` is pushed to below
+  # regardless of that name — a divergence make-worktree.sh now resolves against and refuses on
+  # (`git ls-remote --symref` advertises nothing for a HEAD pointing at a branch that was never
+  # pushed), where the old hardcoded `BASE_BRANCH=main` never looked at the remote's HEAD at all.
+  git init -q --bare -b main "$dir-origin.git"
   git init -q -b main "$dir"
   git -C "$dir" config user.email t@example.com
   git -C "$dir" config user.name "Golden Test"
