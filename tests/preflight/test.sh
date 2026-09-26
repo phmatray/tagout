@@ -19,22 +19,36 @@ echo "$out" | python3 -m json.tool >/dev/null
 
 # 2. Every manifest entry appears in the output — nothing is silently skipped. A `tools` entry
 #    carrying `for` (#642) is scoped to one caller and this default call passes no `--for`, so it
-#    is expected to be ABSENT here, not present.
-python3 - "$out" <<'PY'
+#    is expected to be ABSENT here, not present. Likewise a `tracker`-scoped entry naming a tracker
+#    other than this repository's own (#504/#509: gh CLI matches here, az CLI does not) is expected
+#    to be ABSENT — case 8 below pins the scoping itself against synthetic fixtures; this is just
+#    the real manifest agreeing with the real profile.
+PROFILE_TRACKER_HERE=$(./skills/profile-repo/scripts/repo-profile.sh tracker 2>/dev/null | awk '{print $1}')
+python3 - "$out" "$PROFILE_TRACKER_HERE" <<'PY'
 import json, sys
 out = json.loads(sys.argv[1])
+profile_tracker = sys.argv[2]
 req = json.load(open("requirements.json"))
 names = {c["name"] for c in out["checks"]}
-expected = [t["name"] for t in req["tools"] if not t.get("for")] + [m["name"] for m in req["mcps"]] \
+def in_scope(entry):
+    if entry.get("for"):
+        return False
+    tracker = entry.get("tracker")
+    return not tracker or tracker == profile_tracker
+expected = [t["name"] for t in req["tools"] if in_scope(t)] + [m["name"] for m in req["mcps"] if in_scope(m)] \
          + ["skill " + s["name"] for s in req["sessionSkills"]]
 missing = [n for n in expected if n not in names]
 assert not missing, f"manifest entries absent from the output: {missing}"
-# 3. requiredBy survives the round-trip (manifest → preflight → JSON).
+# 3. requiredBy survives the round-trip (manifest → preflight → JSON) — skipping any entry this
+#    call's own scope (tracker/for) already excluded from the output above.
 by_name = {c["name"]: c for c in out["checks"]}
 for entry in req["tools"] + req["mcps"] + req["sessionSkills"]:
+    is_skill = entry not in req["tools"] + req["mcps"]
+    if not is_skill and not in_scope(entry):
+        continue
     want = entry.get("requiredBy")
     if want:
-        name = entry["name"] if entry in req["tools"] + req["mcps"] else "skill " + entry["name"]
+        name = entry["name"] if not is_skill else "skill " + entry["name"]
         got = by_name[name].get("requiredBy")
         assert got == want, f"requiredBy mismatch for {name}: {got} != {want}"
 PY
@@ -290,6 +304,7 @@ cat > "$trk/requirements.json" <<'JSON'
   "tools": [
     { "name": "dotnet SDK >= 8", "level": "required", "test": "sdk_ok", "hint": "install an LTS .NET SDK" },
     { "name": "gh CLI (authenticated)", "level": "recommended", "test": "gh auth status", "tracker": "github", "hint": "GitHub publishing" },
+    { "name": "az CLI + azure-devops extension", "level": "recommended", "test": "az extension show --name azure-devops", "tracker": "azure-devops", "hint": "Azure DevOps work items" },
     { "name": "bare tool", "level": "recommended", "test": "false" }
   ],
   "mcps": [],
@@ -319,6 +334,8 @@ import json, sys
 checks = {c["name"]: c for c in json.loads(sys.argv[1])["checks"]}
 assert "gh CLI (authenticated)" not in checks, \
     f"a gitlab-tracked profile must not be asked for the GitHub-only CLI: {checks}"
+assert "az CLI + azure-devops extension" not in checks, \
+    f"a gitlab-tracked profile must not be asked for the Azure-DevOps-only CLI: {checks}"
 # Regression (code-review, #504): an entry with neither `hint` nor `tracker` must still be
 # reported, not silently swallowed by the column shift an empty (rather than "-") hint field
 # causes once `tracker` sits after it — on ANY host whose profile resolves a tracker, not just
@@ -340,6 +357,27 @@ import json, sys
 checks = {c["name"]: c for c in json.loads(sys.argv[1])["checks"]}
 assert "gh CLI (authenticated)" in checks, \
     f"a github-tracked profile must still be asked for gh CLI, exactly as before: {checks}"
+assert "az CLI + azure-devops extension" not in checks, \
+    f"a github-tracked profile must not be asked for the Azure-DevOps-only CLI: {checks}"
+bare = checks.get("bare tool")
+assert bare is not None, f"an entry with no hint/tracker must never be dropped: {checks}"
+assert bare["status"] == "absent", f"...and checked normally: {bare}"
+assert bare["hint"] == "-", f"...with the placeholder hint, not a value shifted from 'tracker': {bare}"
+PY
+
+azure_fx=$(kit_scratch)
+git -C "$azure_fx" init -q -b main
+mkdir -p "$azure_fx/.claude/skills"
+printf -- '# Repo profile\n\n## Tracker\n- **Tracker:** azure-devops (dev.azure.com/acme/Shop) — fixture.\n' \
+  > "$azure_fx/.claude/skills/repo-profile.md"
+out=$(cd "$azure_fx" && PATH="$trk/bin" bash "$trk/scripts/preflight.sh" --json 2>/dev/null || true)
+python3 - "$out" <<'PY'
+import json, sys
+checks = {c["name"]: c for c in json.loads(sys.argv[1])["checks"]}
+assert "az CLI + azure-devops extension" in checks, \
+    f"an azure-devops-tracked profile must be asked for the az CLI: {checks}"
+assert "gh CLI (authenticated)" not in checks, \
+    f"an azure-devops-tracked profile must not be asked for the GitHub-only CLI: {checks}"
 bare = checks.get("bare tool")
 assert bare is not None, f"an entry with no hint/tracker must never be dropped: {checks}"
 assert bare["status"] == "absent", f"...and checked normally: {bare}"

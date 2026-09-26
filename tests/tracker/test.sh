@@ -1030,7 +1030,7 @@ PATCH_SEEN=$(cat "$WORK"/*.json 2>/dev/null || true)
 
 # The patch itself: re-run capturing the --in-file this call built, to assert its operations
 # directly rather than trusting the stub's canned reply alone.
-CAPTURE_DIR=$(mktemp -d)
+CAPTURE_DIR=$(kit_scratch)
 cat > "$CAPTURE_DIR/az" <<'CAPSTUB'
 #!/usr/bin/env bash
 set -uo pipefail
@@ -1160,7 +1160,7 @@ else
 fi
 
 # issue-blocked-by-count — counts only OPEN predecessors: #19 (Active) counts, #18 (Closed) does not.
-CAPTURE_DIR2=$(mktemp -d)
+CAPTURE_DIR2=$(kit_scratch)
 cat > "$CAPTURE_DIR2/az" <<'BLOCKSTUB'
 #!/usr/bin/env bash
 set -uo pipefail
