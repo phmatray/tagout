@@ -8,6 +8,9 @@
   {"query": "open a draft PR for the branch I'm on, the tests aren't passing yet", "should_trigger": true, "note": "--draft"},
   {"query": "I fixed it by hand on this branch, can you raise a pull request for it", "should_trigger": true, "note": "a hand-built fix, no plan"},
   {"query": "put up a PR for feat/301-export-json so I can merge it later", "should_trigger": true, "note": "open now, merge later"},
+  {"query": "I just fixed the flaky test on main, open a PR for it", "should_trigger": true, "note": "a fix committed straight onto the default branch (debug-issue hand-off, #636)"},
+  {"query": "le correctif est commité, ouvre la PR", "should_trigger": true, "note": "FR — a fix already committed, open the PR (#636)"},
+  {"query": "debug-issue found the cause and committed the fix on main, get it into a PR", "should_trigger": true, "note": "explicit debug-issue → create-pr hand-off (#636)"},
 
   {"query": "merge PR 281", "should_trigger": false, "note": "→ merge-pr"},
   {"query": "implement issue 47", "should_trigger": false, "note": "→ implement-issue"},

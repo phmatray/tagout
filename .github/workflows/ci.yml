@@ -260,6 +260,14 @@ jobs:
       - name: Recap-wiring guard golden test (refusal paths, and 'no verdict' kept distinct)
         run: ./tests/recap-wiring/test.sh
 
+      # docs/methodology.md hand-copies recap.md's hand-off table (its own header note says so),
+      # and nothing checked the two agreed — #636 changed create-pr and debug-issue's actual
+      # behaviour and recap.md's row for it; docs/methodology.md kept the pre-#636 wording in
+      # three spots until #689 (#689 is this test's own issue, not a generalization of the wiring
+      # guard above — that stays scoped to recap.md vs. ARCHITECTURE.md).
+      - name: docs/methodology.md matches recap.md's current create-pr/debug-issue behaviour
+        run: ./tests/methodology-drift/test.sh
+
       # The eval runner stages skills into .claude/skills/ so detection measures the REPO's own
       # SKILL.md, not the plugin cache's. It staged by symlink, which needs a privilege Windows
       # does not grant by default (#624) — this pins the staging and its leave-alone teardown.
@@ -559,6 +567,9 @@ jobs:
       - name: Implement-issue worktree-step golden test (Step 4 as one call, never a re-spelling, #280)
         run: ./tests/implement-issue-worktree-step/test.sh
 
+      - name: Make-worktree base-branch golden test (the remote default, never a hardcoded local main, #678)
+        run: ./tests/make-worktree-base/test.sh
+
       - name: Plan-freshness golden test (every modify path verified against main before a task runs, #322)
         run: ./tests/plan-freshness/test.sh
 
@@ -630,6 +641,9 @@ jobs:
 
       - name: Create-pr golden test (gh pr create has one home in skills/_shared/open-pr.md, and no bare git push or commit) (#635)
         run: ./tests/create-pr/test.sh
+
+      - name: Rewind-default golden test (the local default only moves once the pushed branch provably carries it) (#636)
+        run: ./tests/rewind-default/test.sh
 
       - name: Session-retro golden test (the weekly harvest trigger — harvest's footer is not a signal, install resolves the main checkout)
         run: ./tests/session-retro/test.sh

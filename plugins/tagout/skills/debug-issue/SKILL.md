@@ -211,5 +211,6 @@ only what **debug-issue** adds on top of them.
 - Hypotheses you refuted belong in **What happened** too, not in **Assumed · skipped ·
   unverified**: a refuted hypothesis is a result that narrows the next search. What goes in the
   third block is what you could not test and why.
-- This skill is terminal — its **Next** is `—`. It returns to whatever called it, carrying the cause
-  rather than a fix decision.
+- **Next** is `/create-pr` when it ran standalone and left a committed fix; `—` when it returns to
+  its caller (`implement-issue`'s "honest effort" loop) instead of deciding a fix on its own — the
+  same split `../_shared/recap.md`'s hand-off table states for this row.

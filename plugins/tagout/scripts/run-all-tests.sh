@@ -103,6 +103,7 @@ add_suite "tests/parse-sweep/test.sh"
 add_suite "tests/line-endings/test.sh"
 add_suite "tests/pinned-literals/test.sh"
 add_suite "tests/recap-wiring/test.sh"
+add_suite "tests/methodology-drift/test.sh"
 add_suite "tests/evals-stage-skills/test.sh"
 
 # 5: the frozen fixture — must stay green AND legacy. Skipped by --quick.
@@ -265,6 +266,7 @@ add_suite "tests/release-title-gate/test.sh"
 add_suite "tests/worktrees-ignored/test.sh"
 add_suite "tests/main-worktree/test.sh"
 add_suite "tests/implement-issue-worktree-step/test.sh"
+add_suite "tests/make-worktree-base/test.sh"
 add_suite "tests/plan-freshness/test.sh"
 add_suite "tests/roseline/test.sh"
 add_suite "tests/git-gate/test.sh"
@@ -289,6 +291,7 @@ add_suite "tests/hitl-loop/test.sh"
 add_suite "tests/review-sessions/test.sh"
 add_suite "tests/deliver-issue/test.sh"
 add_suite "tests/create-pr/test.sh"
+add_suite "tests/rewind-default/test.sh"
 add_suite "tests/session-retro/test.sh"
 
 # The kit's own ADRs are structurally sound. The gate runs the checker over the REAL
