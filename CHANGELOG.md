@@ -8,6 +8,24 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [3.2.0](https://github.com/phmatray/tagout/compare/v3.1.1...v3.2.0) (2026-09-26)
+
+
+### Features
+
+* **create-pr:** take a debug-issue fix off the default branch into a pull request ([#636](https://github.com/phmatray/tagout/issues/636)) ([#684](https://github.com/phmatray/tagout/issues/684)) ([f1d668c](https://github.com/phmatray/tagout/commit/f1d668c34167d8ae4e13a9d1091f1d18a9bc52a6))
+* **plugin:** the README, the site and the host table lead with Tagout and install both plugins ([#612](https://github.com/phmatray/tagout/issues/612)) ([#681](https://github.com/phmatray/tagout/issues/681)) ([a1ba0b2](https://github.com/phmatray/tagout/commit/a1ba0b20fa7ba7925b110688acd79d72ce940a88))
+* **tracker:** a GitLab backend for create-issue ([#508](https://github.com/phmatray/tagout/issues/508)) ([#692](https://github.com/phmatray/tagout/issues/692)) ([8bad0d1](https://github.com/phmatray/tagout/commit/8bad0d108b3e4e2f60d698e32998f440da0ca51d))
+* **tracker:** an Azure DevOps backend for create-issue ([#509](https://github.com/phmatray/tagout/issues/509)) ([#690](https://github.com/phmatray/tagout/issues/690)) ([1475e96](https://github.com/phmatray/tagout/commit/1475e9672709e1abeeabde15b3b9a90a8d4a474d))
+
+
+### Bug Fixes
+
+* **create-issue:** wire-edges.sh resolves the tracker once and relays the backend's own dry-run format ([#603](https://github.com/phmatray/tagout/issues/603)) ([#686](https://github.com/phmatray/tagout/issues/686)) ([8002bb1](https://github.com/phmatray/tagout/commit/8002bb1a17e9a41aec64b8f8490c9aeaa3c4ce09))
+* **git-write-gate:** share the substitution-span walk between quote states ([#602](https://github.com/phmatray/tagout/issues/602)) ([#685](https://github.com/phmatray/tagout/issues/685)) ([d645a69](https://github.com/phmatray/tagout/commit/d645a69acfa46bff65bd479fcb625b85119794f3))
+* **implement-issue:** branch worktrees off the remote default branch, not a hardcoded local main ([#678](https://github.com/phmatray/tagout/issues/678)) ([#682](https://github.com/phmatray/tagout/issues/682)) ([b39f85e](https://github.com/phmatray/tagout/commit/b39f85eb59b4e0808b200dd9fc7da72556730308))
+* **methodology:** docs/methodology.md matches recap.md's current create-pr/debug-issue behaviour ([#689](https://github.com/phmatray/tagout/issues/689)) ([#691](https://github.com/phmatray/tagout/issues/691)) ([2b9c344](https://github.com/phmatray/tagout/commit/2b9c344d2a88ddb27e3a986febfea76198e317de))
+
 ## [3.1.1](https://github.com/phmatray/tagout/compare/v3.1.0...v3.1.1) (2026-09-21)
 
 
