@@ -79,4 +79,77 @@ for case in 'fix/88-null-header 88' 'feat/1234-x 1234' 'main -' 'fix/88 -' 'rele
 done
 echo "ok   (e) $LOCATE reads <type>/<N>-<slug> as N, and anything else as no issue"
 
+# ------------------------------------------------------------- (f) the create line: --draft only on
+# DRAFT=1, and the caller's --base always — not main hard-coded and not inverted.
+#
+# check_create_line <recipe-file> — extracts the two shipped lines (the draft-flag branch and the
+# `gh pr create` call itself), runs them verbatim under a stub `gh` that echoes back its argv, and
+# proves both directions: an inverted draft test or a hard-coded --base main would stay green today.
+check_create_line() {
+  local file="$1" n_flag n_create flag_line create_line
+  local create bin out1 out0
+
+  n_flag=$(grep -c -F 'DRAFT_FLAG=--draft' "$file") || true
+  n_create=$(grep -c -F 'gh pr create $DRAFT_FLAG' "$file") || true
+  if [ "$n_flag" != 1 ] || [ "$n_create" != 1 ]; then
+    echo "FAIL: (f) no DRAFT_FLAG=--draft / gh pr create \$DRAFT_FLAG line found in $file"
+    return 1
+  fi
+  flag_line=$(grep -F 'DRAFT_FLAG=--draft' "$file")
+  create_line=$(grep -F 'gh pr create $DRAFT_FLAG' "$file")
+
+  create=$(kit_scratch)/create.sh
+  printf '%s\n' "$flag_line" > "$create"
+  printf '%s\n' "$create_line" >> "$create"
+
+  bin=$(kit_scratch)/bin
+  mkdir -p "$bin"
+  cat > "$bin/gh" <<'EOF'
+#!/bin/sh
+printf '<%s>' "$@"
+EOF
+  chmod +x "$bin/gh"
+
+  out1=$(PATH="$bin:$PATH" DRAFT=1 BASE=release/9 BRANCH=feat/1-x TITLE=t BODY_FILE=/dev/null bash "$create")
+  out0=$(PATH="$bin:$PATH" DRAFT=0 BASE=release/9 BRANCH=feat/1-x TITLE=t BODY_FILE=/dev/null bash "$create")
+
+  case "$out1" in
+    *'<--draft>'*) ;;
+    *) echo "FAIL: (f) DRAFT=1 did not pass --draft"; return 1 ;;
+  esac
+  case "$out1" in
+    *'<--base><release/9>'*) ;;
+    *) echo "FAIL: (f) DRAFT=1 did not pass the caller's --base"; return 1 ;;
+  esac
+  case "$out0" in
+    *'<--base><release/9>'*) ;;
+    *) echo "FAIL: (f) DRAFT=0 did not pass the caller's --base"; return 1 ;;
+  esac
+  case "$out0" in
+    *'<--draft>'*) echo "FAIL: (f) DRAFT=0 passed --draft"; return 1 ;;
+  esac
+  case "$out0" in
+    *'<>'*) echo "FAIL: (f) DRAFT=0 left an empty DRAFT_FLAG token"; return 1 ;;
+  esac
+  return 0
+}
+
+# Red first: a mutated copy that inverts the draft test, or one that hard-codes --base, must each
+# fail check_create_line — proving the assertions above actually catch what #641 named.
+red_draft=$(kit_scratch)/open-pr-inverted-draft.md
+red_base=$(kit_scratch)/open-pr-hardcoded-base.md
+sed 's/"\$DRAFT" = 1/"$DRAFT" = 0/' "$KIT/skills/_shared/open-pr.md" > "$red_draft"
+sed 's/--base "\$BASE"/--base main/' "$KIT/skills/_shared/open-pr.md" > "$red_base"
+
+if check_create_line "$red_draft" > "$(kit_scratch)/f-red.out" 2>&1; then
+  echo "FAIL: (f) a mutated recipe (inverted draft test) passed"; exit 1
+fi
+if check_create_line "$red_base" > "$(kit_scratch)/f-red.out" 2>&1; then
+  echo "FAIL: (f) a mutated recipe (hard-coded --base main) passed"; exit 1
+fi
+echo "ok   (f-red) check_create_line rejects an inverted draft test and a hard-coded --base"
+
+check_create_line "$KIT/skills/_shared/open-pr.md" || exit 1
+echo "ok   (f) open-pr.md's create line passes --draft only for DRAFT=1 and the caller's --base"
+
 echo "create-pr golden test OK"

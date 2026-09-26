@@ -6,13 +6,18 @@ nav_order: 1
 {%- assign plugin_hosts = site.data.hosts | where: "tier", "plugin" -%}
 {%- assign rule_hosts = site.data.hosts | where: "tier", "rules" -%}
 {%- assign rule_example = rule_hosts | first -%}
+{%- assign claude_code = site.data.hosts | where: "id", "claude-code" | first -%}
 
 <section class="kit-hero" aria-labelledby="kit-hero-title">
 <article class="kit-tag kit-hero-tag">
 <span class="kit-grommet" aria-hidden="true"></span>
-<div class="kit-tag-band"><h1 id="kit-hero-title" class="kit-tag-band-title kit-hero-title">Every step runs behind a gate that refuses by name</h1></div>
+<div class="kit-tag-band"><h1 id="kit-hero-title" class="kit-tag-band-title kit-hero-title">Tagout</h1></div>
 <div class="kit-tag-body">
-<p class="kit-hero-lead">Agent skills for two loops: a legacy .NET application to verified production, and a GitHub issue to a merged pull request, hands-off. When a step is not allowed, the gate says who locked it and what clears it.</p>
+<p class="kit-hero-lead"><strong>The gate-verified issue → pull request lifecycle for coding agents: no green tag, no merge.</strong> An idea becomes a planned issue, the issue a pull request, the pull request lands, hands-off. Every step runs behind a gate that refuses by name, saying who locked it and what clears it.</p>
+<dl class="kit-fields kit-plugins" aria-label="The two plugins">
+<dt><code>tagout</code></dt><dd>The issue → PR lifecycle, for any GitHub repository in any language. No .NET, no MCP server. <code>{{ claude_code.install[1] }}</code></dd>
+<dt><code>tagout-migrate</code></dt><dd>The add-on for a legacy .NET application: the seven-phase <code>/migrate</code> pipeline to verified production. Needs RoselineMCP (.NET 10 SDK). <code>{{ claude_code.install[2] }}</code></dd>
+</dl>
 <div class="kit-denial" role="group" aria-label="A refusal as the gate writes it">
 <p class="kit-denial-title"><span>Refusal, as written by the gate</span><span>hooks/roseline-gate.sh</span></p>
 <dl class="kit-fields">
@@ -57,7 +62,7 @@ nav_order: 1
 </div>
 </div>
 </div>
-<p class="kit-install-more" markdown="span">Written for Claude Code; a plugin on {{ plugin_hosts.size }} hosts, a rule file on {{ rule_hosts.size }} more families. Every host, and how to remove it: [Install](install.md). What each one gets: [Platforms](platforms.md). The migration pipeline also needs RoselineMCP, started by <code>dnx</code> from the .NET 10 SDK.</p>
+<p class="kit-install-more" markdown="span">Written for Claude Code; a plugin on {{ plugin_hosts.size }} hosts, a rule file on {{ rule_hosts.size }} more families. Every host, and how to remove it: [Install](install.md). What each one gets: [Platforms](platforms.md). On Claude Code the lifecycle and the .NET add-on install separately; on every other host the manifest ships both. The add-on needs RoselineMCP, started by <code>dnx</code> from the .NET 10 SDK.</p>
 </div>
 </aside>
 </section>
