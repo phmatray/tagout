@@ -169,6 +169,59 @@ else
   echo "ok: the branch-name lookup prints nothing on no match and the PR on a match"
 fi
 
+# ------------------------------------------------ 5. the scaffold body still closes the issue (#641)
+#
+# Step 5 builds the draft PR's body by hand, not through open-pr.md — its printf line is the only
+# thing on a resumed run that makes the guard above (§1-§4) see the scaffold as already closing the
+# issue. Nothing runs that line or feeds its output to the guard today: if "Closes #%s." were ever
+# dropped, this would go undetected and a resumed run would open a second PR for the same issue.
+#
+# check_body_builder <step-file> <want> — extract the body builder out of <step-file>, run it for a
+# fake issue, wrap the resulting body into a one-PR fixture, and run it through the SAME extracted
+# guard program §1 built ($PROG). <want> is the guard's expected PR-number result; "-" means none.
+check_body_builder() {
+  local step_file="$1" want="$2"
+  local builder body pr_list out got stepnum
+  builder="$(kit_scratch)/body-builder.sh"
+  sed -n "/^{ printf 'Implements #%s/,/^BODY\$/p" "$step_file" > "$builder"
+  if [ ! -s "$builder" ]; then
+    note_fail "no body builder found in $step_file"
+    return 0
+  fi
+  body="$WORK/body.md"
+  if ! ISSUE=4242 BODY_FILE="$body" bash "$builder"; then
+    note_fail "$step_file — the extracted body builder errored"
+    return 0
+  fi
+  pr_list=$(jq -n --rawfile b "$body" '[{number:1,headRefName:"feat/4242-x",body:$b}]')
+  if ! out=$(printf '%s' "$pr_list" | jq --arg issue 4242 -f "$PROG" 2>"$WORK/body-run.err"); then
+    note_fail "$step_file — the guard program errored on the scaffold body:
+$(sed 's/^/      /' "$WORK/body-run.err")"
+    return 0
+  fi
+  got=$(printf '%s' "$out" | jq -r '[.[].number] | map(tostring) | join(" ")')
+  [ "$want" != - ] || want=
+  if [ "$got" != "$want" ]; then
+    note_fail "$step_file — scaffold body closing check
+      want: ${want:--}
+      got:  ${got:--}"
+    return 0
+  fi
+  stepnum=${step_file##*/}
+  stepnum=${stepnum%%-*}
+  if [ -n "$want" ]; then
+    echo "ok: step $stepnum's scaffold PR body closes the issue the guard searches for"
+  else
+    echo "ok: step $stepnum's scaffold PR body without a Closes line is not found by the guard"
+  fi
+}
+
+STEP_05="$KIT_ROOT/skills/implement-issue/references/steps/05-open-the-draft-pr.md"
+NO_CLOSES="$WORK/05-no-closes.md"
+sed 's/Closes #%s\.//' "$STEP_05" > "$NO_CLOSES"
+check_body_builder "$NO_CLOSES" -
+check_body_builder "$STEP_05" 1
+
 # ---------------------------------------------------------------------------------------- verdict
 if [ "$FAILED" -ne 0 ]; then
   echo
