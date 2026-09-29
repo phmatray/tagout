@@ -32,6 +32,22 @@ commit) along **three axes, run in parallel and never merged**:
   typed in any session, and one bare call inherited `xhigh` and spent 106.8M tokens on 25 review
   sub-agents (2026-09-07). `ultra` is never prescribed — it is a cloud review the user launches and
   pays for, which no agent can start. **Never `--fix`**: read the findings and apply them yourself.
+
+  <!-- one-way-door:start -->
+  **A one-way door overrides the breadth (#694).** Before you pick the level, read
+  `git -C "$WORKTREE" diff --name-only origin/main...HEAD` for a path a revert cannot undo — the
+  damage lands before any revert does:
+  a data or schema **migration**; code that **sends to an external party** (email, **webhook**,
+  package publish); a **deletion** of user-owned data; a plugin or marketplace manifest
+  (`.claude-plugin/marketplace.json`, `**/.claude-plugin/plugin.json` — a renamed marketplace entry
+  on `main` broke every existing install on refresh on 2026-09-14, and its revert un-broke none).
+  This is your judgment, not a path match: a test fixture shaped like a migration is not one. Any
+  hit runs `/code-review high origin/main...HEAD` whatever the plan's breadth, and writes a
+  `### One-way door` section into the PR description, **above `### Follow-ups`** (`merge-pr`
+  harvests the lines after that heading), one line per path — `- <path> — <why a revert cannot
+  undo it>`. `auto-dev` reads that heading and holds the PR for the owner instead of landing it.
+  <!-- one-way-door:end -->
+
   **The moment that call returns, before you read a single finding, ask what it changed:**
 
   ```bash
