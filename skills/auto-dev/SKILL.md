@@ -342,6 +342,8 @@ contend for one path. Keep it small and current:
 ## Held on a prerequisite
 - #<n> ⇐ #a[,#b] (edge ok | fallback — this run only)
 - #<n> replan (assigned <login>)
+## Held for owner
+- #<n> → PR #<pr> — one-way door: <paths>
 ## Off-scope issues filed by workers
 - #<n> — <title> (label) from #<source>
 ## Skipped (ineligible: no-plan / manual-QA)
@@ -588,6 +590,16 @@ field of the agent's final report (the sub-agent's last message IS its report, d
 when it returns); fall back again to `gh pr list --state open --json number,headRefName`
 matching the issue number in the branch name. If all three miss, there is nothing to merge — stop and
 report rather than dispatching phase 2 blind.
+
+<!-- one-way-door-hold:start -->
+**A one-way door is held for the owner, not landed (#694).** With the PR number in hand, read its
+body before anything else about phase 2: `gh pr view <n> --json body --jq .body`. A
+`### One-way door` heading there — `implement-issue` Step 7 writes it when the diff crosses a path a
+revert cannot undo — means **no phase-2 dispatch**: retire the slot, add
+`- #<issue> → PR #<n> — <the section's paths>` under `## Held for owner` in the state file, and name
+it in the final summary with Next `/merge-pr #<n>`. Everything else lands exactly as below. The hold
+is a result, not a wait: nothing idles on the owner, and a human-run `merge-pr` is unchanged.
+<!-- one-way-door-hold:end -->
 
 **Phase 2 defaults to the cheapest capable tier** — small/cheap by default, decoupled from phase 1's
 tier. The supervisor hands phase 2 the CI verdict (pass/fail), merge state (clean/blocked), and the
@@ -883,7 +895,9 @@ the state file is discarded. Also name any `## Held on a prerequisite` entries: 
 `replan` entry clears itself once its blocker lands or a person re-plans and unassigns (`survey.sh`
 picks it back up as `QUEUE` on its own), but a `fallback` entry wired nothing durable and will
 re-queue as eligible on the very next survey regardless — call those out by name, since this
-summary is the only place anyone sees that before the file is discarded.
+summary is the only place anyone sees that before the file is discarded. Name every
+`## Held for owner` PR too, each with Next `/merge-pr #<pr>`: a one-way door the fleet deliberately
+did not land, and the stop gate does not count it as undrained.
 
 **Remove the state file** at its pinned path (Step 2) once the queue has fully drained — `rm -f
 "${AUTODEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/tagout/auto-dev/<host>/<owner>/<repo>.md"`.

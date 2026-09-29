@@ -118,6 +118,12 @@ verdict "AC1 no state file"          0 "$(pay "$REPO" false)" "$SDIR"
 write_state "" ""
 verdict "AC2 empty in-flight and queue" 0 "$(pay "$REPO" false)" "$SDIR"
 
+# ------------------------- 2b. only a PR held for the owner -> ALLOW (#694: a hold is drained work)
+write_state "" ""
+printf '## Held for owner\n- #42 → PR #43 — one-way door: .claude-plugin/marketplace.json\n' >> "$SPATH"
+age_past_window "$SPATH"
+verdict "#694 held-for-owner only" 0 "$(pay "$REPO" false)" "$SDIR"
+
 # --------------------------------------------------- 3. one in-flight slot -> REFUSE (AC3)
 write_state "- Slot A → #123 (auto-dev) — implementing" ""
 verdict "AC3 one in-flight slot refuses" 2 "$(pay "$REPO" false)" "$SDIR" "" \
