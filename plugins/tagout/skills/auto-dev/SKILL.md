@@ -342,6 +342,8 @@ contend for one path. Keep it small and current:
 ## Held on a prerequisite
 - #<n> ⇐ #a[,#b] (edge ok | fallback — this run only)
 - #<n> replan (assigned <login>)
+## Held for owner
+- #<n> → PR #<pr> — one-way door: <paths>
 ## Off-scope issues filed by workers
 - #<n> — <title> (label) from #<source>
 ## Skipped (ineligible: no-plan / manual-QA)
@@ -589,6 +591,16 @@ when it returns); fall back again to `gh pr list --state open --json number,head
 matching the issue number in the branch name. If all three miss, there is nothing to merge — stop and
 report rather than dispatching phase 2 blind.
 
+<!-- one-way-door-hold:start -->
+**A one-way door is held for the owner, not landed (#694).** With the PR number in hand, read its
+body before anything else about phase 2: `gh pr view <n> --json body --jq .body`. A
+`### One-way door` heading there — `implement-issue` Step 7 writes it when the diff crosses a path a
+revert cannot undo — means **no phase-2 dispatch**: retire the slot, add
+`- #<issue> → PR #<n> — <the section's paths>` under `## Held for owner` in the state file, and name
+it in the final summary with Next `/merge-pr #<n>`. Everything else lands exactly as below. The hold
+is a result, not a wait: nothing idles on the owner, and a human-run `merge-pr` is unchanged.
+<!-- one-way-door-hold:end -->
+
 **Phase 2 defaults to the cheapest capable tier** — small/cheap by default, decoupled from phase 1's
 tier. The supervisor hands phase 2 the CI verdict (pass/fail), merge state (clean/blocked), and the
 local gate command to run, so it does no design work and carries no design risk — it is a rote merge +
@@ -734,7 +746,7 @@ Then, per slot:
   below, nothing here re-dispatches a sub-agent to close the gap, so there is no future report to defer
   that entry for; `## Needs manual sweep` tracks the outstanding local housekeeping separately, it
   does not gate `## Completed`.
-- **Idle, but PR is READY and unmerged** → it stalled at "ready." **First check whether CI was still pending when you dispatched it** — if so this is your dispatch-timing bug, not the worker's: run `scripts/wait-ci.sh <pr>`, then re-dispatch phase 2 with the finished check table inline (see *NEVER dispatch phase 2 while CI is pending* in Step 3). Re-dispatching into the same pending CI just loses another sub-agent. Otherwise, `SendMessage` the live agent — or, if it has returned, dispatch a fresh phase-2 sub-agent — to run `merge-pr <PR>` now and not idle until merged. `mergeable=UNKNOWN` is usually a transient recompute after `main` moved — its `merge-pr` will sync and resolve; nudge a main-sync if it persists. If a worker idles at "ready" **twice** with CI already final, take over: run the kit's
+- **Idle, but PR is READY and unmerged** → it stalled at "ready" — unless the PR sits under `## Held for owner`, which is a one-way door held on purpose (Step 3): never re-drive that one. **First check whether CI was still pending when you dispatched it** — if so this is your dispatch-timing bug, not the worker's: run `scripts/wait-ci.sh <pr>`, then re-dispatch phase 2 with the finished check table inline (see *NEVER dispatch phase 2 while CI is pending* in Step 3). Re-dispatching into the same pending CI just loses another sub-agent. Otherwise, `SendMessage` the live agent — or, if it has returned, dispatch a fresh phase-2 sub-agent — to run `merge-pr <PR>` now and not idle until merged. `mergeable=UNKNOWN` is usually a transient recompute after `main` moved — its `merge-pr` will sync and resolve; nudge a main-sync if it persists. If a worker idles at "ready" **twice** with CI already final, take over: run the kit's
 `<kit>/skills/merge-pr/scripts/guarded-pr-merge.sh <PR> -- --squash --delete-branch` and decide the
 slot's fate from its exit code, never from a bare `gh pr merge`'s (this kit's normal layout — the
 worker's `implement-issue` worktree still holding the head branch while the supervisor sits on
@@ -883,7 +895,9 @@ the state file is discarded. Also name any `## Held on a prerequisite` entries: 
 `replan` entry clears itself once its blocker lands or a person re-plans and unassigns (`survey.sh`
 picks it back up as `QUEUE` on its own), but a `fallback` entry wired nothing durable and will
 re-queue as eligible on the very next survey regardless — call those out by name, since this
-summary is the only place anyone sees that before the file is discarded.
+summary is the only place anyone sees that before the file is discarded. Name every
+`## Held for owner` PR too, each with Next `/merge-pr #<pr>`: a one-way door the fleet deliberately
+did not land, and the stop gate does not count it as undrained.
 
 **Remove the state file** at its pinned path (Step 2) once the queue has fully drained — `rm -f
 "${AUTODEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/tagout/auto-dev/<host>/<owner>/<repo>.md"`.

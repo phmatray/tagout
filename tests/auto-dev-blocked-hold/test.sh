@@ -101,4 +101,17 @@ grep -qF 'BLOCKED_BY:` field rather than `none`' "$PLAN_MD" \
 grep -qF 'writes it back as a hold instead of a blind re-dispatch' "$PLAN_MD" \
   || fail "02-read-the-plan.md does not say it writes back as a hold instead of a blind re-dispatch"
 
+# ------------------------------------- #694: a one-way-door PR is held for the owner, never landed
+
+door=$(sed -n '/<!-- one-way-door-hold:start -->/,/<!-- one-way-door-hold:end -->/p' "$SKILL_MD")
+[ -n "$door" ] || fail "AC3: SKILL.md carries no one-way-door-hold block"
+for want in 'gh pr view' '### One-way door' 'no phase-2 dispatch' 'retire the slot' '## Held for owner' '/merge-pr #'; do
+  grep -qF -- "$want" <<<"$door" || fail "AC3: one-way-door-hold block does not name: $want"
+done
+grep -qF '## Held for owner' <<<"$(sed -n '/^```markdown/,/^```/p' "$SKILL_MD")" \
+  || fail "AC3: the state-file template has no '## Held for owner' section"
+step6=$(tail -n "+$STEP6" "$SKILL_MD")
+grep -qF '## Held for owner' <<<"$step6" \
+  || fail "AC3: Step 6's final summary does not name the '## Held for owner' entries"
+
 echo "PASS: auto-dev-blocked-hold"

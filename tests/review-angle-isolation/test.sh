@@ -7,7 +7,7 @@
 # is structural — the agent type (no Edit/Write) and the isolation option — and this suite pins that
 # both are stated at the one dispatch site and repeated in both worker commands.
 #
-# Three textual invariants:
+# Three textual invariants (plus 2b, #694: a one-way-door diff is reviewed at high):
 #   1. skills/implement-issue/SKILL.md carries the marked `review-dispatch` block, naming both the
 #      read-only agent type and the isolation option, and the parent-applies rule.
 #   2. Step 7 no longer offers `--fix` as a path: "Never `--fix`".
@@ -44,6 +44,15 @@ if grep -qF -- '`--fix` is the fast path' "$SKILL_MD"; then
   fail "skills/implement-issue/SKILL.md still offers --fix as the fast path"
 fi
 grep -qF 'Never `--fix`' "$SKILL_MD" || fail "skills/implement-issue/SKILL.md does not say Never --fix"
+
+# 2b. A one-way-door diff is reviewed at `high` and marked in the PR (#694): the classes include the
+#     plugin manifests, and the section sits above `### Follow-ups`, which merge-pr harvests.
+door=$(sed -n '/<!-- one-way-door:start -->/,/<!-- one-way-door:end -->/p' "$SKILL_MD")
+[ -n "$door" ] || fail "07-review.md carries no one-way-door block"
+for want in 'marketplace.json' 'plugin.json' 'migration' 'webhook' 'deletion' \
+            '/code-review high origin/main...HEAD' '### One-way door' 'above `### Follow-ups`'; do
+  grep -qF -- "$want" <<<"$door" || fail "one-way-door block does not name: $want"
+done
 
 # 3. Both worker commands carry the standing rule, with both constraints.
 for cmd in auto-dev-worker auto-dev-merge; do
