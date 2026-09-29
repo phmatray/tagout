@@ -61,6 +61,11 @@ read the identical spelling. The fix is an expected value from an **independent*
 written by hand, a fixture checked into the test, the documented contract — not a second read of the
 same line the implementation already trusts.
 
+The hand-written literal has a trap of its own: a test that pins a constant to its own value
+(`MAX_LENGTH = 280`, then `assert MAX_LENGTH == 280`) only restates the declaration. It fails on a
+deliberate change and never on a bug. Assert the behaviour the constant governs instead: an input of
+280 is accepted and 281 is refused.
+
 **Horizontal slicing** — writing every test first, across every task, then implementing all the code
 afterward. It defers the seam question until the whole surface is already speculative, and a plan
 written that way produces a wall of red tests with no single one telling you which piece to build
