@@ -7,7 +7,7 @@
 # is structural — the agent type (no Edit/Write) and the isolation option — and this suite pins that
 # both are stated at the one dispatch site and repeated in both worker commands.
 #
-# Three textual invariants:
+# Three textual invariants (plus 2b, #694: a one-way-door diff is reviewed at high):
 #   1. skills/implement-issue/SKILL.md carries the marked `review-dispatch` block, naming both the
 #      read-only agent type and the isolation option, and the parent-applies rule.
 #   2. Step 7 no longer offers `--fix` as a path: "Never `--fix`".
