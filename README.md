@@ -1,4 +1,4 @@
-![Tagout — the gate-verified issue → PR lifecycle for coding agents](.github/banner.svg)
+![Tagout — the gate-verified issue → PR lifecycle for coding agents](.github/banner.png)
 
 # Tagout
 
