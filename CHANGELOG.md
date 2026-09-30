@@ -8,6 +8,13 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [3.3.0](https://github.com/phmatray/tagout/compare/v3.2.0...v3.3.0) (2026-09-30)
+
+
+### Features
+
+* **implement-issue:** review a one-way-door diff at high and hold it from auto-dev ([#694](https://github.com/phmatray/tagout/issues/694)) ([#696](https://github.com/phmatray/tagout/issues/696)) ([02f2e1a](https://github.com/phmatray/tagout/commit/02f2e1a7e7abf9279450a80a238f3ac9383d0429))
+
 ## [3.2.0](https://github.com/phmatray/tagout/compare/v3.1.1...v3.2.0) (2026-09-26)
 
 
