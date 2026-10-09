@@ -1,0 +1,308 @@
+{
+  "skill_name": "init",
+  "runs_per_query": 3,
+  "threshold": 0.5,
+  "results": [
+    {
+      "query": "check whether this repo's labels have drifted from our standard",
+      "note": "read-only drift \u2192 --plan",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "fired": {
+        "init": 2,
+        "setup-repo": 1
+      },
+      "pass": true
+    },
+    {
+      "query": "configure le profil du repo",
+      "note": "FR \u2014 the profile half",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "configure les labels du repo",
+      "note": "FR \u2014 the manifest half",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "configure this repo for the issue skills",
+      "note": "was profile-repo's \u2014 #279's contested query, now one skill",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "configure this repository the way the kit expects",
+      "note": "was setup-repo's canonical phrasing",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "create the issue templates",
+      "note": "the .github/ISSUE_TEMPLATE/ forms",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "enable GitHub Pages from the docs folder",
+      "note": "the Pages source, converged from the manifest",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "init this repo for the kit",
+      "note": "the canonical phrasing \u2014 the skill's own verb",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "initialise ce repo pour les skills",
+      "note": "FR \u2014 the canonical phrasing",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "make the issue/PR lifecycle skills work in my other repo",
+      "note": "port to another repo",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "fired": {
+        "init": 1,
+        "(none)": 2
+      },
+      "pass": false
+    },
+    {
+      "query": "regenerate the repo profile \u2014 the labels changed",
+      "note": "--profile-only --refresh",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "set up the issue labels for this repo",
+      "note": "the label taxonomy \u2014 the manifest half",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "fired": {
+        "init": 1,
+        "setup-repo": 2
+      },
+      "pass": false
+    },
+    {
+      "query": "set up the repo profile for this repository",
+      "note": "the profile half alone \u2192 --profile-only",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "set up this repository so the issue and PR skills work here",
+      "note": "the whole story, both halves",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "we need priority and effort labels before running auto-dev",
+      "note": "the axis auto-dev sorts on does not exist yet",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "add the label 'priority: high' to issue 42",
+      "note": "labelling ONE issue, not declaring the taxonomy",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "create a CLAUDE.md for this repo",
+      "note": "Claude Code's built-in /init, not this skill (ADR 0018)",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "file an issue for a new emitter feature",
+      "note": "\u2192 create-issue",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 1,
+        "create-issue": 2
+      },
+      "pass": true
+    },
+    {
+      "query": "init a new git repository here",
+      "note": "`git init` \u2014 shares the verb only",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "install the plugin",
+      "note": "kit installation, not repo configuration",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "merge PR 279 and delete the branch",
+      "note": "\u2192 merge-pr; ONE branch, not the repository setting",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "merge-pr": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "profile this app's performance, it's slow",
+      "note": "'profile' = perf profiling",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "set up branch protection rules",
+      "note": "not in the manifest \u2014 needs org policy and admin rights",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    },
+    {
+      "query": "update CLAUDE.md with what we learned this session",
+      "note": "memory file, not the repo profile",
+      "should_trigger": false,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": true
+    }
+  ],
+  "summary": {
+    "total": 24,
+    "passed": 19,
+    "failed": 5,
+    "should_trigger": 15,
+    "should_not": 9,
+    "recall": 0.6666666666666666,
+    "specificity": 1.0
+  }
+}
