@@ -36,8 +36,9 @@ has_children: true
 | 0010 | [Novelty search](0010-novelty-search.md) | rejected | 2026-07-23 |
 | 0011 | [Hook gates are recorded rather than registered decisions](0011-hook-gates-are-recorded-rather-than-registered-decisions.md) | accepted | 2026-08-31 |
 | 0012 | [Two skill naming rules: verb-object, and family-role](0012-two-skill-naming-rules-verb-object-and-family-role.md) | accepted | 2026-08-31 |
-| 0013 | [profile-repo and setup-repo stay a reader and a writer](0013-profile-repo-and-setup-repo-stay-a-reader-and-a-writer.md) | proposed | 2026-09-02 |
+| 0013 | [profile-repo and setup-repo stay a reader and a writer](0013-profile-repo-and-setup-repo-stay-a-reader-and-a-writer.md) | superseded | 2026-09-02 |
 | 0014 | [The kit is Claude Code-first and reaches other hosts through thin adapters](0014-the-kit-is-claude-code-first-and-reaches-other-hosts-through-thin-adapters.md) | accepted | 2026-09-11 |
 | 0015 | [The lifecycle skills reach the tracker through one contract](0015-the-lifecycle-skills-reach-the-tracker-through-one-contract.md) | accepted | 2026-09-13 |
 | 0016 | [Tagout: one tree, two disjoint plugins, one version](0016-tagout-one-tree-two-disjoint-plugins-one-version.md) | accepted | 2026-09-14 |
 | 0017 | [The two plugin trees ship as generated copies](0017-the-two-plugin-trees-ship-as-generated-copies.md) | accepted | 2026-09-15 |
+| 0018 | [profile-repo and setup-repo merge into init](0018-profile-repo-and-setup-repo-merge-into-init.md) | accepted | 2026-10-09 |
