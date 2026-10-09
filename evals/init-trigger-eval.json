@@ -1,0 +1,27 @@
+[
+  {"query": "init this repo for the kit", "should_trigger": true, "note": "the canonical phrasing — the skill's own verb"},
+  {"query": "set up this repository so the issue and PR skills work here", "should_trigger": true, "note": "the whole story, both halves"},
+  {"query": "configure this repository the way the kit expects", "should_trigger": true, "note": "was setup-repo's canonical phrasing"},
+  {"query": "configure this repo for the issue skills", "should_trigger": true, "note": "was profile-repo's — #279's contested query, now one skill"},
+  {"query": "set up the repo profile for this repository", "should_trigger": true, "note": "the profile half alone → --profile-only"},
+  {"query": "regenerate the repo profile — the labels changed", "should_trigger": true, "note": "--profile-only --refresh"},
+  {"query": "make the issue/PR lifecycle skills work in my other repo", "should_trigger": true, "note": "port to another repo"},
+  {"query": "set up the issue labels for this repo", "should_trigger": true, "note": "the label taxonomy — the manifest half"},
+  {"query": "create the issue templates", "should_trigger": true, "note": "the .github/ISSUE_TEMPLATE/ forms"},
+  {"query": "check whether this repo's labels have drifted from our standard", "should_trigger": true, "note": "read-only drift → --plan"},
+  {"query": "we need priority and effort labels before running auto-dev", "should_trigger": true, "note": "the axis auto-dev sorts on does not exist yet"},
+  {"query": "enable GitHub Pages from the docs folder", "should_trigger": true, "note": "the Pages source, converged from the manifest"},
+  {"query": "initialise ce repo pour les skills", "should_trigger": true, "note": "FR — the canonical phrasing"},
+  {"query": "configure les labels du repo", "should_trigger": true, "note": "FR — the manifest half"},
+  {"query": "configure le profil du repo", "should_trigger": true, "note": "FR — the profile half"},
+
+  {"query": "create a CLAUDE.md for this repo", "should_trigger": false, "note": "Claude Code's built-in /init, not this skill (ADR 0018)"},
+  {"query": "update CLAUDE.md with what we learned this session", "should_trigger": false, "note": "memory file, not the repo profile"},
+  {"query": "init a new git repository here", "should_trigger": false, "note": "`git init` — shares the verb only"},
+  {"query": "file an issue for a new emitter feature", "should_trigger": false, "note": "→ create-issue"},
+  {"query": "merge PR 279 and delete the branch", "should_trigger": false, "note": "→ merge-pr; ONE branch, not the repository setting"},
+  {"query": "add the label 'priority: high' to issue 42", "should_trigger": false, "note": "labelling ONE issue, not declaring the taxonomy"},
+  {"query": "set up branch protection rules", "should_trigger": false, "note": "not in the manifest — needs org policy and admin rights"},
+  {"query": "profile this app's performance, it's slow", "should_trigger": false, "note": "'profile' = perf profiling"},
+  {"query": "install the plugin", "should_trigger": false, "note": "kit installation, not repo configuration"}
+]

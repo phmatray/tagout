@@ -2,7 +2,7 @@
 
 One plugin, two cooperating suites — the **migration pipeline** (migrate-legacy, review-followups)
 and the **issue/PR lifecycle** (create-issue, implement-issue, merge-pr, profile-repo, setup-repo,
-and the `auto-dev` fleet supervisor above them) — bridged where a migration's deferred work becomes
+init, and the `auto-dev` fleet supervisor above them) — bridged where a migration's deferred work becomes
 tracked GitHub issues. Every skill carries `metadata.suite: tagout` in its frontmatter; in
 Claude Code the plugin namespaces them as `tagout:<skill>`. The graphs below are the map;
 the narrative that reads them in order — the two loops, when to call which skill, the machinery, where
@@ -44,6 +44,7 @@ graph TD
         RS[review-sessions]
         RP[profile-repo]
         SR[setup-repo]
+        IN[init]
         DI[debug-issue]
         SH["_shared/<br>preconditions · open-pr · sync-with-main · filing-bar<br>worktree-ignore-check · untrusted-input-boundary<br>test-seams · grilling · prior-rejections<br>brainstorm-and-spec · plan-shape · tdd-loop · recap"]
     end
@@ -76,6 +77,8 @@ graph TD
     RP -. "names as the remedy for a missing label axis or issue-form dir" .-> SR
     RP -. "then: /create-issue <idea>" .-> CI
     SR -. "afterwards: re-run profile-repo --refresh" .-> RP
+    IN -- "generates, converges, refreshes" --> PROF
+    IN -. "then: /create-issue <idea>" .-> CI
     CI -- "reads at step 1" --> PROF
     II -- "reads at step 1" --> PROF
     MP -- "reads at step 1" --> PROF
@@ -136,6 +139,7 @@ graph LR
         TB[triage-backlog]
         RP[profile-repo]
         SR[setup-repo]
+        IN[init]
         DI[debug-issue]
         RS[review-sessions]
     end
@@ -199,6 +203,10 @@ graph LR
     SR --> PY
     SR --> JQ
     SR --> GH
+    IN --> GIT
+    IN --> PY
+    IN --> JQ
+    IN --> GH
 
     AD --> GH
     AD --> GIT
@@ -233,6 +241,7 @@ why no arrow leaves it.
 | `debug-issue` | — | — | — | `find-polluter.sh`, `scripts/hitl-loop.template.sh` (bundled in the skill) |
 | `profile-repo` | — | — | **git**, bash · gh (degraded TODOs without) | `repo-profile.sh` (bundled in the skill) |
 | `setup-repo` | — | — | **git**, **python3** (PyYAML), **jq**, **gh** (admin rights on the settings, topics and Pages surfaces; each refused by name without it) | `repo-setup.sh`, `parse-manifest.py`, `project-area-options.py` (bundled in the skill) |
+| `init` | — | — | **git**, **python3** (PyYAML), **jq**, **gh** (degraded TODOs on the profile path without it; admin rights on the settings, topics and Pages surfaces) | none of its own — runs `profile-repo`'s `repo-profile.sh` and `setup-repo`'s `repo-setup.sh` until #702 moves them |
 
 **Bold = required.** The lifecycle trio — and `auto-dev` above them — additionally *reads*
 `.claude/skills/repo-profile.md` in the target repo — generated once by `profile-repo`,
