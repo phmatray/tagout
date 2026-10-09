@@ -193,4 +193,14 @@ done
 # from. Exported for the backend and every gh child it spawns; the backend's exit code is this
 # script's exit code, so a host refusal stays a 1 and never reads as a bad invocation.
 export TRACKER_REPO="$TRACKER_REPO_ARG"
+# The profile's detail half (`dev.azure.com/acme/Shop`), so a backend reads it from here instead of
+# re-invoking repo-profile.sh (#693). With an explicit --tracker resolve_tracker read nothing, so
+# read once here — and only trust it when the profile names the same tracker.
+if [ -z "$DETAIL" ]; then
+  _pl=$("$PROFILE_SH" tracker 2>/dev/null) || _pl=""
+  if [ "$(printf '%s\n' "$_pl" | awk 'NR==1 {print $1}')" = "$TRACKER" ]; then
+    DETAIL=$(printf '%s\n' "$_pl" | awk 'NR==1 {print $2}')
+  fi
+fi
+export TRACKER_DETAIL="$DETAIL"
 exec "$BACKEND" "$VERB" "$@"
