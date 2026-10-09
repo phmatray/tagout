@@ -40,9 +40,8 @@ command -v az >/dev/null 2>&1 || { echo "azure-devops: az CLI is missing" >&2; e
 
 # --------------------------------------------------------------------- org/project resolution
 #
-# Falls back to reading the committed profile itself (rather than `scripts/tracker.sh` handing it
-# the detail it already resolved) — filed as #693 to fix at the dispatcher, since that would help
-# every future non-GitHub backend, not just this one.
+# Order: `$TRACKER_DETAIL` (the dispatcher's own profile read, #693), then `$TRACKER_REPO`, then
+# reading the committed profile itself — the last only for a direct call that bypasses tracker.sh.
 ORG=""
 PROJECT=""
 _org_project() {
