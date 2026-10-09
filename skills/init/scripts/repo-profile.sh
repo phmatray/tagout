@@ -24,7 +24,7 @@ set -uo pipefail
 
 PROFILE_REL=".claude/skills/repo-profile.md"
 # Resolved BEFORE the cd below: $0 can be relative, and cd-ing into the target repo would break it.
-# Kit root = three levels up from skills/profile-repo/scripts. $0 through any symlinks first — a
+# Kit root = three levels up from skills/init/scripts. $0 through any symlinks first — a
 # plugin install reaches this file by link, and `pwd -P` alone canonicalizes the directory, not the
 # link. No `readlink -f`: macOS's readlink has no -f. Same loop base-run-verdict.sh carries (#514,
 # #531).

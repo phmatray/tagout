@@ -69,7 +69,7 @@ done
 # under `set -e` a failing cd would kill the script HERE with exit 1 and not a word.
 KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/.." && pwd -P) || KIT_ROOT="$(dirname -- "$SELF")/.."
 CONTRACT="$KIT_ROOT/scripts/tracker/contract.json"
-PROFILE_SH="$KIT_ROOT/skills/profile-repo/scripts/repo-profile.sh"
+PROFILE_SH="$KIT_ROOT/skills/init/scripts/repo-profile.sh"
 
 # ------------------------------------------------------------------------------ 2. the arguments
 TRACKER=""

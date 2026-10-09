@@ -49,14 +49,14 @@ A bundled script does the deterministic work. Run it from anywhere in the target
 to the git root). `<skill-dir>` is this skill's base directory — given when the skill loads:
 
 ```bash
-bash "<skill-dir>/scripts/repo-setup.sh" plan
+bash "<skill-dir>/../init/scripts/repo-setup.sh" plan
 ```
 
 `plan` writes nothing, so it is safe against a repository you only read. Show the operator the
 delta it prints, then converge:
 
 ```bash
-bash "<skill-dir>/scripts/repo-setup.sh" apply
+bash "<skill-dir>/../init/scripts/repo-setup.sh" apply
 ```
 
 Read the exit code — it is the report, and each value means one thing:

@@ -11,7 +11,7 @@ gates, conflict hot-spots, architecture grain. It lives, committed, at
 not there:
 
 ```bash
-<kit>/skills/profile-repo/scripts/repo-profile.sh show
+<kit>/skills/init/scripts/repo-profile.sh show
 ```
 
 `<kit>` is the kit root — the directory holding `skills/` and `scripts/` — resolved when the skill

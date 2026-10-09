@@ -8,7 +8,7 @@
 # drained", so the failure looked like success.
 #
 # The fix reads the ORDERED effort: vocabulary from a repo-setup.yml manifest (via the same
-# skills/setup-repo/scripts/parse-manifest.py the setup skill already uses) and ranks each
+# skills/init/scripts/parse-manifest.py the setup skill already uses) and ranks each
 # issue's effort label against that order, rather than assuming a spelling. Four cases below drive
 # every branch of that logic:
 #
@@ -21,7 +21,7 @@
 #                   the hardcoded case-insensitive fallback must still classify correctly, not
 #                   silently reproduce the all-HOLD bug this issue reports
 #   parser-missing  repo-local manifest declares a valid effort: axis, but
-#                   skills/setup-repo/scripts/parse-manifest.py itself does not exist relative to
+#                   skills/init/scripts/parse-manifest.py itself does not exist relative to
 #                   the running survey.sh — the parser is never invoked at all (#239), a THIRD
 #                   case #230's PARSER_RC path does not cover: "ran and declared nothing" and
 #                   "ran and died" both differ from "never ran"
@@ -507,7 +507,7 @@ echo "ok: parser-failure — a parser death on an UNRELATED label is named, not 
 # (including PARSER_RC) is skipped entirely. survey.sh's KIT_ROOT is resolved relative to its OWN
 # path (dirname "$0"), not the caller's CWD, so simulating "the parser file is missing" means
 # running a COPY of survey.sh from a scratch tree that never had
-# skills/setup-repo/scripts/parse-manifest.py in the first place — not chmod'ing the real kit's
+# skills/init/scripts/parse-manifest.py in the first place — not chmod'ing the real kit's
 # copy, and not merely removing execute permission (python3 reads the file as an argument, so
 # `-r` — the check survey.sh actually makes — stays true after a bare `chmod -x`).
 
@@ -527,7 +527,7 @@ mkdir -p "$SCRATCH_KIT/skills/auto-dev/scripts"
 # $SCRATCH_KIT exactly like a real copy would, without a byte-for-byte snapshot of survey.sh's
 # own source that could silently drift from the file this suite is actually testing.
 ln -s "$SURVEY" "$SCRATCH_KIT/skills/auto-dev/scripts/survey.sh"
-# Deliberately no skills/setup-repo/scripts/parse-manifest.py anywhere under $SCRATCH_KIT.
+# Deliberately no skills/init/scripts/parse-manifest.py anywhere under $SCRATCH_KIT.
 
 F6="$WORK/parser-missing-issues.json"
 mkissues "$F6" \

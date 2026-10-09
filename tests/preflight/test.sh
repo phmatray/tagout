@@ -25,7 +25,7 @@ echo "$out" | python3 -m json.tool >/dev/null
 #    azure-devops-only `az CLI` entries are expected ABSENT here, the github-only `gh CLI` entry
 #    expected PRESENT; case 8 below pins the scoping itself against synthetic fixtures and case 11
 #    pins the reverse on a gitlab fixture.
-profile_tracker=$(./skills/profile-repo/scripts/repo-profile.sh tracker 2>/dev/null | awk 'NR==1{print $1}')
+profile_tracker=$(./skills/init/scripts/repo-profile.sh tracker 2>/dev/null | awk 'NR==1{print $1}')
 [ -n "$profile_tracker" ] || profile_tracker=github
 python3 - "$out" "$profile_tracker" <<'PY'
 import json, sys
@@ -298,9 +298,9 @@ PY
 #    (unmodified — the real script, so this proves the two actually agree) and a synthetic
 #    manifest, run against two fixture repos that differ only in their committed Tracker line.
 trk=$(kit_scratch)
-mkdir -p "$trk/scripts" "$trk/skills/profile-repo/scripts" "$trk/bin"
+mkdir -p "$trk/scripts" "$trk/skills/init/scripts" "$trk/bin"
 cp ./scripts/preflight.sh "$trk/scripts/preflight.sh"
-cp ./skills/profile-repo/scripts/repo-profile.sh "$trk/skills/profile-repo/scripts/repo-profile.sh"
+cp ./skills/init/scripts/repo-profile.sh "$trk/skills/init/scripts/repo-profile.sh"
 cat > "$trk/requirements.json" <<'JSON'
 {
   "description": "synthetic manifest — the tracker-scoped case",
@@ -434,9 +434,9 @@ PY
 #     stubbed `dotnet` whose `--list-runtimes` output this case flips mid-way to prove the
 #     `runtime_ok` probe both ways.
 c9=$(kit_scratch)
-mkdir -p "$c9/scripts" "$c9/skills/profile-repo/scripts" "$c9/bin"
+mkdir -p "$c9/scripts" "$c9/skills/init/scripts" "$c9/bin"
 cp ./scripts/preflight.sh "$c9/scripts/preflight.sh"
-cp ./skills/profile-repo/scripts/repo-profile.sh "$c9/skills/profile-repo/scripts/repo-profile.sh"
+cp ./skills/init/scripts/repo-profile.sh "$c9/skills/init/scripts/repo-profile.sh"
 cat > "$c9/requirements.json" <<'JSON'
 {
   "description": "synthetic manifest — the for-scoped case",

@@ -1058,7 +1058,7 @@ echo "decomposition references golden test: all cases behaved as specified"
 # scans the real skills/ tree, not a scratch copy, because the defect IS the committed prose and
 # scripts, not something a fixture could stand in for.
 #
-# Proximity, not "the file mentions both": skills/profile-repo/scripts/repo-profile.sh
+# Proximity, not "the file mentions both": skills/init/scripts/repo-profile.sh
 # legitimately carries an UNRELATED `rev-parse --show-toplevel` (line ~30, resolving the profile
 # PATH argument — out of scope for #125, see the issue's own Assumptions) alongside four
 # worktrees-ignored.sh mentions dozens of lines away. A whole-file substring check would flag that

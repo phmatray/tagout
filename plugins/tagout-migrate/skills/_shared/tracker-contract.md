@@ -24,7 +24,7 @@ the rest, reading the repository from `TRACKER_REPO` in its environment.
 ```
 
 The tracker is `--tracker` when given, else the first word of
-`skills/profile-repo/scripts/repo-profile.sh tracker` (the profile's Tracker line), else `github`
+`skills/init/scripts/repo-profile.sh tracker` (the profile's Tracker line), else `github`
 when there is no committed profile. A missing profile is **not** this dispatcher's to report — the
 profile load in [`preconditions.md`](./preconditions.md) already names that condition, and defaulting
 to `github` is the behaviour every skill had before the contract existed.

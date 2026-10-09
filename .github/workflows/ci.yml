@@ -409,10 +409,10 @@ jobs:
           # The kit tracks its own profile since #157, so `show "$KIT"` must print that file
           # verbatim; the scratch dir we are standing in has none, so it must report the named
           # NO_PROFILE condition (exit 3) rather than fall back to the kit's.
-          out=$(bash "$KIT/skills/profile-repo/scripts/repo-profile.sh" show "$KIT")
+          out=$(bash "$KIT/skills/init/scripts/repo-profile.sh" show "$KIT")
           [ "$out" = "$(cat "$KIT/.claude/skills/repo-profile.md")" ]
           rc=0
-          out=$(bash "$KIT/skills/profile-repo/scripts/repo-profile.sh" show "$PWD") || rc=$?
+          out=$(bash "$KIT/skills/init/scripts/repo-profile.sh" show "$PWD") || rc=$?
           [ "$rc" = 3 ] && [ "$out" = "NO_PROFILE" ]
           # The guards exist to be called from someone else's checkout, so they belong in this
           # simulation too. --help exercises the header slice against $0 (a hardcoded line range

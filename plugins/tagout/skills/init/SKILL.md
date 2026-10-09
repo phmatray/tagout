@@ -52,16 +52,16 @@ anchors to the git root). `<skill-dir>` is this skill's base directory — given
 ### 1. The profile
 
 ```bash
-bash "<skill-dir>/../profile-repo/scripts/repo-profile.sh" show
+bash "<skill-dir>/scripts/repo-profile.sh" show
 ```
 
 - **It printed the profile** (and no `--refresh` was asked) → keep it; relay the headline values
   (repo slug, commit identity, build/test commands, integration style).
 - **It printed `NO_PROFILE`** (exit 3), or `--refresh` was asked → the generation path (on `--plan`, which
   writes nothing locally, say the profile is missing instead and go on to step 2). Read
-  [`../profile-repo/references/generating.md`](../profile-repo/references/generating.md) and follow
+  [`references/generating.md`](references/generating.md) and follow
   it: run `repo-profile.sh detect`, fill
-  [`../profile-repo/references/profile-template.md`](../profile-repo/references/profile-template.md)
+  [`references/profile-template.md`](references/profile-template.md)
   from the facts it emits, write `.claude/skills/repo-profile.md`, and list every TODO you left.
 - **Exit 4** → not inside a git repository: say so and stop.
 
@@ -70,13 +70,13 @@ On `--profile-only`, stop here and recap.
 ### 2. The manifest
 
 ```bash
-bash "<skill-dir>/../setup-repo/scripts/repo-setup.sh" plan
+bash "<skill-dir>/scripts/repo-setup.sh" plan
 ```
 
 `plan` writes nothing. On `--plan`, show the delta and stop. Otherwise, when it found drift, converge:
 
 ```bash
-bash "<skill-dir>/../setup-repo/scripts/repo-setup.sh" apply
+bash "<skill-dir>/scripts/repo-setup.sh" apply
 ```
 
 The manifest is the repo's own `.github/repo-setup.yml` when it has one, else the kit's

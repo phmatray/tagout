@@ -1,6 +1,6 @@
 # repo-setup.yml — the GitHub configuration the lifecycle skills assume (#192).
 #
-# `skills/setup-repo/scripts/repo-setup.sh plan` diffs this against the live repository and prints
+# `skills/init/scripts/repo-setup.sh plan` diffs this against the live repository and prints
 # the delta without touching anything; `apply` converges it. Both are idempotent.
 #
 # HOW TO USE THIS IN YOUR OWN REPO. Copy it to `.github/repo-setup.yml` there and edit that copy —

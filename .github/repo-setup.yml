@@ -1,6 +1,6 @@
 # repo-setup.yml — THIS repository's desired GitHub configuration (#196).
 #
-# `skills/setup-repo/scripts/repo-setup.sh` prefers this file over the kit's shipped
+# `skills/init/scripts/repo-setup.sh` prefers this file over the kit's shipped
 # `templates/repo-setup.yml` (see repo-setup.sh:103), so what follows governs
 # phmatray/tagout and nothing else.
 #

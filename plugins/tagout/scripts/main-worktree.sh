@@ -7,7 +7,7 @@
 # tests/worktrees-ignored/test.sh case 22). Before this script, every caller re-spelled the
 # derivation itself, and two had already drifted from the documented recipe:
 #
-#   * skills/profile-repo/scripts/repo-profile.sh used
+#   * skills/init/scripts/repo-profile.sh used
 #     `git rev-parse --show-toplevel`, which — run from inside a linked worktree, the normal
 #     state during implement-issue/merge-pr — answers with the LINKED worktree, not the main
 #     checkout. The profile then recorded a MEASURED ignore verdict for the wrong directory as a

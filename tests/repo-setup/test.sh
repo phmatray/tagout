@@ -26,7 +26,7 @@ unset GH_HOST
 cd "$(dirname "$0")/../.."
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SCRIPT="$KIT_ROOT/skills/setup-repo/scripts/repo-setup.sh"
+SCRIPT="$KIT_ROOT/skills/init/scripts/repo-setup.sh"
 
 . "$KIT_ROOT/tests/_lib.sh" || {
   echo "FAIL: cannot source $KIT_ROOT/tests/_lib.sh — refusing to run unguarded"; exit 1; }
@@ -101,7 +101,7 @@ MANIFEST="$KIT_ROOT/templates/repo-setup.yml"
 
 # The shipped manifest must actually carry the three axes whose absence #192 is about. A manifest
 # that parsed but declared nothing would make every assertion below vacuously true.
-parsed=$(python3 "$KIT_ROOT/skills/setup-repo/scripts/parse-manifest.py" "$MANIFEST") \
+parsed=$(python3 "$KIT_ROOT/skills/init/scripts/parse-manifest.py" "$MANIFEST") \
   || fail "the shipped manifest does not parse"
 for axis in "priority: " "effort: " "area: "; do
   case "$parsed" in
@@ -120,7 +120,7 @@ echo "  ok: manifest — the shipped default declares the priority:, effort: and
 # all ten on every run and converged on none. The shipped manifest's own descriptions carry em
 # dashes, so this needs no fixture; PYTHONIOENCODING reproduces the condition on the Linux runner,
 # where the locale would otherwise hide it (#174 is the same platform gap, one layer up).
-enc_bytes=$(PYTHONIOENCODING=cp1252 python3 "$KIT_ROOT/skills/setup-repo/scripts/parse-manifest.py" "$MANIFEST" | od -An -tx1 | tr -d ' \n')
+enc_bytes=$(PYTHONIOENCODING=cp1252 python3 "$KIT_ROOT/skills/init/scripts/parse-manifest.py" "$MANIFEST" | od -An -tx1 | tr -d ' \n')
 case "$enc_bytes" in
   *e28094*) ;;
   *) fail "parse-manifest.py did not emit U+2014 as UTF-8 under a non-UTF-8 locale — label descriptions would be applied corrupted" ;;
@@ -398,7 +398,7 @@ has_line() { printf '%s\n' "$2" | grep -q "$1"; }
 # xunit-v3/test.sh's own read_const() is the same shape.
 kit_source "$KIT_ROOT/tests/_lib/py.sh"
 read_area_options() {
-  py_module "$KIT_ROOT/skills/setup-repo/scripts/project-area-options.py" "$1" <<'PY'
+  py_module "$KIT_ROOT/skills/init/scripts/project-area-options.py" "$1" <<'PY'
 import sys
 
 import yaml
@@ -1098,7 +1098,7 @@ REPO_MANIFEST="$KIT_ROOT/.github/repo-setup.yml"
 # `die()` messages (a bad label name, an over-long description, #200) go to stderr, and a `fail`
 # that cannot see them can only say "does not parse" — which label, and why, is then a re-run away.
 repo_parse_err="$(kit_scratch)/repo-manifest-parse.err"
-repo_parsed=$(python3 "$KIT_ROOT/skills/setup-repo/scripts/parse-manifest.py" "$REPO_MANIFEST" 2>"$repo_parse_err") \
+repo_parsed=$(python3 "$KIT_ROOT/skills/init/scripts/parse-manifest.py" "$REPO_MANIFEST" 2>"$repo_parse_err") \
   || fail ".github/repo-setup.yml does not parse: $(cat "$repo_parse_err" 2>/dev/null)"
 
 for axis in "priority: " "effort: " "area: "; do
@@ -1234,7 +1234,7 @@ META_FIXTURE="$KIT_ROOT/tests/repo-setup/fixtures/manifest-meta.yml"
 BAD_TOPICS_FIXTURE="$KIT_ROOT/tests/repo-setup/fixtures/manifest-bad-topics.yml"
 [ -r "$META_FIXTURE" ] || fail "fixture $META_FIXTURE missing"
 [ -r "$BAD_TOPICS_FIXTURE" ] || fail "fixture $BAD_TOPICS_FIXTURE missing"
-PARSER="$KIT_ROOT/skills/setup-repo/scripts/parse-manifest.py"
+PARSER="$KIT_ROOT/skills/init/scripts/parse-manifest.py"
 META_TAB=$(printf '\t')
 
 # 15a. the parser emits the records, and refuses GitHub's rules locally — before any call.
@@ -1496,10 +1496,10 @@ echo "  ok: host — a GHE fork checkout (origin github.com, gh repo view --json
 # The host helper is part of the install: without it the run refuses, naming the missing file,
 # rather than reading gh's default host — the exact #514 failure. The parser and the projector are
 # checked before the host is resolved, so the stand-in tree carries both.
-NOHELPER="$WORK/nohelper/skills/setup-repo/scripts"
+NOHELPER="$WORK/nohelper/skills/init/scripts"
 mkdir -p "$NOHELPER"
-cp "$SCRIPT" "$KIT_ROOT/skills/setup-repo/scripts/parse-manifest.py" \
-   "$KIT_ROOT/skills/setup-repo/scripts/project-area-options.py" "$NOHELPER/"
+cp "$SCRIPT" "$KIT_ROOT/skills/init/scripts/parse-manifest.py" \
+   "$KIT_ROOT/skills/init/scripts/project-area-options.py" "$NOHELPER/"
 fresh_log missing_helper
 rc=0; out=$(GH_STUB_HOSTS=ghe.example.com bash "$NOHELPER/repo-setup.sh" plan "$repo16g" --manifest "$META_FIXTURE" 2>&1) || rc=$?
 [ "$rc" -eq 2 ] || fail "without its host helper: expected exit 2, got $rc — $out"
