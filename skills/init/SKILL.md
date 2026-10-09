@@ -57,7 +57,8 @@ bash "<skill-dir>/../profile-repo/scripts/repo-profile.sh" show
 
 - **It printed the profile** (and no `--refresh` was asked) → keep it; relay the headline values
   (repo slug, commit identity, build/test commands, integration style).
-- **It printed `NO_PROFILE`** (exit 3), or `--refresh` was asked → the generation path. Read
+- **It printed `NO_PROFILE`** (exit 3), or `--refresh` was asked → the generation path (on `--plan`, which
+  writes nothing locally, say the profile is missing instead and go on to step 2). Read
   [`../profile-repo/references/generating.md`](../profile-repo/references/generating.md) and follow
   it: run `repo-profile.sh detect`, fill
   [`../profile-repo/references/profile-template.md`](../profile-repo/references/profile-template.md)
@@ -94,7 +95,7 @@ relay them before a first run against a repo that already has labels.
 
 ### 3. Refresh the profile
 
-After an `apply` that changed anything, re-run step 1 on its generation path: the label axes and
+After an `apply` that followed a `plan` exit 1 (drift — `apply` itself exits 0 either way), re-run step 1 on its generation path: the label axes and
 issue forms the profile reported as missing exist now, so the profile must record them before a
 lifecycle skill reads it. This step is part of the run, not advice to the user.
 
