@@ -116,6 +116,7 @@ checked against it; they are not a second copy to hand-sync.
 |---|---|---|
 | `profile-repo` | the profile written, or read back | `/setup-repo` when it named a missing label axis or issue-form dir, then `/create-issue <idea>` |
 | `setup-repo` | the repo converged on its manifest | `/profile-repo --refresh` |
+| `init` | the profile recorded and the repo converged on its manifest (or only planned) | `/create-issue <idea>` |
 | `create-issue` | issue(s) filed, each with a plan | `/implement-issue #<issue>` |
 | `implement-issue` | PR **ready**, not landed | `/merge-pr #<pr>` |
 | `create-pr` | PR opened (ready, or draft when asked or red) | `/merge-pr #<pr>` |

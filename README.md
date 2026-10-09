@@ -91,7 +91,7 @@ A situational way in, folded from a router-skill proposal declined in the v2 met
 | A migrated app to re-verify | [`/migrate-verify`](commands/migrate-verify.md) |
 | A portfolio to cost | [`/migrate-audit`](commands/migrate-audit.md) |
 | Open follow-ups across migrated repos | [`/migrate-followups`](commands/migrate-followups.md) |
-| A new repo for these skills | [`profile-repo`](skills/profile-repo/SKILL.md), then [`setup-repo`](skills/setup-repo/SKILL.md) |
+| A new repo for these skills | [`init`](skills/init/SKILL.md) — or, one half at a time, [`profile-repo`](skills/profile-repo/SKILL.md), then [`setup-repo`](skills/setup-repo/SKILL.md) |
 | Something is already broken | [`debug-issue`](skills/debug-issue/SKILL.md) fires on its own |
 
 ## Features
@@ -419,6 +419,7 @@ skill is `verb-object` (`create-issue`, `profile-repo`, `debug-issue`), and a me
 | [`triage-backlog`](skills/triage-backlog/SKILL.md) | Re-decide the issues already open: verify what's been fixed, cluster by root cause, then propose keep / sharpen / fold / rescope / close-by-decision for each — and execute only what the owner confirms. The outlet the three inlets above don't have. |
 | [`profile-repo`](skills/profile-repo/SKILL.md) | Generate or read `.claude/skills/repo-profile.md` — the config the skills above consume. Run once per repo, commit the profile. |
 | [`setup-repo`](skills/setup-repo/SKILL.md) | The write half of the profile story: bring a repo to the configuration those skills assume — label taxonomy, `.github/ISSUE_TEMPLATE/` forms, repo settings, description, homepage, topics and the GitHub Pages source — from a declarative manifest. `plan` prints the drift and writes nothing; `apply` converges it, idempotently and additively. |
+| [`init`](skills/init/SKILL.md) | Both halves in one command: record the profile, converge the repo on its manifest, refresh the profile. `--plan` writes nothing on GitHub; `--profile-only` is the profile alone. Typed `/tagout:init` — Claude Code's built-in `/init` writes a `CLAUDE.md` instead ([ADR 0018](docs/adr/0018-profile-repo-and-setup-repo-merge-into-init.md)). |
 | [`review-followups`](skills/review-followups/SKILL.md) | Consolidate the migrated repos' open follow-ups (owner decisions, tasks, deferrals) and update them at the source. |
 | [`debug-issue`](skills/debug-issue/SKILL.md) | Root cause before any fix is proposed — harness-agnostic, fires on its own ahead of a patch. |
 | [`review-sessions`](skills/review-sessions/SKILL.md) | Read previous sessions' transcripts, harvest the failures the kit itself caused (tool errors on kit scripts, gate denials, workers that died waiting, guard refusals, red suites), cluster by root cause, drop what `main` already fixed, and file what earns an issue through `create-issue`. |
@@ -499,6 +500,7 @@ skills/debug-issue/      root-cause-before-fix process, harness-agnostic
 skills/review-sessions/  the retro across sessions: harvest.py over the transcripts → cluster → verify → filing bar → create-issue
 skills/profile-repo/     the per-repo profile generator the lifecycle skills consume
 skills/setup-repo/       the write half of that: plan/apply a repo's labels, issue forms, settings, topics and Pages source from a manifest
+skills/init/             both halves in one command: profile, plan, apply, refresh
 skills/_shared/          procedures shared by the lifecycle skills (preconditions, open-pr, sync-with-main, filing-bar, worktree-ignore-check, untrusted-input-boundary, test-seams, grilling, brainstorm-and-spec, plan-shape, tdd-loop, recap)
 scripts/                 preflight.sh (phase-0 gate) · run-all-tests.sh (one command for everything CI checks, exit 2 on a missing prerequisite) · audit-inventory.sh (JSON inventory) · report-dashboard.py (report generator) · contrast-check.py (WCAG AA gate) · followups.py (open-tail aggregator) · release-title-gate.sh + release-title-diff.sh (a change to shipped content must carry a title that cuts a release) · recap-wiring-check.py (every skill closes with the shared recap, and its hand-off table matches ARCHITECTURE.md's dashed edges)
 templates/               ci-dotnet.yml + deploy-pages-blazor.yml — CI/deployment a migration drops into the target repo · repo-setup.yml + issue-forms/ — the desired GitHub configuration setup-repo applies · bundle-gate.json.example — copy-pasteable config for the opt-in committed-bundle drift gate
