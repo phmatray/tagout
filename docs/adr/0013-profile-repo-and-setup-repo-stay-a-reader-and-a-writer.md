@@ -1,11 +1,14 @@
 ---
 id: 13
 title: profile-repo and setup-repo stay a reader and a writer
-status: proposed
+status: superseded
 date: 2026-09-02
 tags:
 - lifecycle
 - naming
+links:
+- type: superseded-by
+  target: 18
 code_refs:
 - path: skills/profile-repo/SKILL.md
 - path: skills/setup-repo/SKILL.md

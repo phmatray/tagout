@@ -1359,6 +1359,46 @@ else
   fi
 fi
 
+# #693 — the dispatcher hands the backend the profile detail it resolved, so the backend need not
+# re-read repo-profile.sh. The detail names a DIFFERENT org than TRACKER_REPO would, to prove the source.
+AZDET="$WORK/az-detail"
+mkdir -p "$AZDET/.claude/skills"
+printf '%s\n' '# Repo profile' '' '## Tracker' \
+  '- **Tracker:** azure-devops (dev.azure.com/detorg/DetProj) — fixture.' \
+  > "$AZDET/.claude/skills/repo-profile.md"
+AZ_BACKEND="$KIT_ROOT/scripts/tracker/azure-devops.sh"
+
+# AC1 — tracker.sh --tracker azure-devops with a committed profile exports TRACKER_DETAIL.
+: > "$AZ_CALL_LOG"
+AZ_REPO_JSON='{"name":"w","project":{"name":"DetProj"},"defaultBranch":"refs/heads/main"}' \
+  run_az "$AZDET" repo
+if [ "$RC" -ne 0 ] || ! grep -Fq 'dev.azure.com/detorg' "$AZ_CALL_LOG" 2>/dev/null; then
+  note_fail "#693 AC1 — TRACKER_DETAIL did not reach the backend (rc=$RC, calls: $(cat "$AZ_CALL_LOG"), $ERR)"
+else
+  ok "#693 AC1 — tracker.sh exports the profile's detail to the backend"
+fi
+
+# AC2 — with TRACKER_DETAIL set, no profile is needed (a bare dir would fail the fallback).
+OUT=$(cd "$AZBARE" && PATH="$WORK/bin:$PATH" TRACKER_DETAIL=dev.azure.com/detorg/DetProj \
+  AZ_REPO_JSON='{"name":"w","project":{"name":"DetProj"},"defaultBranch":"refs/heads/main"}' \
+  "$AZ_BACKEND" repo 2>&1) && rc=0 || rc=$?
+if [ "$rc" -ne 0 ]; then
+  note_fail "#693 AC2 — backend with TRACKER_DETAIL still needed the profile: $OUT"
+else
+  ok "#693 AC2 — _org_project prefers TRACKER_DETAIL without reading the profile"
+fi
+
+# AC3 — a direct call with neither variable still falls back to the profile read.
+: > "$AZ_CALL_LOG"
+(cd "$AZDET" && PATH="$WORK/bin:$PATH" \
+  AZ_REPO_JSON='{"name":"w","project":{"name":"DetProj"},"defaultBranch":"refs/heads/main"}' \
+  "$AZ_BACKEND" repo >/dev/null 2>&1) && rc=0 || rc=$?
+if [ "$rc" -ne 0 ] || ! grep -Fq 'dev.azure.com/detorg' "$AZ_CALL_LOG"; then
+  note_fail "#693 AC3 — direct call lost its repo-profile.sh fallback (rc=$rc)"
+else
+  ok "#693 AC3 — a direct call still falls back to repo-profile.sh"
+fi
+
 # AC5 — issue-view defaults format to html when multilineFieldsFormat is absent (a work item edited
 # by hand in the browser), splits System.Tags on '; '.
 AZ_WORKITEM_JSON='{"id":7,"fields":{"System.Title":"A stub item","System.State":"Active","System.Description":"body text","System.Tags":"bug; area: skills"}}' \
