@@ -86,7 +86,7 @@ else:
 # 4. a bare `init` is Claude Code's built-in, not the kit's (#712)
 import trigger_eval
 m = trigger_eval._names_match
-if (m("init", "Skill", "init"), m("tagout:init", "Skill", "init"), m("implement-issue", "Skill", "implement-issue")) == (False, True, True):
+if (m("init", "Skill", "init"), m("tagout:init", "Skill", "init"), m("other:init", "Skill", "init") is False, m("implement-issue", "Skill", "implement-issue")) == (False, True, True, True):
     ok("a bare init Skill call is not the kit's init; tagout:init and other bare names still match (#712)")
 else:
     bad("_names_match mis-attributes a bare init (or broke a qualified/other name)")
