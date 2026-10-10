@@ -63,7 +63,7 @@ warnings = []
 #
 # 750 is where a CONSERVATIVE cut lands — one that keeps every distinct trigger branch, every FR
 # form, every "Does NOT apply" clause the eval sets' negatives lean on, and every phrase an eval
-# query pins verbatim (`"turn on auto-delete merged branches"` has no other anchor in setup-repo's
+# query pins verbatim (`"turn on auto-delete merged branches"` has no other anchor in init's
 # text, so it is not a synonym to fold away). #323 wants ~450, and the way to earn it is
 # `evals/run_all.py --runs-per-query 3` against evals/results/baseline.json, not a smaller constant
 # here: a ceiling below what the bench has cleared only teaches a reader to ignore a standing
