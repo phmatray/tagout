@@ -22,12 +22,16 @@
   "customManagers": [
     {
       "description": [
+        "plugins/tagout-migrate/tests/xunit-v3/apply-transform.py is a generated copy of the source (ADR 0017, PLUGIN_EXTRAS), so the second managerFilePatterns entry lets Renovate bump source and copy in one branch (#710, #665); both apply-transform.py managers carry it.",
         "The two versions the xunit v2 -> v3 transform bakes into EVERY migrated csproj live as Python string literals in tests/xunit-v3/apply-transform.py, and no stock manager reads .py — so until now nothing watched them. The packageRules below could never fire on these packages either: Renovate does not propose updates for dependencies it cannot parse. See issue #36.",
         "The xunit entry captures depName from XUNIT_V3_PACKAGE on the line above the version, rather than templating it: the package id is load-bearing here (xunit.v3 and xunit.v3.mtp-v2 sit on opposite Microsoft.Testing.Platform lines at the same major), so a hardcoded name would keep proposing xunit.v3 updates after the kit moved lines.",
         "tests/xunit-v3/test.sh executes these regexes against the real file and compares what they capture to what the module reports — a renamed constant fails the suite instead of silently going blind."
       ],
       "customType": "regex",
-      "managerFilePatterns": ["/^tests/xunit-v3/apply-transform\\.py$/"],
+      "managerFilePatterns": [
+        "/^tests/xunit-v3/apply-transform\\.py$/",
+        "/^plugins/[^/]+/tests/xunit-v3/apply-transform\\.py$/"
+      ],
       "matchStrings": [
         "XUNIT_V3_PACKAGE = \"(?<depName>[^\"]+)\"\\nXUNIT_V3_VERSION = \"(?<currentValue>[^\"]+)\""
       ],
@@ -40,7 +44,10 @@
         "A bump proposed here must still satisfy validate_pairing, and the golden test runs the transform for real — so a version crossing the Microsoft.Testing.Platform line fails the suite rather than reaching a migration."
       ],
       "customType": "regex",
-      "managerFilePatterns": ["/^tests/xunit-v3/apply-transform\\.py$/"],
+      "managerFilePatterns": [
+        "/^tests/xunit-v3/apply-transform\\.py$/",
+        "/^plugins/[^/]+/tests/xunit-v3/apply-transform\\.py$/"
+      ],
       "matchStrings": [
         "COVERAGE_EXT_VERSION = \"(?<currentValue>[^\"]+)\""
       ],
@@ -66,11 +73,13 @@
   ],
   "github-actions": {
     "description": [
+      "plugins/*/templates/ are GENERATED copies of templates/ (ADR 0017, host-adapters.py build). Renovate bumped only the source on #665 and the kit check refused the drift, and a bot cannot run build. Managing the copies too puts source and copies in ONE branch, byte-identical, so host-adapters.py check stays green (#710). A new copied path with a version-bearing source must be added here, to the apply-transform.py managers and to the fix rule.",
       "templates/ holds the workflows this kit SHIPS to migrated repos — a deliverable, not documentation, asserted by tests/xunit-v3/test.sh. The github-actions manager's default patterns cover only .github/workflows, .github/actions, workflow-templates and action.yml, so templates/ had never been managed: Renovate kept this repo's own CI current (checkout v7, setup-dotnet v6) while the workflows we hand to customers sat three majors behind. See issue #35.",
       "managerFilePatterns is MERGED with the manager's defaults, not substituted for them — the defaults cannot be removed — so this adds templates/ without putting .github/workflows at risk. That is the opposite of ignorePaths, which does replace what it inherits."
     ],
     "managerFilePatterns": [
-      "/^templates/.*\\.ya?ml$/"
+      "/^templates/.*\\.ya?ml$/",
+      "/^plugins/[^/]+/templates/.*\\.ya?ml$/"
     ]
   },
   "packageRules": [
@@ -101,13 +110,16 @@
     },
     {
       "description": [
+        "The generated plugin copies (plugins/*/templates/**, plugins/tagout-migrate/tests/xunit-v3/apply-transform.py — ADR 0017) get the same type: Renovate edits them in the same branch as their source (#710), and the release-title gate checks those paths too.",
         "These two paths hold SHIPPED content, so scripts/release-title-gate.sh gates them (#55): a PR touching them must carry a title release-please will release, or the bump reaches no consumer's version-keyed cache. Renovate's default semanticCommitType here is `chore`, which is not releasable — so without this rule every such PR would land red and need a human retitle before it could merge, reinstating by a different route the staleness #35 and #36 fixed. A bot cannot retitle itself.",
         "`fix` is also the honest type: templates/ are the workflows handed to migrated repos, and the constants in tests/xunit-v3/apply-transform.py are baked into every migrated csproj. A bump to either changes what consumers get, which is exactly what deserves a release entry.",
         "tests/release-title-gate/test.sh pins the gate side of this contract (chore-templates and shipped-anyway-transform both refuse); this rule is the Renovate side. Change one and check the other."
       ],
       "matchFileNames": [
         "templates/**",
-        "tests/xunit-v3/apply-transform.py"
+        "tests/xunit-v3/apply-transform.py",
+        "plugins/*/templates/**",
+        "plugins/*/tests/xunit-v3/apply-transform.py"
       ],
       "semanticCommitType": "fix"
     }

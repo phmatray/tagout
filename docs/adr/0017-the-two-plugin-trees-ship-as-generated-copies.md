@@ -48,4 +48,6 @@ Good: an install works on Windows, in a container with a restricted filesystem, 
 
 Bad: `plugins/` carries ~230 tracked files and about 3 MB of duplicated text, so a change under `skills/` shows up twice in a diff and `build` must run before the commit lands — `check` is what makes forgetting it a refusal rather than a silent drift; a reviewer reads the mechanical half of every such PR; and a consumer whose plugin is already installed from a symlinked release must reinstall to pick the files up, since the cache is a copy of what was checked out.
 
+Contract for a copied path whose source carries a version (#710): Renovate edits only what its managers can read, and a bot cannot run `build`, so a bump to the source alone fails `check` (#665). A copied path with a version-bearing source (`templates/**`, `tests/xunit-v3/apply-transform.py`) must therefore also be listed in `renovate.json` — the actions-manager pattern, the regex managers and the `fix` rule — so source and copies move in one branch; `tests/renovate-config/test.sh` section 11 fails when one is dropped.
+
 Unchanged: the partition, the disjointness, the one-version rule and the manifests of ADR 0016; nothing under `skills/` moves, and every `<kit>/…` path still resolves inside its plugin.
