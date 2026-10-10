@@ -596,7 +596,10 @@ fi
 python3 - "$KIT/renovate.json" <<'PY'
 import fnmatch, json, re, sys
 cfg = json.load(open(sys.argv[1], encoding="utf-8"))
-tmpl = ["plugins/tagout/templates/ci-dotnet.yml", "plugins/tagout-migrate/templates/ci-dotnet.yml"]
+import glob
+# Every copied workflow, walked rather than listed: a new template must be reachable too.
+tmpl = sorted(glob.glob("plugins/*/templates/**/*.y*ml", recursive=True))
+assert tmpl, "no generated template copies found under plugins/*/templates"
 xf = "plugins/tagout-migrate/tests/xunit-v3/apply-transform.py"
 rx = lambda pats, f: any(re.search(p.strip("/"), f) for p in pats)
 bad = []

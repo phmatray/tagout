@@ -119,7 +119,7 @@
         "templates/**",
         "tests/xunit-v3/apply-transform.py",
         "plugins/*/templates/**",
-        "plugins/tagout-migrate/tests/xunit-v3/apply-transform.py"
+        "plugins/*/tests/xunit-v3/apply-transform.py"
       ],
       "semanticCommitType": "fix"
     }
