@@ -8,6 +8,30 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [4.0.0](https://github.com/phmatray/tagout/compare/v3.2.0...v4.0.0) (2026-10-10)
+
+
+### ⚠ BREAKING CHANGES
+
+* **init:** profile-repo and setup-repo merge into init ([#703](https://github.com/phmatray/tagout/issues/703)) (#709)
+
+### Features
+
+* **implement-issue:** review a one-way-door diff at high and hold it from auto-dev ([#694](https://github.com/phmatray/tagout/issues/694)) ([#696](https://github.com/phmatray/tagout/issues/696)) ([02f2e1a](https://github.com/phmatray/tagout/commit/02f2e1a7e7abf9279450a80a238f3ac9383d0429))
+* **init:** an init skill runs profile, plan, apply and refresh in one command ([#701](https://github.com/phmatray/tagout/issues/701)) ([#704](https://github.com/phmatray/tagout/issues/704)) ([640c9a3](https://github.com/phmatray/tagout/commit/640c9a336510516c9e426fa135370bb5ac4d05fe))
+* **init:** profile-repo and setup-repo merge into init ([#703](https://github.com/phmatray/tagout/issues/703)) ([#709](https://github.com/phmatray/tagout/issues/709)) ([9485205](https://github.com/phmatray/tagout/commit/94852054eb703d3bac985a9c786bb879716191a2))
+* **init:** the profile and setup scripts live under skills/init, every consumer reads the new home ([#707](https://github.com/phmatray/tagout/issues/707)) ([7178022](https://github.com/phmatray/tagout/commit/7178022bee2df2d8682e1b8defff678da22cfc23))
+* **tracker:** the dispatcher hands a backend the profile detail it already resolved ([#705](https://github.com/phmatray/tagout/issues/705)) ([02a5281](https://github.com/phmatray/tagout/commit/02a5281dbaeedc8b92f554bfdcb74d4767b6d5c5))
+
+
+### Bug Fixes
+
+* **deps:** update non-major dependencies ([#665](https://github.com/phmatray/tagout/issues/665)) ([7a4c1b7](https://github.com/phmatray/tagout/commit/7a4c1b78eb39a03e4ef6145663ba5f2afaac92bc))
+* **evals:** bare init is not the kit's init ([#712](https://github.com/phmatray/tagout/issues/712)) ([#714](https://github.com/phmatray/tagout/issues/714)) ([74786d5](https://github.com/phmatray/tagout/commit/74786d50bccc72b46cf4b6714edf943c64fe3a5d))
+* **evals:** the bench counts the bare init it stages; a foreign plugin's init still does not ([#715](https://github.com/phmatray/tagout/issues/715)) ([#716](https://github.com/phmatray/tagout/issues/716)) ([3742a85](https://github.com/phmatray/tagout/commit/3742a85b17a10634184967d956feeed866291631))
+* **hooks:** roseline-gate denial is actionable and fails open on .slnx-only repos ([#699](https://github.com/phmatray/tagout/issues/699)) ([#706](https://github.com/phmatray/tagout/issues/706)) ([e806983](https://github.com/phmatray/tagout/commit/e8069830cd9a24366b6cf7f7294bbbc8357206c4))
+* **renovate:** manage the generated plugin copies so source and copies bump in one PR ([#711](https://github.com/phmatray/tagout/issues/711)) ([4e14ec6](https://github.com/phmatray/tagout/commit/4e14ec6342f5871e550e5ccd350616479766fd31))
+
 ## [3.2.0](https://github.com/phmatray/tagout/compare/v3.1.1...v3.2.0) (2026-09-26)
 
 
