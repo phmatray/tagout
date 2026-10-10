@@ -55,6 +55,8 @@ case "$fp" in *.cs) ;; *) exit 0 ;; esac
 [ "$FORCE" = 1 ] || command -v dnx >/dev/null 2>&1 || exit 0
 
 # ---------------------------------------------------------------- is this .cs inside a project?
+# `*.slnx` is deliberately NOT a marker: Roseline's discovery cannot open it (RoselineMCP#252), so
+# arming on one would deny a Read in a repo where the suggested replacement cannot work (#699).
 # Walk UP from the file's own directory. Upward is the direction that answers the question; a
 # downward scan from cwd misses the mainstream src/Company.Product/Api/Api.csproj layout entirely
 # (depth 4), leaving the gate silently off in exactly the repos it is meant for.
@@ -66,18 +68,25 @@ hit=""
 dir=$(dirname "$fp")
 levels=0
 while [ -n "$dir" ] && [ "$dir" != "/" ] && [ "$dir" != "." ] && [ "$levels" -lt 40 ]; do
-  hit=$(find "$dir" -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' -o -name '*.csproj' \) -print -quit 2>/dev/null || true)
+  # .csproj first: a dir holding both must answer the same way on every filesystem (#699).
+  hit=$(find "$dir" -maxdepth 1 -name '*.csproj' -print -quit 2>/dev/null || true)
+  [ -n "$hit" ] || hit=$(find "$dir" -maxdepth 1 -name '*.sln' -print -quit 2>/dev/null || true)
   [ -n "$hit" ] && break
   dir=$(dirname "$dir")
   levels=$((levels + 1))
 done
+
+# search_symbols auto-discovery fails in a src/<P>/<P>.csproj + root .slnx layout, so the denial
+# passes the nearest .csproj as `project` (#699). It must be the file's own: only the walk-up may supply it, never the cwd scan.
+proj=""
+case "$hit" in *.csproj) proj="$hit" ;; esac
 
 # Fallback for a .cs sitting above its project (a loose file at the repo root, say): a shallow
 # scan down from the session's cwd.
 if [ -z "$hit" ]; then
   cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null)
   if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-    hit=$(find "$cwd" -maxdepth 3 \( -name '*.sln' -o -name '*.slnx' -o -name '*.csproj' \) -print -quit 2>/dev/null || true)
+    hit=$(find "$cwd" -maxdepth 3 \( -name '*.sln' -o -name '*.csproj' \) -print -quit 2>/dev/null || true)
   fi
 fi
 [ -n "$hit" ] || exit 0
@@ -117,12 +126,14 @@ fi
 touch "$marker" 2>/dev/null || exit 0
 
 base=$(basename "$fp")
-reason="Blocked by the roseline gate: ${base} is C#, and this kit routes all C# analysis through RoselineMCP. Use these instead of Read:
-  - file shape / locate a member  -> mcp__roseline__search_symbols (file: \"${base}\")
-  - read one member's body        -> mcp__roseline__get_symbol_info (includeSource: true)
-  - usages / implementors / calls -> mcp__roseline__find_references, find_implementations, get_call_graph
-  - resolve a file:line           -> mcp__roseline__get_symbol_at_position
-  - edit a member body, or rename -> mcp__roseline__edit_member, rename_symbol
+hint="file: \"${base}\""
+[ -n "$proj" ] && hint="file: \"${base}\", project: \"${proj}\""
+reason="Blocked by the roseline gate: ${base} is C#, and this kit routes all C# analysis through RoselineMCP. Use the roseline MCP tools instead of Read. They appear as mcp__roseline__* or, when installed through the plugin, mcp__plugin_*_roseline__*; if they are deferred, load them with ToolSearch first.
+  - file shape / locate a member  -> search_symbols {${hint}}
+  - read one member's body        -> get_symbol_info (includeSource: true)
+  - usages / implementors / calls -> find_references, find_implementations, get_call_graph
+  - resolve a file:line           -> get_symbol_at_position
+  - edit a member body, or rename -> edit_member, rename_symbol
 They return only the structure you need and cost far fewer tokens than the whole file.
 If you need the exact full text -- or you are about to Edit this file, which requires having Read it, or the change is outside a member body (usings, namespace, attributes, top-level statements) -- issue the identical Read again straight away and the retry is allowed through."
 

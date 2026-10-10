@@ -52,3 +52,5 @@ the argument is "the plugin installs globally", and nothing in it is about C#. `
 same order and the committed `.claude/skills/repo-profile.md` playing the part `dnx` plays here: the
 positive evidence that the replacement the denial names can actually exist in this repository. A
 third hook takes the same terms; it does not get a second record.
+
+A repo whose only project marker is a `*.slnx` is treated as unmarked (#699): Roseline discovery cannot open it, so the gate lets the Read through.
