@@ -68,11 +68,18 @@ hit=""
 dir=$(dirname "$fp")
 levels=0
 while [ -n "$dir" ] && [ "$dir" != "/" ] && [ "$dir" != "." ] && [ "$levels" -lt 40 ]; do
-  hit=$(find "$dir" -maxdepth 1 \( -name '*.sln' -o -name '*.csproj' \) -print -quit 2>/dev/null || true)
+  # .csproj first: a dir holding both must answer the same way on every filesystem (#699).
+  hit=$(find "$dir" -maxdepth 1 -name '*.csproj' -print -quit 2>/dev/null || true)
+  [ -n "$hit" ] || hit=$(find "$dir" -maxdepth 1 -name '*.sln' -print -quit 2>/dev/null || true)
   [ -n "$hit" ] && break
   dir=$(dirname "$dir")
   levels=$((levels + 1))
 done
+
+# search_symbols auto-discovery fails in a src/<P>/<P>.csproj + root .slnx layout, so the denial
+# passes the nearest .csproj as `project` (#699). It must be the file's own: only the walk-up may supply it, never the cwd scan.
+proj=""
+case "$hit" in *.csproj) proj="$hit" ;; esac
 
 # Fallback for a .cs sitting above its project (a loose file at the repo root, say): a shallow
 # scan down from the session's cwd.
@@ -83,10 +90,6 @@ if [ -z "$hit" ]; then
   fi
 fi
 [ -n "$hit" ] || exit 0
-# The nearest .csproj, when that is what armed the gate: search_symbols auto-discovery fails in a
-# src/<P>/<P>.csproj + root .slnx layout, so the hint must pass it as `project` (#699).
-proj=""
-case "$hit" in *.csproj) proj="$hit" ;; esac
 
 # ------------------------------------------------------------------------- the one-shot escape
 # An identical repeat Read within the window is allowed through — the documented "I genuinely need
