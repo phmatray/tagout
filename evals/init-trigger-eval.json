@@ -1,8 +1,8 @@
 [
   {"query": "init this repo for the kit", "should_trigger": true, "note": "the canonical phrasing — the skill's own verb"},
   {"query": "set up this repository so the issue and PR skills work here", "should_trigger": true, "note": "the whole story, both halves"},
-  {"query": "configure this repository the way the kit expects", "should_trigger": true, "note": "was setup-repo's canonical phrasing"},
-  {"query": "configure this repo for the issue skills", "should_trigger": true, "note": "was profile-repo's — #279's contested query, now one skill"},
+  {"query": "configure this repository the way the kit expects", "should_trigger": true, "note": "the manifest half's canonical phrasing"},
+  {"query": "configure this repo for the issue skills", "should_trigger": true, "note": "#279's contested query between the two retired skills, now one skill"},
   {"query": "set up the repo profile for this repository", "should_trigger": true, "note": "the profile half alone → --profile-only"},
   {"query": "regenerate the repo profile — the labels changed", "should_trigger": true, "note": "--profile-only --refresh"},
   {"query": "make the issue/PR lifecycle skills work in my other repo", "should_trigger": true, "note": "port to another repo"},

@@ -82,7 +82,7 @@ bash "<skill-dir>/scripts/repo-setup.sh" apply
 The manifest is the repo's own `.github/repo-setup.yml` when it has one, else the kit's
 `templates/repo-setup.yml`; `--manifest <path>` overrides both. The rules `apply` follows (additive,
 `pruneKeep`, never clobber a form, placeholders reported `!TODO`, topics additive, Pages never
-disabled) are spelled out in [`../setup-repo/SKILL.md`](../setup-repo/SKILL.md#the-desired-state) —
+disabled) are spelled out in [`references/desired-state.md`](references/desired-state.md) —
 relay them before a first run against a repo that already has labels.
 
 | Exit | Meaning | What to do |

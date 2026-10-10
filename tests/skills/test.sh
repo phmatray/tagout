@@ -235,7 +235,7 @@ run_desc_case "W3 750 chars is silent            " 0 \
   '!review-followups: description is' "$(desc_mutator 750)"
 
 echo "== the body-size report is visible and measures the real body, not a cached figure (#473) =="
-# Appends exactly $1 raw bytes to the END of profile-repo's body (not literally after the
+# Appends exactly $1 raw bytes to the END of init's body (not literally after the
 # frontmatter's closing --- — the assert below only proves the frontmatter parses; the checker
 # measures everything from frontmatter-end to EOF either way, so appending anywhere in the body
 # exercises the same code path). Padded with a 2-byte-in-UTF-8 character ("é"), never plain ASCII:
@@ -245,7 +245,7 @@ echo "== the body-size report is visible and measures the real body, not a cache
 append_body_bytes_mutator() {
   cat <<PY
 import pathlib, sys, re
-p = pathlib.Path(sys.argv[1]) / "skills/profile-repo/SKILL.md"
+p = pathlib.Path(sys.argv[1]) / "skills/init/SKILL.md"
 t = p.read_text(encoding="utf-8")
 m = re.match(r'^---\n.*?\n---\n', t, re.S)
 assert m, "no frontmatter delimiters found"
@@ -305,7 +305,7 @@ run_desc_case "B1 body-size block header appears, exit unchanged" 0 \
 run_desc_case "B2 body-size total line appears                 " 0 \
   '  total: [0-9]+' 'import sys'
 run_body_delta_case "B3 appending 100 bytes moves the reported number by exactly 100" \
-  profile-repo 100
+  init 100
 
 # ---------------------------------------------------------------------------------------------
 # The trigger contract has one home now: evals/<skill>-trigger-eval.json (#331). check-frontmatter.py

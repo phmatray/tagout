@@ -15,7 +15,7 @@
   {"query": "merge PR 281 now that CI is green", "should_trigger": false, "note": "→ merge-pr"},
   {"query": "review the diff on PR 281 without merging it", "should_trigger": false, "note": "→ review/code-review"},
   {"query": "what value objects does the C# emitter generate?", "should_trigger": false, "note": "doc question — no lifecycle skill"},
-  {"query": "set up the repo profile for this repository", "should_trigger": false, "note": "→ profile-repo"},
+  {"query": "set up the repo profile for this repository", "should_trigger": false, "note": "→ init"},
   {"query": "explain how the ANTLR grammar splits lexer and parser", "should_trigger": false, "note": "doc question — no lifecycle skill"},
   {"query": "resume the implementation plan on issue 71", "should_trigger": false, "note": "→ implement-issue"},
   {"query": "close issue 42, it's fixed", "should_trigger": false, "note": "managing an EXISTING issue, not filing one"},

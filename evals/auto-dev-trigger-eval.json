@@ -18,5 +18,5 @@
   {"query": "run these three test suites in parallel", "should_trigger": false, "note": "parallelism without any issue lifecycle"},
   {"query": "review the open PRs", "should_trigger": false, "note": "→ code-review"},
   {"query": "triage the backlog and tell me which ones we should close", "should_trigger": false, "note": "→ triage-backlog (drains by DECIDING, not by building)"},
-  {"query": "set up the effort and priority labels this repo is missing", "should_trigger": false, "note": "→ setup-repo (the axis auto-dev sorts on, not the loop itself)"}
+  {"query": "set up the effort and priority labels this repo is missing", "should_trigger": false, "note": "→ init (the axis auto-dev sorts on, not the loop itself)"}
 ]

@@ -91,12 +91,12 @@ A situational way in, folded from a router-skill proposal declined in the v2 met
 | A migrated app to re-verify | [`/migrate-verify`](commands/migrate-verify.md) |
 | A portfolio to cost | [`/migrate-audit`](commands/migrate-audit.md) |
 | Open follow-ups across migrated repos | [`/migrate-followups`](commands/migrate-followups.md) |
-| A new repo for these skills | [`init`](skills/init/SKILL.md) — or, one half at a time, [`profile-repo`](skills/profile-repo/SKILL.md), then [`setup-repo`](skills/setup-repo/SKILL.md) |
+| A new repo for these skills | [`init`](skills/init/SKILL.md) |
 | Something is already broken | [`debug-issue`](skills/debug-issue/SKILL.md) fires on its own |
 
 ## Features
 
-- **Issue/PR lifecycle skills** — portable `create-issue`, `implement-issue`, `merge-pr` and `profile-repo` skills usable on any repo, driven by a committed per-repo profile.
+- **Issue/PR lifecycle skills** — portable `create-issue`, `implement-issue`, `merge-pr` and `init` skills usable on any repo, driven by a committed per-repo profile.
 - **Backlog burn-down at scale** — `auto-dev` supervises a fleet of N parallel workers, each taking one issue from plan to merged PR, with conflict-avoiding area isolation and a measured token budget.
 - **Root-cause debugging** — `debug-issue` fires before any fix is proposed, so a failure is explained before it is patched.
 
@@ -401,7 +401,7 @@ Model-invoked, each a `skills/<name>/SKILL.md` file. The issue/PR lifecycle trio
 supervisors are usable on any repo, not just migrations.
 
 **The names follow two rules, so the list below is predictable rather than arbitrary:** a standalone
-skill is `verb-object` (`create-issue`, `profile-repo`, `debug-issue`), and a member of a family is
+skill is `verb-object` (`create-issue`, `debug-issue`, `merge-pr`), and a member of a family is
 `<family>-<role>`, where the family is itself a rule-1 name or the bare verb that heads it
 (`migrate` → `migrate-legacy`, `migrate-assess`, `migrate-followups`; `auto-dev` →
 `auto-dev-worker`, `auto-dev-merge`). Renames happen only in a major —
@@ -417,9 +417,7 @@ skill is `verb-object` (`create-issue`, `profile-repo`, `debug-issue`), and a me
 | [`auto-dev`](skills/auto-dev/SKILL.md) | Supervise a FLEET of N parallel workers over the whole backlog: survey and order the open issues, dispatch area-isolated workers (`implement-issue` → `merge-pr`), wait for CI, verify real merge state, refill each slot as a PR lands. |
 | [`deliver-issue`](skills/deliver-issue/SKILL.md) | The single-item form of that chain: one idea or one planned issue to a merged PR, hands-off — files or seeds it through `create-issue`, then dispatches the same two worker commands `auto-dev` uses, each in a fresh sub-agent, waiting for CI in between. `--stop-at ready` leaves the merge to you. |
 | [`triage-backlog`](skills/triage-backlog/SKILL.md) | Re-decide the issues already open: verify what's been fixed, cluster by root cause, then propose keep / sharpen / fold / rescope / close-by-decision for each — and execute only what the owner confirms. The outlet the three inlets above don't have. |
-| [`profile-repo`](skills/profile-repo/SKILL.md) | Generate or read `.claude/skills/repo-profile.md` — the config the skills above consume. Run once per repo, commit the profile. |
-| [`setup-repo`](skills/setup-repo/SKILL.md) | The write half of the profile story: bring a repo to the configuration those skills assume — label taxonomy, `.github/ISSUE_TEMPLATE/` forms, repo settings, description, homepage, topics and the GitHub Pages source — from a declarative manifest. `plan` prints the drift and writes nothing; `apply` converges it, idempotently and additively. |
-| [`init`](skills/init/SKILL.md) | Both halves in one command: record the profile, converge the repo on its manifest, refresh the profile. `--plan` writes nothing on GitHub; `--profile-only` is the profile alone. Typed `/tagout:init` — Claude Code's built-in `/init` writes a `CLAUDE.md` instead ([ADR 0018](docs/adr/0018-profile-repo-and-setup-repo-merge-into-init.md)). |
+| [`init`](skills/init/SKILL.md) | Generate or read `.claude/skills/repo-profile.md` — the config the skills above consume — and bring the repo to the configuration they assume (labels, issue forms, settings, description, topics, Pages source) from a declarative manifest, then refresh the profile. Run once per repo, commit the profile. `--plan` writes nothing on GitHub; `--profile-only` is the profile alone. Typed `/tagout:init` — Claude Code's built-in `/init` writes a `CLAUDE.md` instead ([ADR 0018](docs/adr/0018-profile-repo-and-setup-repo-merge-into-init.md)). |
 | [`review-followups`](skills/review-followups/SKILL.md) | Consolidate the migrated repos' open follow-ups (owner decisions, tasks, deferrals) and update them at the source. |
 | [`debug-issue`](skills/debug-issue/SKILL.md) | Root cause before any fix is proposed — harness-agnostic, fires on its own ahead of a patch. |
 | [`review-sessions`](skills/review-sessions/SKILL.md) | Read previous sessions' transcripts, harvest the failures the kit itself caused (tool errors on kit scripts, gate denials, workers that died waiting, guard refusals, red suites), cluster by root cause, drop what `main` already fixed, and file what earns an issue through `create-issue`. |
@@ -498,12 +496,10 @@ skills/deliver-issue/    the single-item form: one idea or issue to a merged PR,
 skills/triage-backlog/   the queue's outlet: verify, cluster and re-decide open issues — owner confirms every close
 skills/debug-issue/      root-cause-before-fix process, harness-agnostic
 skills/review-sessions/  the retro across sessions: harvest.py over the transcripts → cluster → verify → filing bar → create-issue
-skills/profile-repo/     the per-repo profile generator the lifecycle skills consume
-skills/setup-repo/       the write half of that: plan/apply a repo's labels, issue forms, settings, topics and Pages source from a manifest
-skills/init/             both halves in one command: profile, plan, apply, refresh
+skills/init/             the per-repo profile the lifecycle skills consume, and the repo configuration they assume: profile, plan, apply, refresh
 skills/_shared/          procedures shared by the lifecycle skills (preconditions, open-pr, sync-with-main, filing-bar, worktree-ignore-check, untrusted-input-boundary, test-seams, grilling, brainstorm-and-spec, plan-shape, tdd-loop, recap)
 scripts/                 preflight.sh (phase-0 gate) · run-all-tests.sh (one command for everything CI checks, exit 2 on a missing prerequisite) · audit-inventory.sh (JSON inventory) · report-dashboard.py (report generator) · contrast-check.py (WCAG AA gate) · followups.py (open-tail aggregator) · release-title-gate.sh + release-title-diff.sh (a change to shipped content must carry a title that cuts a release) · recap-wiring-check.py (every skill closes with the shared recap, and its hand-off table matches ARCHITECTURE.md's dashed edges)
-templates/               ci-dotnet.yml + deploy-pages-blazor.yml — CI/deployment a migration drops into the target repo · repo-setup.yml + issue-forms/ — the desired GitHub configuration setup-repo applies · bundle-gate.json.example — copy-pasteable config for the opt-in committed-bundle drift gate
+templates/               ci-dotnet.yml + deploy-pages-blazor.yml — CI/deployment a migration drops into the target repo · repo-setup.yml + issue-forms/ — the desired GitHub configuration init applies · bundle-gate.json.example — copy-pasteable config for the opt-in committed-bundle drift gate
 tests/                   one golden suite per contract, each a tests/<name>/test.sh that CI runs — and a CI step fails the build if a suite is ever left unwired. Run them all with `./scripts/run-all-tests.sh`. tests/skills/ also lints every prompt: frontmatter, shared refs, and every file path a prompt names must resolve (check-file-refs.py)
 samples/LegacyShop/      deliberately-legacy .NET solution (demo fixture, CI-guarded)
 docs/methodology.md      the user guide: the two loops, when to call which skill, one page per skill, the machinery, MCP usage, how it compares to GSD · SpecKit · BMAD

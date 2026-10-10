@@ -7,7 +7,7 @@ tags:
 - repo-profile
 - lifecycle
 code_refs:
-- path: skills/profile-repo/SKILL.md
+- path: skills/init/SKILL.md
 - path: skills/init/scripts/repo-profile.sh
 parent: Architectural Decision Records
 nav_order: 1

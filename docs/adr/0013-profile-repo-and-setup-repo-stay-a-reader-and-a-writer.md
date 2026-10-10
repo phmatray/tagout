@@ -10,8 +10,7 @@ links:
 - type: superseded-by
   target: 18
 code_refs:
-- path: skills/profile-repo/SKILL.md
-- path: skills/setup-repo/SKILL.md
+- path: skills/init/SKILL.md
 parent: Architectural Decision Records
 nav_order: 13
 ---

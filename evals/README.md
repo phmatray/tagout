@@ -2,11 +2,11 @@
 
 A **safe, repeatable** regression check for **every** skill's *description* — all twelve of
 [`auto-dev`](../skills/auto-dev), [`create-issue`](../skills/create-issue),
-[`debug-issue`](../skills/debug-issue), [`deliver-issue`](../skills/deliver-issue),
-[`implement-issue`](../skills/implement-issue), [`merge-pr`](../skills/merge-pr),
-[`migrate-legacy`](../skills/migrate-legacy), [`profile-repo`](../skills/profile-repo),
+[`debug-issue`](../skills/debug-issue), [`create-pr`](../skills/create-pr), [`deliver-issue`](../skills/deliver-issue),
+[`implement-issue`](../skills/implement-issue), [`init`](../skills/init), [`merge-pr`](../skills/merge-pr),
+[`migrate-legacy`](../skills/migrate-legacy),
 [`review-followups`](../skills/review-followups), [`review-sessions`](../skills/review-sessions),
-[`setup-repo`](../skills/setup-repo) and [`triage-backlog`](../skills/triage-backlog) —
+and [`triage-backlog`](../skills/triage-backlog) —
 the roster `run_all.py`'s `SKILLS` holds and `tests/skills/check-frontmatter.py` cross-checks.
 
 `<skill>-trigger-eval.json` here is a skill's **triggering contract**, and its only home (#331).
@@ -17,8 +17,8 @@ half the kit unmeasured while CI reported every contract present. The markdown l
 the sets absorbed every bullet they were missing, near-miss annotations included (that is what the
 `note` field is for).
 
-Each skill's close boundaries are carried as negatives **inside its own set** — `setup-repo` vs
-`profile-repo` (write vs read), `auto-dev` vs its own children (many issues vs one),
+Each skill's close boundaries are carried as negatives **inside its own set** — `init` vs
+Claude Code's built-in `/init` (the repo's configuration vs a `CLAUDE.md`), `auto-dev` vs its own children (many issues vs one),
 `review-followups` vs `triage-backlog` (report.json queues vs GitHub issues), `debug-issue` vs
 new-code work. `boundary-trigger-eval.json` stays what it always was: specifically the
 `implement-issue` ↔ `merge-pr` pair, with a runner written around exactly those two.
@@ -48,8 +48,8 @@ weak description.
 
 **Root cause:** where the diagnosis was made (Koine), all four lifecycle skills were *already
 installed* under `.claude/skills/`.
-So a should-trigger query makes the model invoke the **canonical** skill — `Skill(skill="profile-repo")` —
-never the uuid-suffixed `profile-repo-skill-<uuid>` the matcher waits for. The substring test
+So a should-trigger query makes the model invoke the **canonical** skill — `Skill(skill="init")` —
+never the uuid-suffixed `init-skill-<uuid>` the matcher waits for. The substring test
 `clean_name in accumulated_json` therefore never matches → 0 triggers, regardless of description
 quality. (Confirmed three ways: a raw `claude -p` capture of the real-skill query, a faithful
 synthetic-command reproduction, and running the real `run_eval.py` — all fire the canonical name; the
@@ -144,9 +144,9 @@ Requires the `claude` CLI on `PATH` and run from inside the repo (the runner str
 
 ```bash
 # one skill
-python3 evals/trigger_eval.py --skill profile-repo \
-  --eval-set evals/profile-repo-trigger-eval.json \
-  --runs-per-query 3 --out evals/results/profile-repo.json
+python3 evals/trigger_eval.py --skill init \
+  --eval-set evals/init-trigger-eval.json \
+  --runs-per-query 3 --out evals/results/init.json
 
 # all ten + the boundary, refreshing the committed baseline
 python3 evals/run_all.py --runs-per-query 3
@@ -205,12 +205,11 @@ signal to look at.
 | `create-issue`     | 23 | 18/18 † | 1.0 † | 1.0 † |
 | `implement-issue`  | 21 | 18/18 † | 1.0 † | 1.0 † |
 | `merge-pr`         | 20 | 18/18 † | 1.0 † | 1.0 † |
-| `profile-repo`     | 22 | 18/18 † | 1.0 † | 1.0 † |
+| `init`             | 24 | 19/24 | 0.67 | 1.0 |
 | `triage-backlog`   | 20 | — ‡ | — ‡ | — ‡ |
 | `auto-dev`         | 19 | — ‡ | — ‡ | — ‡ |
 | `review-followups` | 19 | — ‡ | — ‡ | — ‡ |
 | `migrate-legacy`   | 20 | — ‡ | — ‡ | — ‡ |
-| `setup-repo`       | 21 | — ‡ | — ‡ | — ‡ |
 | `debug-issue`      | 19 | — ‡ | — ‡ | — ‡ |
 
 † Last measured over the **18** queries these sets held before #331 grew them; the ported negatives
@@ -227,7 +226,7 @@ zero over-triggering across its near-miss negatives.
 
 Specificity is *real*, not just "nothing fired": each near-miss negative fires the **expected sibling**
 skill (e.g. `implement issue 47` → `implement-issue`, `file an issue …` → `create-issue`,
-`set up the repo profile` → `profile-repo`), recorded in each result's `fired` histogram.
+`set up the repo profile` → `init`), recorded in each result's `fired` histogram.
 
 ## The description budget (#323)
 
@@ -255,7 +254,7 @@ MIT — ported from mattpocock/skills):
    clause — that clause is what the eval sets' **negatives** lean on, so shortening it is how
    specificity silently reopens — and every phrase an eval query pins **verbatim** with no other
    anchor in the text. Rule 2 folds *synonyms*; a phrase a query names exactly is not a synonym.
-   `setup-repo`'s `"turn on auto-delete merged branches"` is the worked example: the settings
+   The settings query `"turn on auto-delete merged branches"` was the worked example: the settings
    parenthetical says `delete-branch-on-merge`, which is the API's name for it and not the user's.
 
 **Measured on 2026-08-31** (#323), whitespace-normalised, the same count the checker uses:
@@ -283,7 +282,7 @@ measurements themselves predate the rename, `fired` histograms included.
 **What the cut removed, precisely.** Not "nothing" — the honest list is: identity the body already
 carries (*"the 'ship it' counterpart to `implement-issue`"*), per-step mechanism the body already
 carries, and synonyms restating a branch named in the same sentence (`create-issue`'s seven verbs
-for *file an issue* became five; `profile-repo` stopped enumerating every section of the profile
+for *file an issue* became five; the profile skill stopped enumerating every section of the profile
 it writes). No French form, no *"Does NOT apply"* clause and no verbatim eval-query phrase was
 dropped — four that had been were restored in review (`« suivis »`, `"next steps"`,
 `"turn on auto-delete merged branches"`, `"regenerate the profile"`, `"clean up the open issues"`).

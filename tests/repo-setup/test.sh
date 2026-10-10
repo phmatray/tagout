@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Golden test for repo-setup.sh (#192) — the `apply` half of the repo-configuration story.
 #
-# Why this exists. profile-repo's repo-profile.sh ships two verbs and both READ (`show`,
+# Why this exists. init's repo-profile.sh ships two verbs and both READ (`show`,
 # `detect`). When a probe found no `priority:`/`effort:`/`area:` axis and no
 # `.github/ISSUE_TEMPLATE/`, its only outlet was `TODO: <hint>` — the right answer for a fact it
 # cannot read, the wrong one for a configuration the repo does not HAVE. Every repo the lifecycle
@@ -834,7 +834,7 @@ echo "  ok: apply — a converged setting issues no PATCH at all"
 #
 # The point of exit 3. "The settings needed admin rights and everything else is in place" and
 # "nothing happened, and you get to guess why" are different outcomes, and a script that aborts on
-# the first refusal reports the second while having done the first. profile-repo makes the same
+# the first refusal reports the second while having done the first. init makes the same
 # argument for writing an honest TODO rather than no profile at all.
 
 repo7=$(new_repo) || fail "could not create a scratch git repo"

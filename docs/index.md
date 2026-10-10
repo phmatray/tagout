@@ -122,7 +122,7 @@ nav_order: 1
 <tr><td>A migrated app to re-verify</td><td><code>/migrate-verify</code></td></tr>
 <tr><td>A portfolio to cost</td><td><code>/migrate-audit</code></td></tr>
 <tr><td>Open follow-ups across migrated repos</td><td><code>/migrate-followups</code></td></tr>
-<tr><td>A new repo for these skills</td><td><code>profile-repo</code>, then <code>setup-repo</code></td></tr>
+<tr><td>A new repo for these skills</td><td><code>/tagout:init</code></td></tr>
 <tr><td>Something is already broken</td><td><code>debug-issue</code> fires on its own</td></tr>
 </tbody>
 </table>

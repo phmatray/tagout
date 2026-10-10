@@ -15,7 +15,7 @@
   {"query": "file an issue to track a parser bug", "should_trigger": false, "note": "→ create-issue"},
   {"query": "review PR 281 but don't merge it", "should_trigger": false, "note": "→ review/code-review"},
   {"query": "my in-flight PR conflicts with main — sync it while I keep building the feature", "should_trigger": false, "note": "in-flight sync (boundary, → implement-issue)"},
-  {"query": "set up the repo profile", "should_trigger": false, "note": "→ profile-repo"},
+  {"query": "set up the repo profile", "should_trigger": false, "note": "→ init"},
   {"query": "what's the squash-merge title convention here?", "should_trigger": false, "note": "doc question — no lifecycle skill"},
   {"query": "build the feature from issue 129 and open the PR", "should_trigger": false, "note": "→ implement-issue"},
   {"query": "merge main into my branch", "should_trigger": false, "note": "syncing a PR still being built → implement-issue"},

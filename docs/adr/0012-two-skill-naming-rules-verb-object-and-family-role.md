@@ -15,7 +15,7 @@ links:
 - type: relates-to
   target: 4
 code_refs:
-- path: skills/profile-repo/SKILL.md
+- path: skills/init/SKILL.md
 - path: skills/review-followups/SKILL.md
 - path: skills/debug-issue/SKILL.md
 - path: skills/migrate-legacy/SKILL.md

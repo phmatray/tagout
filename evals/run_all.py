@@ -20,8 +20,8 @@ import trigger_eval as te
 # (evals/<skill>-trigger-eval.json), and tests/skills/check-frontmatter.py fails CI if
 # one is missing, so the "! skipping" branch below can no longer fire for a real skill (#331).
 SKILLS = ["auto-dev", "create-issue", "create-pr", "debug-issue", "deliver-issue", "implement-issue", "init",
-          "merge-pr", "migrate-legacy", "profile-repo", "review-followups",
-          "review-sessions", "setup-repo", "triage-backlog"]
+          "merge-pr", "migrate-legacy", "review-followups",
+          "review-sessions", "triage-backlog"]
 EVALS_DIR = Path(__file__).resolve().parent
 RESULTS_DIR = EVALS_DIR / "results"
 
@@ -191,7 +191,7 @@ def main():
                             for q in boundary]
                 out = _run(skill, eval_set, project_root, args.runs_per_query, args.workers,
                            args.timeout, args.threshold, args.model,
-                           known=["implement-issue", "merge-pr", "create-issue", "profile-repo"])
+                           known=["implement-issue", "merge-pr", "create-issue", "init"])
                 (RESULTS_DIR / f"boundary-{skill}.json").write_text(json.dumps(out, indent=2) + "\n")
                 bres[skill] = out["summary"]
                 print(f"[boundary→{skill}] {out['summary']['passed']}/{out['summary']['total']}")

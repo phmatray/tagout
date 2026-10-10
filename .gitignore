@@ -16,7 +16,7 @@ migration/
 # Deux emplacements, parce que deux sont atteignables : `.claude/worktrees/` que crée ce harness
 # (et que merge-pr code en dur), et `.worktrees/` vers lequel superpowers:using-git-worktrees
 # retombe quand aucun outil natif n'existe.
-# On vise ces chemins précis, et surtout PAS tout `.claude/` : profile-repo écrit
+# On vise ces chemins précis, et surtout PAS tout `.claude/` : init écrit
 # `.claude/skills/repo-profile.md` et attend qu'il soit VERSIONNÉ chez les dépôts consommateurs
 # du kit. Ce dépôt-ci n'en a pas (la CI vérifie qu'il répond NO_PROFILE), mais il est la
 # référence qu'on recopie — élargir la règle ici contredirait le contrat qu'on documente.

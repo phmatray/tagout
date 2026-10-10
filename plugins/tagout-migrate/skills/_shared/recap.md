@@ -11,8 +11,8 @@ saying the same thing, which is the drift signature this repo has already paid f
 Worse, the one line the user actually acts on next — `/implement-issue #N` after `create-issue` —
 existed as prose in exactly two of them, while [`ARCHITECTURE.md`](../../ARCHITECTURE.md) drew the
 same hand-offs as dashed mermaid edges. **Two documentations, zero checks.** `merge-pr` landed a PR
-and said nothing about what to do next even though the graph knew the answer; `profile-repo`
-exists to bootstrap `create-issue` and never said so.
+and said nothing about what to do next even though the graph knew the answer; the profile skill
+existed to bootstrap `create-issue` and never said so.
 
 So the shape lives here, the hand-off lives here, and
 [`scripts/recap-wiring-check.py`](../../scripts/recap-wiring-check.py) keeps the skills, this table
@@ -114,8 +114,6 @@ checked against it; they are not a second copy to hand-sync.
 
 | Skill | Ends with | Next command |
 |---|---|---|
-| `profile-repo` | the profile written, or read back | `/setup-repo` when it named a missing label axis or issue-form dir, then `/create-issue <idea>` |
-| `setup-repo` | the repo converged on its manifest | `/profile-repo --refresh` |
 | `init` | the profile recorded and the repo converged on its manifest (or only planned) | `/create-issue <idea>` |
 | `create-issue` | issue(s) filed, each with a plan | `/implement-issue #<issue>` |
 | `implement-issue` | PR **ready**, not landed | `/merge-pr #<pr>` |

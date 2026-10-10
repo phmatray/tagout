@@ -57,7 +57,7 @@ _org_project() {
     return 1
   else
     line="$("$HERE/../../skills/init/scripts/repo-profile.sh" tracker 2>/dev/null)" || {
-      echo "azure-devops: no committed repo profile to read the org/project from — run profile-repo" >&2
+      echo "azure-devops: no committed repo profile to read the org/project from — run init" >&2
       return 1
     }
   fi
