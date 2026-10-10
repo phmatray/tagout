@@ -149,6 +149,8 @@ def _names_match(target: str, tool: str, name: str) -> bool:
         return False
     commands = SKILL_COMMANDS.get(name, ())
     if tool == "Skill":
+        if name == "init" and ":" not in target:
+            return False  # bare `init` is Claude Code's built-in /init, not the kit's (#712)
         bare = target.split(":")[-1]
         return target == name or bare == name or bare in commands
     if tool == "Read":

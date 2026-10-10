@@ -83,6 +83,14 @@ if kept.exists() and kept.read_text(encoding="utf-8").startswith("MINE"):
 else:
     bad("teardown deleted a pre-existing .claude/skills entry it did not create")
 
+# 4. a bare `init` is Claude Code's built-in, not the kit's (#712)
+import trigger_eval
+m = trigger_eval._names_match
+if (m("init", "Skill", "init"), m("tagout:init", "Skill", "init"), m("implement-issue", "Skill", "implement-issue")) == (False, True, True):
+    ok("a bare init Skill call is not the kit's init; tagout:init and other bare names still match (#712)")
+else:
+    bad("_names_match mis-attributes a bare init (or broke a qualified/other name)")
+
 sys.exit(1 if fails else 0)
 PY
 echo "evals-stage-skills: OK — skills stage readably and tear down without touching what they did not create."

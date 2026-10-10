@@ -339,6 +339,18 @@ printf 'not json at all\n' >> "$T"
 write_line "$T" assistant "2026-08-01T09:00:00.000Z" "$(tool_use t8 Bash '{"command":"./skills/auto-dev/scripts/survey.sh"}')"
 write_line "$T" user "2026-08-01T09:00:00.000Z" "$(tool_result t8 'survey.sh: jq: parse error' true)"
 
+# ------------------------------------------------------- a bare `init` is Claude Code's, not the kit's (#712)
+python3 - "$SCRIPT" <<'PY'
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("harvest", sys.argv[1])
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+def call(skill): return h.skill_from_tool_use({"name": "Skill", "input": {"skill": skill}}, {"tagout"})
+got = (call("init"), call("tagout:init"), call("implement-issue"))
+if got != (None, "init", "implement-issue"):
+    print("FAIL: bare init / tagout:init / bare implement-issue ->", got); sys.exit(1)
+PY
+echo "ok   a bare init skill call is not the kit's; tagout:init and other bare names still are"
+
 # ------------------------------------------------------------------------- the harvest, JSON
 OUT=$(kit_scratch)/records.jsonl
 python3 "$SCRIPT" "$PROJ" --json --since 2026-08-15 > "$OUT" 2>"$OUT.err" || {
