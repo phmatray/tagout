@@ -73,12 +73,21 @@ esac
 # skill/command name, not four others (deliver-issue, migrate-legacy, review-followups,
 # review-sessions) that postdate #395's table; rewriting the table's CONTENT to add them is out of
 # scope for #416 and for #525, which moves the section without changing what it routes.
-for name in debug-issue create-issue implement-issue merge-pr triage-backlog auto-dev profile-repo setup-repo; do
+for name in debug-issue create-issue implement-issue merge-pr triage-backlog auto-dev init; do
   case "$ctx" in
     *"$name"*) ;;
     *) echo "FAIL [real]: additionalContext does not name '$name': $ctx"; exit 1 ;;
   esac
 done
+# `init` is a common substring, so the loop above cannot tell the routing row from a stray word.
+# Pin the row itself, and that the two skills `init` retired (#703) are gone from it.
+case "$ctx" in
+  *'profile/labels → `init`'*) ;;
+  *) echo "FAIL [real]: additionalContext does not route profile/labels to \`init\`: $ctx"; exit 1 ;;
+esac
+case "$ctx" in
+  *profile-repo*|*setup-repo*) echo "FAIL [real]: additionalContext still names a retired skill: $ctx"; exit 1 ;;
+esac
 
 # Upper bound: catches an extraction that runs away past the next '## ' heading (e.g. a broken
 # state machine that never exits) and swallows the rest of the file. The real section is under a

@@ -1,7 +1,7 @@
 # Architecture
 
 One plugin, two cooperating suites — the **migration pipeline** (migrate-legacy, review-followups)
-and the **issue/PR lifecycle** (create-issue, implement-issue, merge-pr, profile-repo, setup-repo,
+and the **issue/PR lifecycle** (create-issue, implement-issue, merge-pr,
 init, and the `auto-dev` fleet supervisor above them) — bridged where a migration's deferred work becomes
 tracked GitHub issues. Every skill carries `metadata.suite: tagout` in its frontmatter; in
 Claude Code the plugin namespaces them as `tagout:<skill>`. The graphs below are the map;
@@ -42,8 +42,6 @@ graph TD
         MP[merge-pr]
         TB[triage-backlog]
         RS[review-sessions]
-        RP[profile-repo]
-        SR[setup-repo]
         IN[init]
         DI[debug-issue]
         SH["_shared/<br>preconditions · open-pr · sync-with-main · filing-bar<br>worktree-ignore-check · untrusted-input-boundary<br>test-seams · grilling · prior-rejections<br>brainstorm-and-spec · plan-shape · tdd-loop · recap"]
@@ -73,10 +71,6 @@ graph TD
     DL -. "follow-up: /implement-issue #N" .-> II
     DL -. "after --stop-at ready: /merge-pr #PR" .-> MP
     DL -- "reads at step 1" --> PROF
-    RP -- "generates (run once per repo)" --> PROF
-    RP -. "names as the remedy for a missing label axis or issue-form dir" .-> SR
-    RP -. "then: /create-issue <idea>" .-> CI
-    SR -. "afterwards: re-run profile-repo --refresh" .-> RP
     IN -- "generates, converges, refreshes" --> PROF
     IN -. "then: /create-issue <idea>" .-> CI
     CI -- "reads at step 1" --> PROF
@@ -99,7 +93,7 @@ graph TD
 
 **The dashed edges above are checked, not hand-synced.** They must match the hand-off table in
 [`skills/_shared/recap.md`](skills/_shared/recap.md) exactly — one row per skill, and one edge per
-`/command` a row names (`profile-repo` names two, so it draws two) — and `scripts/recap-wiring-check.py` refuses in CI when either side gains or loses
+`/command` a row names (`deliver-issue` names two, so it draws two) — and `scripts/recap-wiring-check.py` refuses in CI when either side gains or loses
 one (#175). Edit the table; the graph follows. Labels are free text: only the `(from, to)` pair is
 compared.
 
@@ -137,8 +131,6 @@ graph LR
         CP[create-pr]
         MP[merge-pr]
         TB[triage-backlog]
-        RP[profile-repo]
-        SR[setup-repo]
         IN[init]
         DI[debug-issue]
         RS[review-sessions]
@@ -196,13 +188,6 @@ graph LR
 
     TB --> GH
 
-    RP --> GIT
-    RP -.-> GH
-
-    SR --> GIT
-    SR --> PY
-    SR --> JQ
-    SR --> GH
     IN --> GIT
     IN --> PY
     IN --> JQ
@@ -239,12 +224,10 @@ why no arrow leaves it.
 | `triage-backlog` | — | — | **gh** (issue write) | — |
 | `review-sessions` | adr (rec., the prior-rejection lookup) | files through create-issue | **python3** (`harvest.py`, stdlib) · **gh** (via create-issue) | `harvest.py` (bundled in the skill) |
 | `debug-issue` | — | — | — | `find-polluter.sh`, `scripts/hitl-loop.template.sh` (bundled in the skill) |
-| `profile-repo` | — | — | **git**, bash · gh (degraded TODOs without) | `repo-profile.sh` (bundled in the skill) |
-| `setup-repo` | — | — | **git**, **python3** (PyYAML), **jq**, **gh** (admin rights on the settings, topics and Pages surfaces; each refused by name without it) | `repo-setup.sh`, `parse-manifest.py`, `project-area-options.py` (bundled in the skill) |
-| `init` | — | — | **git**, **python3** (PyYAML), **jq**, **gh** (degraded TODOs on the profile path without it; admin rights on the settings, topics and Pages surfaces) | none of its own — runs `profile-repo`'s `repo-profile.sh` and `setup-repo`'s `repo-setup.sh` until #702 moves them |
+| `init` | — | — | **git**, **python3** (PyYAML), **jq**, **gh** (degraded TODOs on the profile path without it; admin rights on the settings, topics and Pages surfaces) | `repo-profile.sh`, `repo-setup.sh`, `parse-manifest.py`, `project-area-options.py` (bundled in the skill) |
 
 **Bold = required.** The lifecycle trio — and `auto-dev` above them — additionally *reads*
-`.claude/skills/repo-profile.md` in the target repo — generated once by `profile-repo`,
+`.claude/skills/repo-profile.md` in the target repo — generated once by `init`,
 committed, then consumed with a plain `cat`.
 
 **The dashed `adr` arrows are the degrading ones.** `create-issue` consults the accepted ADRs before

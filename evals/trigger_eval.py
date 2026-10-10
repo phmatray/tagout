@@ -3,7 +3,7 @@
 
 Measures whether a skill's *description* causes Claude to invoke that skill for a
 set of queries, without ever executing the skill's body. It is a regression check
-for the installed `create-issue` / `implement-issue` / `merge-pr` / `profile-repo`
+for the installed `create-issue` / `implement-issue` / `merge-pr` / `init`
 descriptions: a description edit that starts over- or under-firing (or blurs the
 `implement-issue` vs `merge-pr` boundary) shows up as a changed trigger rate.
 
@@ -15,7 +15,7 @@ only when that exact uuid-suffixed name appears in the model's `Skill`/`Read` to
 input. That assumes the model invokes the synthetic command by name. But when the
 four lifecycle skills are already installed — as they were in Koine, where this was
 diagnosed — a should-trigger query makes the model invoke the *canonical* skill — e.g.
-`Skill(skill="profile-repo")` — never `profile-repo-skill-<uuid>`. The
+`Skill(skill="init")` — never `init-skill-<uuid>`. The
 substring test therefore never matches and every query scores 0 triggers, for every
 description. (See evals/README.md for the full diagnosis; issue #372.)
 

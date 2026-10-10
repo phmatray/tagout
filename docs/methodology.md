@@ -110,8 +110,7 @@ triggering contract, measured by `evals/`.
 | an open queue that never shrinks | `triage-backlog` — "what should we close?", « le backlog ne descend jamais » | every open issue verified, clustered by root cause, one disposition proposed each — executed only on your confirmation | every issue re-decided | file a new issue; build one; migration follow-ups | `/implement-issue #<kept-issue>` |
 | past sessions to learn from | `review-sessions` — "what went wrong in my last runs", « analyse mes sessions précédentes » | the kit's own failures harvested from the transcripts, clustered, checked against `main`, filed through `create-issue` (`--dry-run` lists) | the clusters filed or recorded | review a diff; prune issues; one live failure | `/implement-issue #<filed>` for a cluster it filed, else — |
 | something broken, flaky, "worked before" | `debug-issue` — fires on its own before any fix | a red-capable command, a root cause with evidence, then one fix | the cause identified | new features; refactoring working code | `/create-pr` when it ran standalone and left a committed fix, `—` when it returns to its caller |
-| a repository these skills have never run in | `profile-repo` — "set up the repo profile", « configure le profil du repo » | the committed profile every lifecycle skill reads: identity, build/test, gates, labels, hot-spots, tracker, ADR root | the profile written, or read back | file, build or merge anything; write labels or settings | `/setup-repo` when it named a missing label axis or issue-form dir, then `/create-issue <idea>` |
-| a repository whose labels, forms, settings, description, topics or Pages site drifted | `setup-repo` — "set up the labels", "enable GitHub Pages from docs/", « configure les labels du repo » | the label taxonomy, the issue forms, the settings, the description and homepage, the topics and the Pages source converged from a manifest — `plan` prints the drift, `apply` converges it | the repo converged on its manifest | file, build or merge anything | `/profile-repo --refresh` |
+| a repository these skills have never run in, or whose labels, forms, settings, description, topics or Pages site drifted | `init` (typed `/tagout:init`) — "init this repo for the kit", "set up the labels", « configure le profil du repo » | the committed profile every lifecycle skill reads, and the label taxonomy, issue forms, settings, description and homepage, topics and Pages source converged from a manifest — `--plan` prints the drift, `--profile-only` is the profile alone | the profile recorded and the repo converged on its manifest (or only planned) | file, build or merge anything | `/create-issue <idea>` |
 | a legacy .NET app (or a portfolio to cost first) | `/migrate-assess`, then `/migrate` (`migrate-legacy`); `/migrate-audit` for the read-only, costed executive report per app and the portfolio synthesis | phase 1's read-only assessment with a verdict; then phases 1–7 to verified production | phase 7 delivered | non-.NET code paths without their own tooling (the method applies, RoselineMCP does not) | `/migrate-followups` |
 | open follow-ups across migrated repos | `/migrate-followups` (`review-followups`) — « fais le point », "what's still open" | the consolidated open tail, updated at the source (`migration/report.json`), owner decisions as a questionnaire | the open tail presented | GitHub issue triage | `/create-issue <entry>` to convert an entry |
 
@@ -229,17 +228,18 @@ commit. Three failed fixes are a signal about the design, not a reason for a fou
 `/create-pr` when it ran standalone and left a committed fix, otherwise it returns to whatever
 called it, carrying the cause.
 
-### profile-repo and setup-repo
+### init
 
-The read half and the write half of one story. `profile-repo` detects a repository's facts — commit
-identity, build/test commands, CI gates, labels, merge style, conflict hot-spots, tracker, domain
-language, ADR root, coding standards, worktree home — and writes the **committed profile** every
-lifecycle skill reads at its Step 1 (ADR 0001: data, not a skill). `setup-repo` converges the
-repository on a declarative manifest — the label taxonomy (type · priority · effort · area, the axis
-`auto-dev` isolates on), the issue forms, the settings (squash-only, delete-branch-on-merge,
-description, homepage), the topics and the GitHub Pages source — `plan` prints the drift and
-writes nothing, `apply` converges it, per surface, refusing by name without rights. Run `setup-repo` when `profile-repo` names a missing axis; re-run
-`profile-repo --refresh` afterwards.
+The read half and the write half of one story, in one command (ADR 0018). `init` detects a
+repository's facts — commit identity, build/test commands, CI gates, labels, merge style, conflict
+hot-spots, tracker, domain language, ADR root, coding standards, worktree home — and writes the
+**committed profile** every lifecycle skill reads at its Step 1 (ADR 0001: data, not a skill). It
+then converges the repository on a declarative manifest — the label taxonomy (type · priority ·
+effort · area, the axis `auto-dev` isolates on), the issue forms, the settings (squash-only,
+delete-branch-on-merge, description, homepage), the topics and the GitHub Pages source — per
+surface, refusing by name without rights, and refreshes the profile so it records what now exists.
+`--plan` prints the drift and writes nothing; `--profile-only [--refresh]` reads or regenerates the
+profile alone.
 
 ### migrate-legacy and review-followups
 
@@ -258,7 +258,7 @@ What every skill stands on, each with one home:
 
 | Mechanism | Home | What it guarantees |
 |---|---|---|
-| **The profile** | `.claude/skills/repo-profile.md` in the target repo, generated by `profile-repo`, committed | one source of repo facts; `NO_PROFILE` is a named verdict, silence is not |
+| **The profile** | `.claude/skills/repo-profile.md` in the target repo, generated by `init`, committed | one source of repo facts; `NO_PROFILE` is a named verdict, silence is not |
 | **The filing bar** | `skills/_shared/filing-bar.md` | every inlet files on the same standard: a consequence, an instance in the tree, or a commitment — and a prior rejection vetoes all three |
 | **The recap** | `skills/_shared/recap.md` | one closing shape (verdict · what happened · artifacts · assumed/skipped/unverified · next); the hand-off table is checked against `ARCHITECTURE.md` in CI |
 | **The guards** | `skills/implement-issue/scripts/guarded-*.sh`, `merge-pr/scripts/guarded-pr-merge.sh` | a commit, push or merge asserts the branch before and reads state back after; a zero exit is not a receipt |
@@ -301,7 +301,7 @@ repeatable — with different shapes. This maps concepts; it does not rank.
 
 | Concept | GSD (Get Shit Done) | SpecKit | BMAD | This kit |
 |---|---|---|---|---|
-| The project's standing facts | `PROJECT.md` | the constitution (`/speckit.constitution`) | the project brief, `bmad-core` config | the committed **profile** (`profile-repo`) + the ADRs |
+| The project's standing facts | `PROJECT.md` | the constitution (`/speckit.constitution`) | the project brief, `bmad-core` config | the committed **profile** (`init`) + the ADRs |
 | From idea to design | `/gsd:new-project`, `/gsd:plan-phase` | `/speckit.specify` → `/speckit.clarify` → `/speckit.plan` | analyst → PM → architect agents | `create-issue`'s 🧠 Brainstorm → 📋 Spec (with a contract) — hands-off, `--grill` for one interview round |
 | The executable plan | `ROADMAP.md`, phase plans | `/speckit.tasks` | story files from the scrum master | the 🛠️ Implementation plan **in the issue body**, every step a checkbox ticked live |
 | Building it | `/gsd:execute-phase` | `/speckit.implement` | the dev agent | `implement-issue` — own worktree, draft PR, one commit per task, three-axis review |
@@ -366,9 +366,6 @@ record under `docs/adr/`, and each record names what would reopen it.
   granularity that does not exist.
 - **`claude -p` workers.** In-process sub-agents are addressable, resumable and observable
   (ADR 0007).
-- **A merged `profile-repo` + `setup-repo`.** A reader and a writer with different rights stay two
-  skills for this major (ADR 0013, proposed); the merge into `configure-repo` with three verbs is
-  the shape to take if the boundary keeps confusing users, in the next major.
 - **Any harness other than Claude Code.** The hooks, the plugin's `.mcp.json` and the Agent tool
   are the mechanisms (ADR 0006).
 - **A second home for anything.** A rule that lives in two places drifts, and this repository has

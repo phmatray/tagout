@@ -100,7 +100,7 @@ TABLE_HEADER = ("skill", "ends with", "next command")
 
 # A backticked `/command` span in a Next-command cell. The leading `/` is what marks it as a command
 # rather than an inline mention of a path or a flag, and the name stops at the first space so
-# `/implement-issue #<issue>` and `/profile-repo --refresh` both resolve to their skill.
+# `/implement-issue #<issue>` and `/init --profile-only` both resolve to their skill.
 COMMAND_RE = re.compile(r"`\s*/([A-Za-z0-9][A-Za-z0-9._-]*)")
 
 # The reference, as a skill's `## Recap` links it. Only the tail is pinned: `../_shared/recap.md`

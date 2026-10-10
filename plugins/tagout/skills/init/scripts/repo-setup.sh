@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # repo-setup.sh — bring a repository to the configuration the lifecycle skills assume (#192).
 #
-# profile-repo's repo-profile.sh answers "what IS this repo?" and both of its verbs read.
+# init's repo-profile.sh answers "what IS this repo?" and both of its verbs read.
 # There was no verb answering "make this repo what the skills need", so a probe that found no
 # priority:/effort:/area: axis and no .github/ISSUE_TEMPLATE/ could only print `TODO: <hint>` —
 # correct for a fact it cannot read, wrong for a configuration the repo does not HAVE. This script

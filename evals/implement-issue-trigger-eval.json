@@ -15,7 +15,7 @@
   {"query": "merge PR 281 now that CI is green", "should_trigger": false, "note": "→ merge-pr (land now)"},
   {"query": "land #281", "should_trigger": false, "note": "→ merge-pr"},
   {"query": "review the diff on PR 281", "should_trigger": false, "note": "→ review/code-review"},
-  {"query": "set up the repo profile for this repo", "should_trigger": false, "note": "→ profile-repo"},
+  {"query": "set up the repo profile for this repo", "should_trigger": false, "note": "→ init"},
   {"query": "what does the C# emitter do for aggregates?", "should_trigger": false, "note": "doc question — no lifecycle skill"},
   {"query": "track this idea so we don't forget it: a Rust emitter", "should_trigger": false, "note": "→ create-issue"},
   {"query": "sync PR 281 so we can land it now", "should_trigger": false, "note": "sync in order to LAND → merge-pr (boundary)"},
