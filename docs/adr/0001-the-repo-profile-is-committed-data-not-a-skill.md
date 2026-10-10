@@ -8,7 +8,7 @@ tags:
 - lifecycle
 code_refs:
 - path: skills/profile-repo/SKILL.md
-- path: skills/profile-repo/scripts/repo-profile.sh
+- path: skills/init/scripts/repo-profile.sh
 parent: Architectural Decision Records
 nav_order: 1
 ---
@@ -35,7 +35,7 @@ what the loader already knows how to find. (Context lifted from `skills/profile-
 The profile is plain markdown at `.claude/skills/repo-profile.md` with no `SKILL.md` beside it, so
 the loader ignores it and it costs no context until something reads it; it is **committed**, so it
 travels with the repo and a linked worktree sees the same file the main checkout does; and the
-lifecycle skills read it through `skills/profile-repo/scripts/repo-profile.sh show`, falling back
+lifecycle skills read it through `skills/init/scripts/repo-profile.sh show`, falling back
 to the `profile-repo` skill only when the file is genuinely absent — which means the generating
 skill is usually never loaded at all.
 

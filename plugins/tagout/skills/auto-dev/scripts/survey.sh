@@ -34,7 +34,7 @@
 # plan somebody has to own.
 #
 # Usage: scripts/survey.sh — the manifest lookup below resolves the repo's git toplevel itself
-# (same convention as skills/setup-repo/scripts/repo-setup.sh), so it is correct from any
+# (same convention as skills/init/scripts/repo-setup.sh), so it is correct from any
 # subdirectory, not only the repo root.
 #
 # Effort tiering reads the ORDERED effort: vocabulary from this repo's own manifest
@@ -48,7 +48,7 @@
 set -euo pipefail
 
 KIT_ROOT="$(cd "$(dirname "$0")/../../.." 2>/dev/null && pwd -P)"
-PARSER="$KIT_ROOT/skills/setup-repo/scripts/parse-manifest.py"
+PARSER="$KIT_ROOT/skills/init/scripts/parse-manifest.py"
 # Resolved against the TARGET repo's toplevel, not the raw CWD — repo-setup.sh does the same
 # (cd to `git rev-parse --show-toplevel` before checking this same relative path) so that a caller
 # working from a subdirectory (a worktree, a nested skill invocation) still finds the repo-local

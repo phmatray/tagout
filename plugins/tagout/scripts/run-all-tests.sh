@@ -207,10 +207,10 @@ cd "$(mktemp -d)"
 bash "$KIT/scripts/preflight.sh" --json | python3 -m json.tool > /dev/null
 bash "$KIT/scripts/audit-inventory.sh" "$KIT/samples/LegacyShop" | python3 -m json.tool > /dev/null
 python3 "$KIT/scripts/followups.py" "$KIT/tests/followups/fixture-a" --backlog "$KIT/docs/backlog.md" > /dev/null
-out=$(bash "$KIT/skills/profile-repo/scripts/repo-profile.sh" show "$KIT")
+out=$(bash "$KIT/skills/init/scripts/repo-profile.sh" show "$KIT")
 [ "$out" = "$(cat "$KIT/.claude/skills/repo-profile.md")" ]
 rc=0
-out=$(bash "$KIT/skills/profile-repo/scripts/repo-profile.sh" show "$PWD") || rc=$?
+out=$(bash "$KIT/skills/init/scripts/repo-profile.sh" show "$PWD") || rc=$?
 [ "$rc" = 3 ] && [ "$out" = "NO_PROFILE" ]
 for g in guarded-commit guarded-push guarded-merge; do
   script="$KIT/skills/implement-issue/scripts/$g.sh"

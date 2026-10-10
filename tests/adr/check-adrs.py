@@ -62,7 +62,7 @@ except ModuleNotFoundError:
           "(pip install PyYAML)", file=sys.stderr)
     sys.exit(2)
 
-# stdout is pinned, for the reason skills/setup-repo/scripts/parse-manifest.py pins it: this
+# stdout is pinned, for the reason skills/init/scripts/parse-manifest.py pins it: this
 # repository has been bitten at output boundaries by a cp1252 console (an em dash below would
 # raise UnicodeEncodeError and turn a REFUSAL into a crash) and by CRLF (which a `grep -qF`
 # assertion in the golden suite would then miss). Neither failure is about the rules; both would

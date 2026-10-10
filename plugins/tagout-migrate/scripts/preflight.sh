@@ -173,7 +173,7 @@ command -v claude >/dev/null 2>&1 || CLAUDE_CLI=0
 # "no verdict" and "the profile disagrees" must not read alike, so an entry naming a `tracker` is
 # skipped only on a POSITIVE mismatch, never on the absence of one.
 PROFILE_TRACKER=""
-_pt_out="$("$KIT_DIR/skills/profile-repo/scripts/repo-profile.sh" tracker 2>/dev/null)" \
+_pt_out="$("$KIT_DIR/skills/init/scripts/repo-profile.sh" tracker 2>/dev/null)" \
   && PROFILE_TRACKER="${_pt_out%% *}"
 
 while IFS=$'\t' read -r kind level name test reqby floor launcher hint entry_for tracker; do

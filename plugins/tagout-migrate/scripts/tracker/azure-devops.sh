@@ -11,7 +11,7 @@
 # lands as HTML, where a plan's checkboxes are not checkboxes (AC6 greps for this).
 #
 # Organisation and project are NOT flags on any verb here — they come from the committed repo
-# profile's Tracker line (`skills/profile-repo/scripts/repo-profile.sh tracker`, e.g.
+# profile's Tracker line (`skills/init/scripts/repo-profile.sh tracker`, e.g.
 # `azure-devops dev.azure.com/acme/Shop`), or from `$TRACKER_REPO` (`<org>/<project>`) as an
 # override when the caller already resolved it.
 
@@ -56,7 +56,7 @@ _org_project() {
     echo "azure-devops: \$TRACKER_REPO '$TRACKER_REPO' is not '<org>/<project>'" >&2
     return 1
   else
-    line="$("$HERE/../../skills/profile-repo/scripts/repo-profile.sh" tracker 2>/dev/null)" || {
+    line="$("$HERE/../../skills/init/scripts/repo-profile.sh" tracker 2>/dev/null)" || {
       echo "azure-devops: no committed repo profile to read the org/project from — run profile-repo" >&2
       return 1
     }

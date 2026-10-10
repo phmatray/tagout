@@ -94,11 +94,11 @@
     "skills/merge-pr/scripts/guarded-pr-merge.sh": "merges a PR and reads the outcome back from `gh pr view`'s state; a guarded write plus read-back, not a registered verdict vocabulary",
     "skills/merge-pr/scripts/parent-decision-note.sh": "reads a merged child issue's native `parent` field and appends one line to the parent's body when one exists; a mechanical read-then-conditional-edit (idempotent per PR number), not a control-flow choice",
     "skills/merge-pr/scripts/remote-branch-teardown.sh": "finishes a remote-branch delete `gh pr merge` left undone; a mechanical cleanup step, not a control-flow choice",
-    "skills/profile-repo/scripts/repo-profile.sh": "detects and prints repo facts, or shows the committed profile; a probe, not a control-flow choice",
+    "skills/init/scripts/repo-profile.sh": "detects and prints repo facts, or shows the committed profile; a probe, not a control-flow choice",
     "skills/review-sessions/scripts/harvest.py": "a read-only harvest over previous sessions' transcripts — it reports one record per failure signal; the review-sessions skill clusters them and decides what earns an issue",
-    "skills/setup-repo/scripts/parse-manifest.py": "reads a repo-setup manifest and emits flat records; a data-shape translator, not a control-flow choice",
-    "skills/setup-repo/scripts/project-area-options.py": "rewrites a copied issue form's Area dropdown from the manifest; a mechanical rewrite, not a control-flow choice",
-    "skills/setup-repo/scripts/repo-setup.sh": "converges a repo to the expected configuration (plan/apply); it does not itself emit a registered verdict",
+    "skills/init/scripts/parse-manifest.py": "reads a repo-setup manifest and emits flat records; a data-shape translator, not a control-flow choice",
+    "skills/init/scripts/project-area-options.py": "rewrites a copied issue form's Area dropdown from the manifest; a mechanical rewrite, not a control-flow choice",
+    "skills/init/scripts/repo-setup.sh": "converges a repo to the expected configuration (plan/apply); it does not itself emit a registered verdict",
     "skills/triage-backlog/scripts/rejected-adrs.sh": "a read-only keyword lookup over rejected ADRs; it reports rows and distinguishes 'found none' from 'could not look', the calling skill decides whether a hit blocks a filing"
   }
 }

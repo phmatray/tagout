@@ -38,15 +38,15 @@ from anywhere in the repo (it anchors to the git root). `<skill-dir>` is this sk
 — given when the skill loads:
 
 ```bash
-bash "<skill-dir>/scripts/repo-profile.sh" show
+bash "<skill-dir>/../init/scripts/repo-profile.sh" show
 ```
 
 - **It printed the profile** (and no `--refresh` was asked) → **you're done.** Relay the headline values
   (repo slug, commit identity, build/test/format commands, integration style) so the caller sees what's
   in force. Don't regenerate.
 - **It printed `NO_PROFILE`** (exit 3), or the user asked to **`--refresh`** / "set up" / "regenerate" →
-  this is the rare generation path. **Read `references/generating.md` and follow it.** In short: run
-  `scripts/repo-profile.sh detect`, fill `references/profile-template.md` from the facts it emits, write
+  this is the rare generation path. **Read `../init/references/generating.md` and follow it.** In short: run
+  `../init/scripts/repo-profile.sh detect`, fill `../init/references/profile-template.md` from the facts it emits, write
   the result to `.claude/skills/repo-profile.md`, and report what you wrote + every TODO you left.
 
 ## Autonomy contract

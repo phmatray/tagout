@@ -1035,7 +1035,7 @@ def main():
     # raised UnicodeEncodeError from inside report() and exited 1 with a traceback instead of
     # printing its verdict. `tests/decisions/test.sh` reads this output through a command
     # substitution, which is exactly such a pipe. Same reasoning, and same idiom, as
-    # skills/setup-repo/scripts/parse-manifest.py - the repo profile's "pin both halves" gotcha.
+    # skills/init/scripts/parse-manifest.py - the repo profile's "pin both halves" gotcha.
     sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     sys.stderr.reconfigure(encoding="utf-8", newline="\n")
 
