@@ -8,6 +8,13 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [4.0.1](https://github.com/phmatray/tagout/compare/v4.0.0...v4.0.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **tracker:** the contract documents TRACKER_DETAIL and its precedence over --repo ([#719](https://github.com/phmatray/tagout/issues/719)) ([a0ca077](https://github.com/phmatray/tagout/commit/a0ca07700650cb3d196d7e3410abcffd761faba7))
+
 ## [4.0.0](https://github.com/phmatray/tagout/compare/v3.2.0...v4.0.0) (2026-10-10)
 
 
