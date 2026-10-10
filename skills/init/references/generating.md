@@ -7,7 +7,7 @@ deterministic gathering is already scripted — your job is interpretation and s
 ## 1. Gather the facts in one pass
 
 ```bash
-bash "<skill-dir>/scripts/repo-profile.sh" detect     # <skill-dir> = this skill's base directory
+bash "<skill-dir>/../init/scripts/repo-profile.sh" detect     # <skill-dir> = this skill's base directory
 ```
 
 This emits a compact, labelled facts block: repo slug, default branch, commit identity (and any
@@ -56,7 +56,7 @@ Fill the schema and write it:
 ```bash
 mkdir -p .claude/skills
 # (write the filled template to .claude/skills/repo-profile.md)
-bash "<skill-dir>/scripts/repo-profile.sh" show >/dev/null && echo "profile written"
+bash "<skill-dir>/../init/scripts/repo-profile.sh" show >/dev/null && echo "profile written"
 ```
 
 Keep **every** schema section; leave an explicit `<!-- TODO: <what's needed and where to find it> -->`
