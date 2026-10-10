@@ -69,6 +69,9 @@ KIT_SKILLS = (
     "init", "migrate-legacy", "review-followups", "review-sessions",
     "triage-backlog",
 )
+# Kit skills whose bare name is also a Claude Code built-in: only the plugin-qualified call is the
+# kit's (#712). A bare `init` is the built-in /init.
+AMBIGUOUS_BARE = ("init",)
 # A slash command is a skill's other front door; its file is not named after the skill.
 COMMAND_SKILL = {
     "migrate": "migrate-legacy", "migrate-assess": "migrate-legacy", "migrate-verify": "migrate-legacy",
@@ -269,6 +272,8 @@ def skill_from_tool_use(block, kit_names):
     bare = skill.split(":")[-1]
     prefix = skill.split(":")[0] if ":" in skill else None
     if prefix and prefix not in kit_names:
+        return None
+    if not prefix and bare in AMBIGUOUS_BARE:
         return None
     if bare in KIT_SKILLS:
         return bare

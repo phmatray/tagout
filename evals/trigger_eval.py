@@ -149,6 +149,10 @@ def _names_match(target: str, tool: str, name: str) -> bool:
         return False
     commands = SKILL_COMMANDS.get(name, ())
     if tool == "Skill":
+        # `init` is also Claude Code's built-in /init and other plugins ship one: only the kit's own
+        # plugin prefix counts (#712). Keep in step with AMBIGUOUS_BARE in review-sessions/harvest.py.
+        if name == "init" and target.rpartition(":")[0] not in ("tagout", "ai-migration-kit"):
+            return False
         bare = target.split(":")[-1]
         return target == name or bare == name or bare in commands
     if tool == "Read":
