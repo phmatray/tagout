@@ -12,7 +12,7 @@ plugin's install directory, or a clone at `~/.tagout`. Full guide:
 `<kit>/docs/methodology.md`. Short form — broken/flaky → `debug-issue`; a new idea →
 `create-issue` (`--seed #N` plans a raw issue); a planned issue → `implement-issue #N`; a finished branch → `create-pr`; a ready PR →
 `merge-pr #N`; many issues hands-off → `auto-dev`; the queue → `triage-backlog`;
-profile/labels → `init`; a legacy .NET app → `/migrate-assess` then `/migrate`; a missing
+profile/labels → `init` (typed `/tagout:init`); a legacy .NET app → `/migrate-assess` then `/migrate`; a missing
 skill → write it with `skill-creator`, then register it (*Adding a skill* in `<kit>/.claude/CLAUDE.md`).
 
 ## Loading a skill

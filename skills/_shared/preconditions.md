@@ -28,7 +28,7 @@ tracked.
 | Exit | Output | What it means | What to do |
 |---:|---|---|---|
 | `0` | the profile | it is committed and readable | Use it. Every repo-specific value below comes from it. |
-| `3` | `NO_PROFILE` | this repository has **no committed profile** | Run **`/init --profile-only`** to generate one, then re-read. |
+| `3` | `NO_PROFILE` | this repository has **no committed profile** | Run **`/tagout:init --profile-only`** to generate one, then re-read. |
 | `2` | `ERR: cannot cd …` | the directory argument is wrong | No verdict was reached — fix the invocation, don't read it as "no profile". |
 | `126`/`127` | shell error | the helper is missing or not executable | Also **no verdict** — check that `<kit>` resolved. The kit supports a skills-only adoption path, so the script can legitimately be absent; open `.claude/skills/repo-profile.md` yourself in that case, and treat an unreadable one as `NO_PROFILE` below. |
 
