@@ -137,6 +137,23 @@ verdict "malformed payload fails open" pass ""               'not json at all'
 verdict "nested project at depth 4 is gated" deny "search_symbols" \
   "$(pay Read "$NEST/src/Company.Product/Api/Foo.cs" "$NEST" s1)"
 
+# A repo whose only marker is a .slnx: Roseline's discovery cannot open it (RoselineMCP#252), so
+# the gate must fail open there (#699). A .csproj in the file's own dir under a .slnx root still arms.
+SLNX=$(mktemp -d "$WORK/slnx.XXXXXX"); : > "$SLNX/X.slnx"
+verdict "a .slnx-only repo fails open" pass "" "$(pay Read "$SLNX/Foo.cs" "$SLNX" s1)"
+SLNXP=$(mktemp -d "$WORK/slnxp.XXXXXX"); : > "$SLNXP/X.slnx"; mkdir -p "$SLNXP/src/P"; : > "$SLNXP/src/P/P.csproj"
+verdict "a .csproj under a .slnx root is gated" deny "search_symbols" "$(pay Read "$SLNXP/src/P/Foo.cs" "$SLNXP" s1)"
+# Denial text: tools as installed, ToolSearch for deferred ones, and the nearest project (#699).
+verdict "the denial mentions ToolSearch"      deny "ToolSearch"        "$(pay Read "$SLNXP/src/P/Bar.cs" "$SLNXP" s2)"
+verdict "the denial passes the csproj as project" deny "project: \"" "$(pay Read "$SLNXP/src/P/Baz.cs" "$SLNXP" s2)"
+verdict "the denial names P.csproj"           deny "P.csproj"          "$(pay Read "$SLNXP/src/P/Qux.cs" "$SLNXP" s2)"
+verdict "the denial names the plugin prefix"  deny "mcp__plugin_"      "$(pay Read "$SLNXP/src/P/Quux.cs" "$SLNXP" s2)"
+SLNONLY=$(mktemp -d "$WORK/sln.XXXXXX"); : > "$SLNONLY/X.sln"
+verdict "a .sln-only marker is gated" deny "search_symbols" "$(pay Read "$SLNONLY/Foo.cs" "$SLNONLY" s3)"
+r=$(printf '%s' "$(pay Read "$SLNONLY/Foo2.cs" "$SLNONLY" s3)" | bash "$GATE" | jq -r '.hookSpecificOutput.permissionDecisionReason')
+case "$r" in *"project:"*) echo "FAIL: .sln-only denial carries a project: hint"; exit 1 ;; esac
+echo "ok: .sln-only denial has no project hint"
+
 # ------------------------------------------------------- 3. the one-shot "I really need it" escape
 ESC=$(csharp_repo)
 P=$(pay Read "$ESC/Bar.cs" "$ESC" escape-session)
