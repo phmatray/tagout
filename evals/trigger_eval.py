@@ -149,9 +149,12 @@ def _names_match(target: str, tool: str, name: str) -> bool:
         return False
     commands = SKILL_COMMANDS.get(name, ())
     if tool == "Skill":
-        # `init` is also Claude Code's built-in /init and other plugins ship one: only the kit's own
-        # plugin prefix counts (#712). Keep in step with AMBIGUOUS_BARE in review-sessions/harvest.py.
-        if name == "init" and target.rpartition(":")[0] not in ("tagout", "ai-migration-kit"):
+        # Another plugin's `<plugin>:init` is not the kit's init (#712). A BARE `init` is, here:
+        # run_all.py stages the skill under .claude/skills/, so the bench only ever sees the bare
+        # name, and refusing it made init unmeasurable (#715). review-sessions/harvest.py reads
+        # installed-plugin sessions, where the prefix is real, and keeps the stricter AMBIGUOUS_BARE.
+        prefix = target.rpartition(":")[0]
+        if name == "init" and prefix and prefix not in ("tagout", "ai-migration-kit"):
             return False
         bare = target.split(":")[-1]
         return target == name or bare == name or bare in commands

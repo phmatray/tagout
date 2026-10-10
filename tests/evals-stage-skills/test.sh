@@ -83,13 +83,13 @@ if kept.exists() and kept.read_text(encoding="utf-8").startswith("MINE"):
 else:
     bad("teardown deleted a pre-existing .claude/skills entry it did not create")
 
-# 4. a bare `init` is Claude Code's built-in, not the kit's (#712)
+# 4. another plugin's `init` is not the kit's (#712), but the bare name the bench stages is (#715)
 import trigger_eval
 m = trigger_eval._names_match
-if (m("init", "Skill", "init"), m("tagout:init", "Skill", "init"), m("other:init", "Skill", "init") is False, m("implement-issue", "Skill", "implement-issue")) == (False, True, True, True):
-    ok("a bare init Skill call is not the kit's init; tagout:init and other bare names still match (#712)")
+if (m("init", "Skill", "init"), m("tagout:init", "Skill", "init"), m("other:init", "Skill", "init"), m("implement-issue", "Skill", "implement-issue")) == (True, True, False, True):
+    ok("the staged bare init and tagout:init match, a foreign other:init does not (#712, #715)")
 else:
-    bad("_names_match mis-attributes a bare init (or broke a qualified/other name)")
+    bad("_names_match mis-attributes init: the bench stages it bare (#715), a foreign plugin's is not ours (#712)")
 
 sys.exit(1 if fails else 0)
 PY
