@@ -584,4 +584,41 @@ PY
   fi
 fi
 
+# ---------------------------------------------------------------------------
+# 11. The generated plugin copies are reachable by the same managers and rules as their sources
+#     (#710). ADR 0017 makes plugins/*/templates/** and plugins/tagout-migrate/tests/xunit-v3/
+#     apply-transform.py byte copies of a source. When Renovate bumps only the source, `kit` refuses
+#     the drift and no bot can run `host-adapters build` (#665). The fix is that Renovate edits source
+#     and copies in one branch, so each copy path must match the same actions-manager pattern, both
+#     regex managers, and the `fix` semanticCommitType rule. Static, offline: section 10 reads the
+#     DEFAULT branch, so it cannot confirm a branch's own config until it merges.
+# ---------------------------------------------------------------------------
+python3 - "$KIT/renovate.json" <<'PY'
+import fnmatch, json, re, sys
+cfg = json.load(open(sys.argv[1], encoding="utf-8"))
+import glob
+# Every copied workflow, walked rather than listed: a new template must be reachable too.
+tmpl = sorted(glob.glob("plugins/*/templates/**/*.y*ml", recursive=True))
+assert tmpl, "no generated template copies found under plugins/*/templates"
+xf = "plugins/tagout-migrate/tests/xunit-v3/apply-transform.py"
+rx = lambda pats, f: any(re.search(p.strip("/"), f) for p in pats)
+bad = []
+gha = cfg.get("github-actions", {}).get("managerFilePatterns", [])
+for f in tmpl:
+    if not rx(gha, f): bad.append("github-actions.managerFilePatterns misses " + f)
+py = [m for m in cfg["customManagers"] if "apply-transform" in json.dumps(m.get("managerFilePatterns"))]
+if len(py) != 2: bad.append("expected 2 apply-transform.py regex managers, found %d" % len(py))
+for m in py:
+    if not rx(m["managerFilePatterns"], xf): bad.append("a regex manager misses " + xf)
+fix = [r for r in cfg["packageRules"] if r.get("semanticCommitType") == "fix"]
+globs = [g for r in fix for g in r.get("matchFileNames", [])]
+for f in tmpl + [xf]:
+    if not any(fnmatch.fnmatch(f, g) for g in globs): bad.append("fix rule matchFileNames misses " + f)
+if bad:
+    print("FAIL: generated copies are not reachable by Renovate (#710):")
+    for b in bad: print("      " + b)
+    sys.exit(1)
+PY
+echo "  [11] the generated plugin copies are reachable by the actions manager, both regex managers and the fix rule"
+
 echo "renovate-config golden test OK"
