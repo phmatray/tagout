@@ -20,12 +20,6 @@
       "recall": 0.9,
       "specificity": 1.0
     },
-    "profile-repo": {
-      "passed": 20,
-      "total": 22,
-      "recall": 0.8,
-      "specificity": 1.0
-    },
     "review-sessions": {
       "passed": 18,
       "total": 18,
@@ -62,12 +56,6 @@
       "recall": 1.0,
       "specificity": 1.0
     },
-    "setup-repo": {
-      "passed": 22,
-      "total": 25,
-      "recall": 0.8125,
-      "specificity": 1.0
-    },
     "triage-backlog": {
       "passed": 20,
       "total": 20,
@@ -81,9 +69,9 @@
       "specificity": 1.0
     },
     "init": {
-      "passed": 19,
-      "total": 24,
-      "recall": 0.6666666666666666,
+      "passed": 25,
+      "total": 39,
+      "recall": 0.5333333333333333,
       "specificity": 1.0
     }
   },

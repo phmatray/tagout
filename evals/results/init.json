@@ -4,15 +4,38 @@
   "threshold": 0.5,
   "results": [
     {
+      "query": "active GitHub Pages sur ce repo",
+      "note": "FR \u2014 the Pages source (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "apply our label taxonomy to this new repository",
+      "note": "'apply ... taxonomy' (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
       "query": "check whether this repo's labels have drifted from our standard",
       "note": "read-only drift \u2192 --plan",
       "should_trigger": true,
-      "trigger_rate": 0.6666666666666666,
-      "triggers": 2,
+      "trigger_rate": 1.0,
+      "triggers": 3,
       "runs": 3,
       "fired": {
-        "init": 2,
-        "setup-repo": 1
+        "init": 3
       },
       "pass": true
     },
@@ -42,7 +65,7 @@
     },
     {
       "query": "configure this repo for the issue skills",
-      "note": "was profile-repo's \u2014 #279's contested query, now one skill",
+      "note": "#279's contested query between the two retired skills, now one skill",
       "should_trigger": true,
       "trigger_rate": 1.0,
       "triggers": 3,
@@ -54,7 +77,7 @@
     },
     {
       "query": "configure this repository the way the kit expects",
-      "note": "was setup-repo's canonical phrasing",
+      "note": "the manifest half's canonical phrasing",
       "should_trigger": true,
       "trigger_rate": 1.0,
       "triggers": 3,
@@ -77,6 +100,30 @@
       "pass": false
     },
     {
+      "query": "cree les templates d'issue",
+      "note": "FR \u2014 'cree les templates' (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "detect this repo's build/test/format commands for the issue skills",
+      "note": "detect build/test commands (folded from retired profile-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
+    },
+    {
       "query": "enable GitHub Pages from the docs folder",
       "note": "the Pages source, converged from the manifest",
       "should_trigger": true,
@@ -87,6 +134,18 @@
         "(none)": 3
       },
       "pass": false
+    },
+    {
+      "query": "generate the repo profile",
+      "note": "'generate the repo profile' (folded from retired profile-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
     },
     {
       "query": "init this repo for the kit",
@@ -113,6 +172,19 @@
       "pass": true
     },
     {
+      "query": "load the repo profile config for the lifecycle skills",
+      "note": "'load the repo profile' (folded from retired profile-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.6666666666666666,
+      "triggers": 2,
+      "runs": 3,
+      "fired": {
+        "init": 2,
+        "(none)": 1
+      },
+      "pass": true
+    },
+    {
       "query": "make the issue/PR lifecycle skills work in my other repo",
       "note": "port to another repo",
       "should_trigger": true,
@@ -124,6 +196,67 @@
         "(none)": 2
       },
       "pass": false
+    },
+    {
+      "query": "make the repo settings deterministic instead of clicking through the UI",
+      "note": "manifest-driven convergence, the point of the skill (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.3333333333333333,
+      "triggers": 1,
+      "runs": 3,
+      "fired": {
+        "(none)": 2,
+        "init": 1
+      },
+      "pass": false
+    },
+    {
+      "query": "make these skills generic so they work in any repository",
+      "note": "'make these skills generic' (folded from retired profile-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "make this repo squash-only and delete branches on merge",
+      "note": "two repository settings the manifest declares (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "port create-issue and merge-pr to this new repo",
+      "note": "'port create-issue/merge-pr' (folded from retired profile-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "refresh the repo profile after we changed the CI gates",
+      "note": "refresh after CI change (folded from retired profile-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 1.0,
+      "triggers": 3,
+      "runs": 3,
+      "fired": {
+        "init": 3
+      },
+      "pass": true
     },
     {
       "query": "regenerate the repo profile \u2014 the labels changed",
@@ -138,17 +271,28 @@
       "pass": true
     },
     {
+      "query": "set the repository description and topics",
+      "note": "two of the four public-face surfaces the manifest converges (#400) (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
       "query": "set up the issue labels for this repo",
       "note": "the label taxonomy \u2014 the manifest half",
       "should_trigger": true,
-      "trigger_rate": 0.3333333333333333,
-      "triggers": 1,
+      "trigger_rate": 1.0,
+      "triggers": 3,
       "runs": 3,
       "fired": {
-        "init": 1,
-        "setup-repo": 2
+        "init": 3
       },
-      "pass": false
+      "pass": true
     },
     {
       "query": "set up the repo profile for this repository",
@@ -175,8 +319,44 @@
       "pass": true
     },
     {
+      "query": "supprime automatiquement les branches mergees",
+      "note": "FR \u2014 the auto-delete setting (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "turn on auto-delete for merged branches",
+      "note": "a repository setting (folded from retired setup-repo, #713)",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
       "query": "we need priority and effort labels before running auto-dev",
       "note": "the axis auto-dev sorts on does not exist yet",
+      "should_trigger": true,
+      "trigger_rate": 0.0,
+      "triggers": 0,
+      "runs": 3,
+      "fired": {
+        "(none)": 3
+      },
+      "pass": false
+    },
+    {
+      "query": "why does auto-dev ignore my effort ordering?",
+      "note": "the symptom of a missing axis \u2014 no configure verb at all (folded from retired setup-repo, #713)",
       "should_trigger": true,
       "trigger_rate": 0.0,
       "triggers": 0,
@@ -218,8 +398,7 @@
       "triggers": 0,
       "runs": 3,
       "fired": {
-        "(none)": 1,
-        "create-issue": 2
+        "create-issue": 3
       },
       "pass": true
     },
@@ -297,12 +476,12 @@
     }
   ],
   "summary": {
-    "total": 24,
-    "passed": 19,
-    "failed": 5,
-    "should_trigger": 15,
+    "total": 39,
+    "passed": 25,
+    "failed": 14,
+    "should_trigger": 30,
     "should_not": 9,
-    "recall": 0.6666666666666666,
+    "recall": 0.5333333333333333,
     "specificity": 1.0
   }
 }
