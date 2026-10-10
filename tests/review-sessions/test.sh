@@ -16,6 +16,7 @@ KIT="$PWD"
 . "$KIT/tests/_lib.sh" || {
   echo "FAIL: cannot source $KIT/tests/_lib.sh — refusing to run unguarded"; exit 1; }
 kit_init "$KIT"
+kit_source "$KIT/tests/_lib/py.sh"
 kit_guard kit_guard_samples_unchanged
 
 SCRIPT="$KIT/skills/review-sessions/scripts/harvest.py"
@@ -340,10 +341,9 @@ write_line "$T" assistant "2026-08-01T09:00:00.000Z" "$(tool_use t8 Bash '{"comm
 write_line "$T" user "2026-08-01T09:00:00.000Z" "$(tool_result t8 'survey.sh: jq: parse error' true)"
 
 # ------------------------------------------------------- a bare `init` is Claude Code's, not the kit's (#712)
-python3 - "$SCRIPT" <<'PY'
-import importlib.util, sys
-spec = importlib.util.spec_from_file_location("harvest", sys.argv[1])
-h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+py_module "$SCRIPT" <<'PY'
+import sys
+h = mod
 def call(skill): return h.skill_from_tool_use({"name": "Skill", "input": {"skill": skill}}, {"tagout"})
 got = (call("init"), call("tagout:init"), call("implement-issue"))
 if got != (None, "init", "implement-issue"):
