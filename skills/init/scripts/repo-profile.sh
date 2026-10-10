@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# repo-profile.sh — deterministic helper for the profile-repo skill.
+# repo-profile.sh — deterministic helper for the init skill.
 #
 # Two subcommands cover the skill's two paths so the model spends tokens on
 # synthesis, not on issuing a dozen probe commands and reasoning over each:

@@ -111,7 +111,7 @@ TODO_RE = re.compile(r'<!--\s*TODO:\s*(.*?)\s*-->', re.S)
 
 
 def read_profile_todos(path):
-    """Les marqueurs `<!-- TODO: … -->` d'un profil de repo (`profile-repo`), dans l'ordre où
+    """Les marqueurs `<!-- TODO: … -->` d'un profil de repo (`init`), dans l'ordre où
     ils apparaissent."""
     text = Path(path).read_text(encoding='utf-8')
     return TODO_RE.findall(text)

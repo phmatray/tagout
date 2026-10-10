@@ -66,7 +66,7 @@ import sys
 
 KIT_SKILLS = (
     "auto-dev", "create-issue", "debug-issue", "deliver-issue", "implement-issue", "merge-pr",
-    "migrate-legacy", "profile-repo", "review-followups", "review-sessions", "setup-repo",
+    "init", "migrate-legacy", "review-followups", "review-sessions",
     "triage-backlog",
 )
 # A slash command is a skill's other front door; its file is not named after the skill.

@@ -241,7 +241,7 @@ $sec"
 #    exactly one checkout and reached no clone, no CI job and — the common case — no linked worktree,
 #    where a lifecycle skill then read empty output and inferred the repo's facts instead.
 #
-#    The kit tells consumer repos to version it (profile-repo: "Run once per repo, commit the
+#    The kit tells consumer repos to version it (init: "Run once per repo, commit the
 #    profile"), .gitignore says so in its own comment, and scripts/worktrees-ignored.sh reserves this
 #    exact path as MUST_STAY_VISIBLE — a guard with a dedicated exit code for "your ignore rule is
 #    too broad to carry a committed profile", shipped by a repo that never committed one.
@@ -259,14 +259,14 @@ git -C "$KIT" rev-parse --git-dir >/dev/null 2>&1 \
       measured from here. That is a missing precondition, not a passing case"
 
 git -C "$KIT" ls-files --error-unmatch -- "$PROFILE" >/dev/null 2>&1 \
-  || fail "the kit's own $PROFILE is not tracked. profile-repo tells consumer repos to commit
+  || fail "the kit's own $PROFILE is not tracked. init tells consumer repos to commit
       it and worktrees-ignored.sh keeps the path visible for exactly that; generate it with
       \`skills/init/scripts/repo-profile.sh detect\` FROM THE MAIN WORKING TREE (#125:
       a linked worktree records a false ignore verdict) and commit the result"
 
 # Tracked but empty would satisfy the line above and still leave every skill inferring, so assert the
 # content the lifecycle skills actually open the file for. One section, named in the template's
-# schema — enough to prove a filled profile, few enough not to re-test profile-repo's own output.
+# schema — enough to prove a filled profile, few enough not to re-test init's own output.
 grep -qF '## Commit identity' "$KIT/$PROFILE" \
   || fail "$PROFILE is tracked but carries no '## Commit identity' section — the lifecycle skills
       read it there; fill the schema in skills/init/references/profile-template.md"

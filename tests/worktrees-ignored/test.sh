@@ -83,7 +83,7 @@ verdict only-plain-home  1 '.claude/worktrees/ is NOT ignored' "$(scratch '.work
 
 # 6. THE broadening case, and the one nothing else in CI can see. `.claude/` ignores the worktrees
 #    perfectly well — so a guard that only asked "are worktrees ignored?" stays green — while also
-#    hiding `.claude/skills/repo-profile.md`, which profile-repo tells consumer repos to
+#    hiding `.claude/skills/repo-profile.md`, which init tells consumer repos to
 #    commit. Distinct exit code, because it is a different mistake with a different fix.
 verdict broadened 2 'was broadened' "$(scratch '.claude/\n.worktrees/\n')"
 
@@ -385,7 +385,7 @@ echo "  ok: recipe — a path containing a space survives (the awk spelling trun
 #     branch, and a rule committed at .gitignore:25 was reported as "rule source unknown — treat
 #     'ignored' as unverified beyond this checkout" — the caveat meant for "we could not tell where
 #     the rule lives", on the one case it exists to distinguish from a global excludes file. It
-#     matters more than a cosmetic note because profile-repo WRITES that verdict down as a
+#     matters more than a cosmetic note because init WRITES that verdict down as a
 #     durable fact about the repository.
 #
 #     Reproduced on any host with a PATH-front shim whose `rev` exits 127, which is what the missing

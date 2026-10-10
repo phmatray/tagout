@@ -37,7 +37,7 @@
 #                       naming only `.claude/` would pass while that contributor's `git add -A`
 #                       staged `.worktrees/<branch>`. Measured: it does.
 #
-# ONE path must stay VISIBLE: `.claude/skills/repo-profile.md`. profile-repo writes it and
+# ONE path must stay VISIBLE: `.claude/skills/repo-profile.md`. init writes it and
 # tells consumer repos to commit it, so broadening this rule to all of `.claude/` would make this
 # repo — the reference implementation people copy — silently contradict the contract it documents.
 # Nothing else catches that: the CI step asserting this repo has no profile tests the file's
@@ -112,7 +112,7 @@ MUST_STAY_VISIBLE=".claude/skills/repo-profile.md"
 # by `.git/info/exclude` and by `core.excludesFile`, which are MACHINE-LOCAL: the path is genuinely
 # ignored for whoever runs this, so the immediate hazard is covered and the verdict stays 0 — but the
 # repo itself carries no such rule, and every teammate's and CI's `git add -A` still stages the
-# worktree. Callers that write the answer down (profile-repo records it as a durable fact about
+# worktree. Callers that write the answer down (init records it as a durable fact about
 # the repo) must not turn "ignored here, today" into "this repo ignores it".
 #
 # `-v` is used ONLY to name the source, never to decide — see the -q/-v note in the header. Its exit

@@ -179,7 +179,7 @@ passes revert-skills "revert(skills): undo the trigger rewrite"      skills/merg
 
 # 9. A breaking marker releases whatever the type is (major bump), so it passes.
 passes breaking-feat     "feat(skills)!: drop the legacy plan comment path" skills/create-issue/SKILL.md
-passes breaking-non-feat "refactor(skills)!: rename the profile contract"   skills/profile-repo/SKILL.md
+passes breaking-non-feat "refactor(skills)!: rename the profile contract"   skills/init/SKILL.md
 
 # 10. Not applicable: a chore PR that touches no skills path is fine — validating those was an
 #     explicit non-goal (#27), a chore(deps) bump releasing nothing is correct behaviour.
