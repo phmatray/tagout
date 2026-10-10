@@ -17,6 +17,14 @@ A **backend** implements verbs for one host, at `scripts/tracker/<tracker>.sh`. 
 host actually covers, rather than assuming it covers the table — and `<backend> <verb> [args…]` for
 the rest, reading the repository from `TRACKER_REPO` in its environment.
 
+The dispatcher also exports `TRACKER_DETAIL`, the second word of the profile's Tracker line
+(`dev.azure.com/acme/Shop`), so a backend does not re-read the profile itself (#693). It is set only
+when that line names the tracker being dispatched to, including under an explicit `--tracker`, and
+is empty otherwise. A backend that reads it lets it win over `TRACKER_REPO`: today that is
+`azure-devops.sh`, whose order is `TRACKER_DETAIL`, then `TRACKER_REPO`, then its own profile read
+for a direct call that bypasses the dispatcher. So in a repository whose profile names Azure DevOps,
+`--repo` does not override the profile's organisation and project.
+
 `scripts/tracker.sh` routes between them:
 
 ```bash
