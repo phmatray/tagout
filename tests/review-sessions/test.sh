@@ -471,6 +471,11 @@ grep -qi 'already fixed' "$SKILL" || { echo "FAIL: SKILL.md has no 'already fixe
 grep -qF 'create-issue' "$SKILL" || { echo "FAIL: SKILL.md never names create-issue as the filing path"; exit 1; }
 if grep -q 'gh issue create' "$SKILL"; then echo "FAIL: SKILL.md files with a raw gh issue create instead of create-issue"; exit 1; fi
 if grep -q 'gh issue close' "$SKILL"; then echo "FAIL: SKILL.md closes issues — this skill never closes anything"; exit 1; fi
+grep -qF 'recurred after #N (prose-only)' "$SKILL" || { echo "FAIL: SKILL.md Step 5 has no recurred (prose-only) verdict"; exit 1; }
+grep -qF 'recurred after #N (code)' "$SKILL" || { echo "FAIL: SKILL.md Step 5 has no recurred (code) verdict"; exit 1; }
+grep -q 'prose-only.*automated-checks' "$SKILL" || { echo "FAIL: SKILL.md Step 7 does not route a prose-only recurrence to automated-checks"; exit 1; }
+grep -qF 'not a rewording' "$SKILL" || { echo "FAIL: SKILL.md lacks the barrier sentence"; exit 1; }
+grep -qF 'c recurred' "$SKILL" || { echo "FAIL: SKILL.md Step 8 tally lacks recurred"; exit 1; }
 echo "ok   the skill links its five shared references and the taxonomy, files only through create-issue, never closes"
 
 echo "review-sessions golden test OK"
