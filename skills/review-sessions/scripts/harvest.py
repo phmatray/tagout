@@ -33,6 +33,7 @@ kind ∈ tool-error      a Bash tool_result flagged is_error — not a harness `
        suite-fail      a tool_result carrying a kit golden suite's FAIL: line
        guard-refusal   a guard's own "<name>: REFUSED | ALERT | REJECTED" line (guarded-*, tick-plan, make-worktree)
        harness-nudge   "[Request interrupted" or "[Your previous response had no visible output"
+       user-correction a user text turn, while a kit skill is active, opening with a correction token (FR/EN lexicon) or following an interrupt
 
 Every kind requires the kit to have been INVOKED, never merely mentioned. `tool-error` counts only a
 Bash call's own failure — a harness `<tool_use_error>` (a dispatch-depth ceiling, a blocked `sleep`,
@@ -46,7 +47,7 @@ one — a dash-encoded transcript directory or a same-prefixed sibling directory
 `forbidden-wait`, `worker-report` and `harness-nudge` each require an UNQUOTED occurrence (see
 `quoted`): the character just before the match, skipping `*`/`_` emphasis, must not be a quote mark
 — a `Read`/`Grep`/`Glob` result, or prose that quotes a guard, a kit path or a pinned phrase,
-produces none of the seven.
+produces none of the eight.
 
 Exit 0 (records, or the explicit `no signals` line); 2 on a usage error or an unreadable directory
 — never a traceback for a bad argument.
@@ -128,6 +129,11 @@ def unwrap(body):
 
 
 NUDGES = ("[Request interrupted", "[Your previous response had no visible output")
+# #723: the owner's redirections. Anchored at the start of the message, so "Non-regression suite
+# passed" (a `-` follows) and prose that merely contains "no" are not corrections.
+CORRECTION_RE = re.compile(
+    r"^\s*(non|no|stop|arrête|pas ça|pas comme ça|je t'ai dit|j'ai dit|en fait|plutôt|not that|"
+    r"wrong|i told you|i said|actually|instead)(?=[\s,.!?:;]|$)", re.I)
 WORKER_REPORT_RE = re.compile(r"\bSTATUS:\s*(PARTIAL|BLOCKED|FAILED)\b")
 SUITE_FAIL_RE = re.compile(r"^FAIL[: \[].*", re.M)
 # Every guard names itself by a bare `TOOL=<name>` (never `<name>.sh`) and prints
@@ -284,6 +290,7 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
     records = []
     skipped = 0
     active = None
+    pending_interrupt = False   # a "[Request interrupted" nudge was seen; the next user text is its reason
     tool_inputs = {}   # tool_use id → the string that names what it touched
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
@@ -344,15 +351,31 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                                 emit("worker-report", excerpt_of(txt, "STATUS:"), None, m.group(1))
                                 break
             elif t == "user":
+                def user_text(text):
+                    """The nudge rule, then the correction rule, for one user text."""
+                    nonlocal pending_interrupt
+                    for n in NUDGES:
+                        for m in re.finditer(re.escape(n), text):
+                            if active and not quoted(text, m.start()):
+                                emit("harness-nudge", excerpt_of(text, n), None, n)
+                                if n == NUDGES[0]:
+                                    pending_interrupt = True
+                                break
+                    # A text carrying a nudge phrase (quoted or not) is never the correction itself.
+                    if not active or text.lstrip().startswith("<") or any(n in text for n in NUDGES):
+                        return
+                    m = CORRECTION_RE.match(text)
+                    if pending_interrupt:
+                        pending_interrupt = False
+                        emit("user-correction", excerpt_of(text), None, "after-interrupt")
+                    elif m and not quoted(text, m.start(1)):
+                        emit("user-correction", excerpt_of(text), None, "lexicon")
+
                 # A nudge (an interrupt, a "no visible output") counts only while a kit skill is
                 # active: it is the kit's failure to attribute, not a user's change of mind in a
                 # session the kit was never driving.
                 if isinstance(content, str):
-                    for n in NUDGES:
-                        for m in re.finditer(re.escape(n), content):
-                            if active and not quoted(content, m.start()):
-                                emit("harness-nudge", excerpt_of(content, n), None, n)
-                                break
+                    user_text(content)
                     continue
                 if not isinstance(content, list):
                     continue
@@ -360,11 +383,7 @@ def harvest_file(path, session, in_kit_repo, kit_names, phrases, since):
                     if not isinstance(b, dict):
                         continue
                     if b.get("type") == "text" and isinstance(b.get("text"), str):
-                        for n in NUDGES:
-                            for m in re.finditer(re.escape(n), b["text"]):
-                                if active and not quoted(b["text"], m.start()):
-                                    emit("harness-nudge", excerpt_of(b["text"], n), None, n)
-                                    break
+                        user_text(b["text"])
                         continue
                     if b.get("type") != "tool_result":
                         continue
