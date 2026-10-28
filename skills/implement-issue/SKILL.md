@@ -68,7 +68,7 @@ Create a task per item and work them in order. Step 6 is the loop — one pass p
 6. **Loop until every task is checked** — implement the next unchecked task → verify green → commit → tick that task on the issue plan *and* the PR description → push.
 7. **Code review** — run the `code-review` skill, apply + commit the fixes, push.
 8. **Sync with `main`** — merge the latest `origin/main` into the branch and resolve conflicts per the profile's *Conflict hot-spots* (version, changelog, snapshots, lockfiles — see reference).
-9. **Verify, format, then mark ready** — build/tests green on the merged tree AND the profile's format/lint verify gate clean (commit fixes), then `gh pr ready`.
+9. **Verify, format, then mark ready** — build/tests green on the merged tree AND the profile's format/lint verify gate clean (commit fixes), then `guarded-ready.sh` (refuses without a recorded Step 7 review).
 10. **Recap** — the shared closing shape ([`../_shared/recap.md`](../_shared/recap.md), with its [Boundary findings block](../_shared/recap.md#the-boundary-findings-block)): PR URL, what shipped, what was assumed or deferred.
 
 Resume-safe: re-running mid-flight is fine. A task is "done" when **all** its step checkboxes read

@@ -81,6 +81,7 @@
     "skills/debug-issue/scripts/hitl-loop.template.sh": "a TEMPLATE a debugger copies and edits \u2014 it prompts a human and prints their answers as KEY=VALUE; it has no verdict of its own to register",
     "skills/implement-issue/scripts/_assert-branch.sh": "sourced by the guards, never executed on its own — a shared assertion helper, not an independent decision",
     "skills/implement-issue/scripts/guarded-commit.sh": "a guarded git-write wrapper; it enforces an invariant (HEAD is the named branch), not a registered verdict vocabulary",
+    "skills/implement-issue/scripts/guarded-ready.sh": "a guarded gh wrapper, same shape as guarded-merge.sh \u2014 refuses the ready-flip unless post-review-check.sh recorded a review; the record is the only input",
     "skills/implement-issue/scripts/guarded-merge.sh": "a guarded git-write wrapper, same shape as guarded-commit.sh",
     "skills/implement-issue/scripts/guarded-push.sh": "a guarded git-write wrapper, same shape as guarded-commit.sh",
     "skills/implement-issue/scripts/make-worktree.sh": "a guarded worktree-creation wrapper; it enforces the ignore-proof precondition before creating or reusing a worktree, not a registered verdict vocabulary",

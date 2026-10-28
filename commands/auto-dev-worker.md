@@ -10,7 +10,7 @@ it** — a separate phase-2 sub-agent lands it in a fresh context (see "Why two 
 
 Invoke `implement-issue` with args "$1". Let it create its OWN git worktree (do NOT reuse the
 shared/main checkout — other workers are active), open a draft PR, implement each plan task, run
-code-review and apply its findings yourself, sync the default branch, format, and flip the PR from draft to ready.
+code-review and apply its findings yourself, sync the default branch, format, and flip the PR from draft to ready (through `guarded-ready.sh`, which refuses unless Step 7's review was recorded).
 
 **The worktree you were given is the worktree.** You were very likely dispatched with the Agent
 tool's `isolation: "worktree"` option, which already put you in a git worktree of your own before

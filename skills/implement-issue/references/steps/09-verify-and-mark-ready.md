@@ -23,5 +23,8 @@ the CI check). Heed the profile's caveats — some analyzer diagnostics can't be
 **3. Mark ready** — only once build, tests, and the format/lint verify gate are all green:
 
 ```bash
-gh pr ready <pr-number>
+"$GUARDS/guarded-ready.sh" -C "$WORKTREE" --branch "$BRANCH" <pr-number>
 ```
+
+A REFUSED means Step 7's `post-review-check.sh` never came back clean on this branch: go back to
+Step 7. "Small" sizes the review (a lower `/code-review` level), it does not skip it.

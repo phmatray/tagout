@@ -32,7 +32,10 @@
 #
 # Exit codes:
 #   0   clean — HEAD is still <sha>, on <branch>, and the working tree has no changes.
-#       Prints `post-review-check: clean - HEAD unchanged at <sha>`.
+#       Prints `post-review-check: clean - HEAD unchanged at <sha>`, then records the review
+#       as `kit.review.<branch>.sha` in the common git config and prints `post-review-check:
+#       review recorded for <branch> at <sha>` — the record guarded-ready.sh (#728) requires
+#       before it flips the PR ready. Exits 1-3 and 64 record nothing.
 #   1   the tree is dirty — tracked or untracked. Prints a REFUSED line, `git status
 #       --porcelain`, and `git diff --stat`, so the caller sees the change without a second
 #       command. Checked BEFORE the HEAD comparison, so a review that left an uncommitted edit
@@ -120,3 +123,5 @@ if [ "$AFTER" != "$BEFORE_SHA" ]; then
 fi
 
 echo "$TOOL: clean - HEAD unchanged at $AFTER"
+git -C "$REPO" config "kit.review.${BRANCH}.sha" "$BEFORE_SHA"
+echo "$TOOL: review recorded for $BRANCH at $BEFORE_SHA"
