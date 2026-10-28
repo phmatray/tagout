@@ -83,7 +83,7 @@ Create a task per item and work them in order.
 2. **Locate the transcripts** — which project directories exist for this repo; named in the recap.
 3. **Harvest** — run the script; keep the JSON records and the markdown tally.
 4. **Cluster by root cause** — one cluster per cause, tagged with a taxonomy category and the skills it spans.
-5. **Verify against the tree** — mark each cluster *still present* or *already fixed*, with the evidence.
+5. **Verify against the tree** — mark each cluster *still present*, *already fixed* or *recurred*, with the evidence.
 6. **Apply the filing bar and the prior-rejection lookup** — per cluster, never per signal.
 7. **File** — one `create-issue` per cluster that passes (or list them, with `--dry-run`).
 8. **Recap** — the shared shape, with the tally line.
@@ -147,7 +147,7 @@ failures; say so in the cluster rather than counting it as volume.
 ## Step 5 — Verify against the tree
 
 Most of what the transcripts hold is history: the failure was real, and the fix landed weeks ago.
-For each cluster, decide *still present* or *already fixed*, with evidence a reader can check:
+For each cluster, decide *still present*, *already fixed* or *recurred*, with evidence a reader can check:
 
 ```bash
 git log --oneline -30 -- <the script or skill the cluster names>      # a fix after the cluster's last timestamp?
@@ -162,6 +162,13 @@ than the fix. Record the evidence on the cluster — `fixed by #178 (2026-08-19)
 the recap reports and what keeps this inlet from re-filing the kit's own history. This is a
 heuristic, and the recap says so: a fix that landed under a different vocabulary can be missed, which
 is why a filed issue leads with the excerpts and the dates rather than with a claim.
+
+*Recurred*: a fix (closed issue, commit or release note) names the cause **and** the cluster has a
+signal newer than it. Read the fix's files — `gh pr view <n> --json files --jq '.files[].path'` for a
+PR, `git show --stat --format= <sha>` for a commit — and record `recurred after #N (prose-only)` when
+every changed path ends in `.md` (a fix spread over several PRs is prose-only only if all of them
+were), else `recurred after #N (code)`. A fix that is still open (reverted, reopened) leaves the
+cluster *still present*, not *recurred*.
 
 ## Step 6 — The filing bar, and the prior-rejection lookup
 
@@ -179,7 +186,7 @@ without it — and report its mode. A hit is filing-bar clause 4: the cluster is
 ADR id, never filed.
 
 Dispositions, one per cluster: **file** · **record** (fails the bar — kept in the recap, retrievable)
-· **already fixed** · **declined (ADR-N)**.
+· **already fixed** · **recurred** (faces the bar like *still present*) · **declined (ADR-N)**.
 
 ## Step 7 — File, through create-issue only
 
@@ -192,6 +199,10 @@ root, which that step folds rather than files). The idea text leads with the evi
 <cause, one line> — measured in <S> session(s) between <first> and <last>: <excerpt 1> (<session>,
 <ts>); <excerpt 2> (…). Category: <taxonomy>. Skills: <list>. Kind(s): <list>.
 ```
+
+A `recurred … (prose-only)` cluster files with category `automated-checks` and its idea text gains
+the sentence: *"Recurred after #N, whose fix changed prose only — the remedy is a barrier (a guard,
+a hook, or a golden-suite case), not a rewording."* A `(code)` recurrence files as any other, citing #N.
 
 The house style of this repo's titles applies: a declarative statement of the gap with the measured
 number in it. Never pass `--grill` — nobody is here to interview.
@@ -209,7 +220,7 @@ skill's row in that file's hand-off table instead of being decided again here. E
 only what **review-sessions** adds on top of them.
 
 - **What happened** opens with the tally line, then the count per disposition:
-  `N signals · K clusters · f filed · r recorded · a already fixed · d declined` — the calibration
+  `N signals · K clusters · f filed · r recorded · a already fixed · c recurred · d declined` — the calibration
   the owner reads (all filed means the bar was not applied; all recorded means it was used to avoid
   work), followed by one line per cluster with its disposition and evidence.
 - **Artifacts** lists the project directories read, the JSON and tally paths, and every issue
