@@ -8,6 +8,23 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [4.1.0](https://github.com/phmatray/tagout/compare/v4.0.0...v4.1.0) (2026-10-28)
+
+
+### Features
+
+* **implement-issue:** the ready-flip refuses without a recorded review ([#729](https://github.com/phmatray/tagout/issues/729)) ([7b7f0c0](https://github.com/phmatray/tagout/commit/7b7f0c0230370087d25298e58c003778117cec21))
+* **merge-pr:** a draft is flipped ready only through guarded-ready, after a review if none is recorded ([#732](https://github.com/phmatray/tagout/issues/732)) ([31fbadd](https://github.com/phmatray/tagout/commit/31fbaddeecb8e1d38fbad740a2c29893b900af9c))
+* **review-sessions:** a failure that recurs after a prose-only fix files for a barrier ([#726](https://github.com/phmatray/tagout/issues/726)) ([b4e7f54](https://github.com/phmatray/tagout/commit/b4e7f5417636c864c06331c1a8d87f35b711ed9d))
+* **review-sessions:** harvest the owner's corrections as a user-correction signal ([#723](https://github.com/phmatray/tagout/issues/723)) ([#727](https://github.com/phmatray/tagout/issues/727)) ([7589fac](https://github.com/phmatray/tagout/commit/7589facade1cbad47ad19baa129b4b97ff2e71f7))
+* **review-sessions:** report which skill references transcripts ever read ([#730](https://github.com/phmatray/tagout/issues/730)) ([00b3111](https://github.com/phmatray/tagout/commit/00b31112d5953812035a023615b86f192cce9a97))
+
+
+### Bug Fixes
+
+* **deps:** update non-major dependencies ([#721](https://github.com/phmatray/tagout/issues/721)) ([6bf9051](https://github.com/phmatray/tagout/commit/6bf90510872ed6c5da9b527f47841cbd1b937ff4))
+* **tracker:** the contract documents TRACKER_DETAIL and its precedence over --repo ([#719](https://github.com/phmatray/tagout/issues/719)) ([a0ca077](https://github.com/phmatray/tagout/commit/a0ca07700650cb3d196d7e3410abcffd761faba7))
+
 ## [4.0.0](https://github.com/phmatray/tagout/compare/v3.2.0...v4.0.0) (2026-10-10)
 
 
