@@ -295,6 +295,12 @@ write_line "$T" user "$D" "$(tool_result t18 'preflight: PyYAML missing' true)"
 # is not the kit's own path segment, even though it starts with the kit's name.
 write_line "$T" assistant "$D" "$(tool_use t22 Bash '{"command":"ls /x/tagout.bak/notes.txt"}')"
 write_line "$T" user "$D" "$(tool_result t22 "ls: cannot access notes.txt: No such file or directory" true)"
+# 8. user-correction (#723): the owner's redirection while a kit skill drives (lexicon trigger).
+write_line "$T" user "$D" "$(text "Non, pas comme ça — utilise le guard")"
+# decoys: a hyphenated "Non-", a harness-injected tag, a quoted token — none is a correction.
+write_line "$T" user "$D" "$(text "Non-regression suite passed")"
+write_line "$T" user "$D" "$(text "<system-reminder>no</system-reminder>")"
+write_line "$T" user "$D" "$(text 'he said "no" earlier')"
 # 7. harness-nudge (a plain user string).
 python3 - "$T" "$D" <<'PY'
 import json, sys
@@ -335,6 +341,11 @@ write_line "$T" assistant "$D" "$(text 'the old note said `STATUS: BLOCKED` verb
 # decoy: hook-deny shape that did NOT fail (is_error false) — a test's own printed incident line.
 write_line "$T" assistant "$D" "$(tool_use t40 Bash '{"command":"./tests/incident-check/test.sh"}')"
 write_line "$T" user "$D" "$(tool_result t40 "$(printf 'INCIDENT (verbatim shape) -> ALLOW\nBlocked by the git write-gate: git commit -m x')" false)"
+# user-correction (#723): the first non-nudge user text after the interrupt above is its reason.
+write_line "$T" user "$D" "$(text "tu dois passer par guarded-push")"
+# decoy: a correction in a session where no kit skill was ever active.
+NOSK="$PROJ/sess-noskill.jsonl"
+write_line "$NOSK" user "$D" "$(text "no, skip it")"
 # decoys: a non-JSON line, and an old kit tool-error --since must drop.
 printf 'not json at all\n' >> "$T"
 write_line "$T" assistant "2026-08-01T09:00:00.000Z" "$(tool_use t8 Bash '{"command":"./skills/auto-dev/scripts/survey.sh"}')"
@@ -360,7 +371,7 @@ import json, sys
 recs = [json.loads(l) for l in open(sys.argv[1], encoding="utf-8") if l.strip()]
 pairs = sorted({(r["kind"], r["skill"]) for r in recs})
 want = sorted({(k, "implement-issue") for k in
-               ("tool-error", "hook-deny", "forbidden-wait", "worker-report", "suite-fail", "guard-refusal", "harness-nudge")})
+               ("tool-error", "hook-deny", "forbidden-wait", "worker-report", "suite-fail", "guard-refusal", "harness-nudge", "user-correction")})
 if pairs != want:
     print("FAIL: (kind, skill) set differs from the planted set")
     print("  got :", pairs); print("  want:", want); sys.exit(1)
@@ -376,6 +387,9 @@ tool_err_details = sorted(r["detail"] for r in tool_err)
 if len(tool_err) != 2 or not any("tick-plan.sh" in d for d in tool_err_details) \
         or not any("preflight.sh" in d for d in tool_err_details):
     print("FAIL: exactly two tool-errors were expected, on tick-plan.sh and preflight.sh:", tool_err_details); sys.exit(1)
+corr = sorted(r["detail"] for r in recs if r["kind"] == "user-correction")
+if corr != ["after-interrupt", "lexicon"]:
+    print("FAIL: user-correction details were", corr, "- want one lexicon and one after-interrupt (a decoy leaked or a trigger is missing)"); sys.exit(1)
 guard_details = sorted({r["detail"] for r in recs if r["kind"] == "guard-refusal"})
 want_guards = ["guarded-commit", "guarded-merge", "guarded-pr-merge", "guarded-push", "make-worktree", "tick-plan"]
 if guard_details != want_guards:
@@ -394,11 +408,13 @@ for kind, want_n in want_summed.items():
 print("ok   the JSON records are exactly the planted set, keyed as documented, and --since holds")
 PY
 
+grep -q 'user-correction' "$SCRIPT" "$(dirname "$SCRIPT")/../SKILL.md" 2>/dev/null && [ "$(grep -l 'user-correction' "$SCRIPT" "$(dirname "$SCRIPT")/../SKILL.md" | wc -l)" -eq 2 ] || { echo "FAIL: user-correction is not named in both harvest.py and SKILL.md"; exit 1; }
+
 # ------------------------------------------------------------------------- the tally, markdown
 MD=$(kit_scratch)/tally.md
 python3 "$SCRIPT" "$PROJ" --markdown --since 2026-08-15 > "$MD" 2>/dev/null || { echo "FAIL: --markdown exited non-zero"; exit 1; }
 grep -q '^## implement-issue$' "$MD" || { echo "FAIL: the tally has no per-skill heading"; cat "$MD"; exit 1; }
-grep -q '^signals: 19 across 1 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 19 across 1 sessions'"; tail -3 "$MD"; exit 1; }
+grep -q '^signals: 21 across 2 sessions' "$MD" || { echo "FAIL: the tally does not end with 'signals: 21 across 2 sessions'"; tail -3 "$MD"; exit 1; }
 grep -q 'skipped 1 unparseable' "$MD" || { echo "FAIL: the non-JSON line was not counted as skipped"; tail -3 "$MD"; exit 1; }
 echo "ok   the markdown tally groups by skill and kind, counts the skipped line, ends with the signals line"
 
