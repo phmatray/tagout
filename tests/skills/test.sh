@@ -2531,7 +2531,7 @@ else
   echo "ok   [bare ready-flip] no bare gh pr ready under skills/ or commands/"
 fi
 MP=skills/merge-pr/references/steps
-order=$(grep -o 'code-review medium\|post-review-check.sh\|guarded-ready.sh' $MP/04-corrections-loop.md | head -3 | tr '\n' ' ')
+order=$(grep '^| `ready`' $MP/04-corrections-loop.md | grep -o 'code-review medium\|post-review-check.sh\|guarded-ready.sh' $MP/04-corrections-loop.md | head -3 | tr '\n' ' ')
 if grep -q 'guarded-ready.sh' $MP/01-preconditions.md \
     && [ "$order" = "code-review medium post-review-check.sh guarded-ready.sh " ] \
     && grep -q 'NEEDS_REVIEW' $MP/02-worktree.md; then
