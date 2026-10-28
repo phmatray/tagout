@@ -227,7 +227,7 @@ only what **review-sessions** adds on top of them.
   the owner reads (all filed means the bar was not applied; all recorded means it was used to avoid
   work), followed by one line per cluster with its disposition and evidence. Then the `--references` footer
   (`references: N · never read: K · read every session: M across S sessions`) and its two tails,
-  listed for the owner and never filed: *never read* files with `sessions active` ≥ 5 are
+  listed for the owner and never filed (the footer's K counts every unread file; only those): *never read* files with `sessions active` ≥ 5 are
   **deletion candidates**, *read every session* files are **fold-back candidates** (an "on demand"
   split that buys nothing).
 - **Artifacts** lists the project directories read, the JSON and tally paths, and every issue

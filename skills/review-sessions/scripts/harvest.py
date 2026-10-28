@@ -59,7 +59,12 @@ produces none of the eight.
 Exit 0 (records, or the explicit `no signals` line); 2 on a usage error or an unreadable directory
 — never a traceback for a bad argument.
 
-KNOWN LIMITS: `invoked_guard` requires the SAME Bash result to be flagged `is_error` and to name a
+KNOWN LIMITS: `--references` credits a read to any session that invoked the owner skill at any
+point (no ordering), inventories only the checkout it runs from (a since-renamed reference reads as
+never read), and treats a Bash read as a reader verb plus the path; `never read` in its footer
+counts every unread file, the deletion candidates being the ones with `sessions active` >= 5.
+
+And: `invoked_guard` requires the SAME Bash result to be flagged `is_error` and to name a
 guard's basename in its command — a compound command (`cat notes.md && guarded-push.sh …`) whose
 unrelated first part fails while a genuine guard call further along it also fails is not
 distinguished from the guard's own failure; a `description` field never counts, only `command`.
@@ -459,12 +464,20 @@ def tally_markdown(records, sessions, skipped, source):
 def reference_inventory(kit_root):
     """{kit-relative path: owner skill} for every reference `.md` under this checkout (#724)."""
     inv = {}
-    pats = (("skills", "*", "references", "**", "*.md"), ("skills", "_shared", "*.md"))
+    pats = (("skills", "*", "references", "**", "*.md"), ("skills", "_shared", "**", "*.md"))
     for pat in pats:
         for p in glob.glob(os.path.join(kit_root, *pat), recursive=True):
             rel = os.path.relpath(p, kit_root).replace(os.sep, "/")
             inv[rel] = rel.split("/")[1]
     return inv
+
+
+READ_VERB_RE = re.compile(r"\b(cat|head|tail|less|more|bat|sed\s+-n|awk|nl)\b")
+
+
+def names_path(hay, rel):
+    """rel appears in hay as a whole path: not glued to a longer name before or after it."""
+    return re.search(r"(?<![\w.-])" + re.escape(rel) + r"(?![\w.-])", hay) is not None
 
 
 def reference_reads(path, kit_names, inventory, since=None):
@@ -491,9 +504,11 @@ def reference_reads(path, kit_names, inventory, since=None):
                 inp = b.get("input") if isinstance(b.get("input"), dict) else {}
                 key = {"Read": "file_path", "Bash": "command"}.get(b.get("name"))
                 hay = inp.get(key) if key else None
-                if isinstance(hay, str):
+                # A Bash command only reads when it runs a reader verb: `git add`, `ls` or an
+                # `sed -i` naming the file is editing or listing it, not loading it.
+                if isinstance(hay, str) and (key == "file_path" or READ_VERB_RE.search(hay)):
                     for rel in inventory:
-                        if rel in hay:
+                        if names_path(hay, rel):
                             reads[rel] = max(reads.get(rel, ""), ts)
     return active, reads
 
@@ -564,8 +579,17 @@ def main(argv):
             return 2
     if args.references:
         inv = reference_inventory(kit_root)
-        per = [reference_reads(path, kit_names, inv, args.since)
-               for d in dirs for path, _ in discover_transcripts(d)]
+        # A sub-agent's transcript is part of its parent session: pool them, or the parent counts
+        # as active with no read and the sub-agent that did the reading is dropped.
+        pooled = {}
+        for d in dirs:
+            for path, session in discover_transcripts(d):
+                act, reads = reference_reads(path, kit_names, inv, args.since)
+                a, r = pooled.setdefault((d, session.split("/")[0]), (set(), {}))
+                a |= act
+                for k, v in reads.items():
+                    r[k] = max(r.get(k, ""), v)
+        per = list(pooled.values())
         # a session that never invoked a kit skill is no denominator for anything
         sys.stdout.write(references_table(inv, [x for x in per if x[0]]))
         return 0
