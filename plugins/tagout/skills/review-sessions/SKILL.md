@@ -122,7 +122,9 @@ say so in the recap rather than reading its absence as "no worker died waiting".
 What a record is, and what it is not, is the script's contract (its header): a `tool-error` counts
 only when the tool call named a kit path or script; a `hook-deny` only for the kit's own gates; a
 `forbidden-wait` uses the phrase list `tests/auto-dev-never-wait/test.sh` pins, read at run time;
-the harness's own worktree refusal is dropped, because it is not the kit's. Do not widen those rules
+the harness's own worktree refusal is dropped, because it is not the kit's; a `user-correction`
+counts only while a kit skill is active, and its `detail` says whether the owner's text opened with
+a lexicon token (`lexicon`) or followed an interrupt (`after-interrupt`). Do not widen those rules
 by hand while reading — a signal the script does not collect is an issue on the script, filed like
 any other.
 
