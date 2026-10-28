@@ -377,7 +377,7 @@ something other than `origin`, or the guard verifies a ref the push never wrote.
 "$GUARDS/guarded-ready.sh" -C "$WORKTREE" --branch "$BRANCH" "$PR_NUMBER"  # number from `gh pr create`, or `gh pr list --head "$BRANCH"`
 ```
 
-The guard runs `gh pr ready`, which with no extra flag flips draft → ready-for-review. There's no separate "approve" — the
+The guard runs the host's ready command, which with no extra flag flips draft → ready-for-review. There's no separate "approve" — the
 human reviewer takes it from there.
 
 ---

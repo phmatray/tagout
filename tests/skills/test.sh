@@ -2521,6 +2521,26 @@ else
   echo "ok   [landed-edit self-check] $EXEC_MODE has each dispatched sub-agent verify its own edits"
 fi
 
+# merge-pr's draft flip goes through guarded-ready.sh: no bare ready-flip anywhere in skills/ or commands/ (#731)
+bare=$(grep -rn 'gh pr ready' skills commands | grep -v '^skills/implement-issue/scripts/guarded-ready.sh:' || true)
+if [ -n "$bare" ]; then
+  echo "FAIL: [bare ready-flip] gh pr ready outside guarded-ready.sh (#731):"
+  echo "$bare"
+  fails=$((fails + 1))
+else
+  echo "ok   [bare ready-flip] no bare gh pr ready under skills/ or commands/"
+fi
+MP=skills/merge-pr/references/steps
+order=$(grep '^| `ready`' $MP/04-corrections-loop.md | grep -o 'code-review medium\|post-review-check.sh\|guarded-ready.sh' $MP/04-corrections-loop.md | head -3 | tr '\n' ' ')
+if grep -q 'guarded-ready.sh' $MP/01-preconditions.md \
+    && [ "$order" = "code-review medium post-review-check.sh guarded-ready.sh " ] \
+    && grep -q 'NEEDS_REVIEW' $MP/02-worktree.md; then
+  echo "ok   [merge-pr route] draft flip routes through review then guarded-ready"
+else
+  echo "FAIL: [merge-pr route] merge-pr steps 1/2/4 do not route a draft through guarded-ready (#731)"
+  fails=$((fails + 1))
+fi
+
 if [ "$fails" -ne 0 ]; then
   echo "$fails case(s) failed"
   exit 1

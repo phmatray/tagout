@@ -102,7 +102,7 @@ Then act on the word. The **program** owns *which* correction; this table owns *
 | `wait` | Not actionable yet. Re-poll (Step 3) and re-derive; do not act on it. |
 | `fix-check` | **Fix the red check** (below), push, loop back to Step 3. |
 | `sync` | **Sync with `main`** (below) — resolving conflicts if there are any — push, re-wait CI. |
-| `ready` | The PR is still a draft: `gh pr ready "$PR"` (per Step 1's assumption), then re-derive. |
+| `ready` | The PR is still a draft. If no review is recorded (`NEEDS_REVIEW=1`): in the Step 2 worktree write down the HEAD sha, run `/code-review medium origin/<base>...HEAD`, then `post-review-check.sh -C <worktree> --branch <head> --before <sha>`, apply findings through the `review` path, then `guarded-ready.sh -C <repo> --branch <head> "$PR"`. A refusal after the review is a real block: surface it, do not flip. Then re-derive. |
 | `review` | **Address the review** (below) — or surface a blocker you cannot clear yourself. |
 
 ⚠️ **`review` is four situations wearing one word, and `$rule` above is what tells them apart** —
