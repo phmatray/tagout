@@ -8,7 +8,7 @@ git worktree list --porcelain        # match the entry whose branch == headRefNa
 ```
 
 - **A worktree for the branch exists** (usual case — `implement-issue` left one): use it. Pull first: `git -C <path> pull --ff-only`.
-- **No local worktree/branch** (PR built elsewhere, or already cleaned): create one **only if** Step 4 needs corrections. If the PR is already `CLEAN` with green CI, merge without checking out locally. When needed, create an isolated worktree tracking the remote branch with `git worktree add <path> <branch>` (reference §2). Remember the path; Step 7 removes it.
+- **No local worktree/branch** (PR built elsewhere, or already cleaned): create one **only if** Step 4 needs corrections or Step 1 noted `NEEDS_REVIEW=1` (an unrecorded draft needs the review run in a worktree). If the PR is already `CLEAN` with green CI, merge without checking out locally. When needed, create an isolated worktree tracking the remote branch with `git worktree add <path> <branch>` (reference §2). Remember the path; Step 7 removes it.
 
 **As soon as you know a worktree will be involved — whether you found one above or will create one
 here or in Step 4 — prove its home is ignored, before touching it.** This repo is not the kit's, and
