@@ -9,7 +9,7 @@ clusters the records, verifies them against the tree and applies the filing bar;
 reports what is there, the way `survey.sh` reports a queue and the supervisor decides.
 
 Usage:
-    python3 harvest.py [PROJECT_DIR ...] [--since YYYY-MM-DD] [--json | --markdown] [--kit-name NAME]
+    python3 harvest.py [PROJECT_DIR ...] [--since YYYY-MM-DD] [--json | --markdown | --references] [--kit-name NAME]
 
   PROJECT_DIR   one or more ~/.claude/projects/<encoded-cwd> directories. Default: the directory
                 encoding THIS cwd, plus its `--claude-worktrees-*` siblings (a worktree session
@@ -17,6 +17,13 @@ Usage:
   --since       keep only records stamped on or after that date (UTC date of the transcript line).
   --json        one JSON object per line (the record shape below). --markdown: the tally (default).
                 The two are exclusive.
+  --references  not a failure signal — a table of which kit references (every `.md` under
+                `skills/*/references/` and `skills/_shared/`, read from THIS checkout) the sessions
+                read: `reference | owner skill | sessions active | sessions read | last read`, by
+                read rate ascending (never-active rows last), then the footer `references: N ·
+                never read: K · read every session: M across S sessions`. A read is a `Read`
+                file_path or a `Bash` command naming the kit-relative path. Reads are not records:
+                exclusive with --json / --markdown, whose output is unchanged (#724).
   --kit-name    the plugin's name as it appears in skill ids and cache paths (default: tagout).
 
 The never-wait phrase list is READ from the kit's own tests/auto-dev-never-wait/test.sh (three
@@ -449,12 +456,75 @@ def tally_markdown(records, sessions, skipped, source):
     return "\n".join(out) + "\n"
 
 
+def reference_inventory(kit_root):
+    """{kit-relative path: owner skill} for every reference `.md` under this checkout (#724)."""
+    inv = {}
+    pats = (("skills", "*", "references", "**", "*.md"), ("skills", "_shared", "*.md"))
+    for pat in pats:
+        for p in glob.glob(os.path.join(kit_root, *pat), recursive=True):
+            rel = os.path.relpath(p, kit_root).replace(os.sep, "/")
+            inv[rel] = rel.split("/")[1]
+    return inv
+
+
+def reference_reads(path, kit_names, inventory, since=None):
+    """One transcript -> (kit skills active, {inventory path: last read ts}). Same tracking as harvest_file."""
+    active, reads = set(), {}
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try:
+                o = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(o, dict) or o.get("type") != "assistant":
+                continue
+            ts = o.get("timestamp") or ""
+            if since and ts[:10] and ts[:10] < since:
+                continue
+            msg = o.get("message") if isinstance(o.get("message"), dict) else {}
+            for b in msg.get("content") if isinstance(msg.get("content"), list) else []:
+                if not isinstance(b, dict) or b.get("type") != "tool_use":
+                    continue
+                sk = skill_from_tool_use(b, kit_names)
+                if sk:
+                    active.add(sk)
+                inp = b.get("input") if isinstance(b.get("input"), dict) else {}
+                key = {"Read": "file_path", "Bash": "command"}.get(b.get("name"))
+                hay = inp.get(key) if key else None
+                if isinstance(hay, str):
+                    for rel in inventory:
+                        if rel in hay:
+                            reads[rel] = max(reads.get(rel, ""), ts)
+    return active, reads
+
+
+def references_table(inventory, sessions):
+    """sessions: [(active set, reads dict)] -> the markdown table and footer."""
+    rows = []
+    for rel, owner in inventory.items():
+        act = [s for s in sessions if (s[0] if owner == "_shared" else owner in s[0])]
+        got = [s[1][rel] for s in act if rel in s[1]]
+        rows.append((rel, owner, len(act), len(got), max(got) if got else ""))
+    # never-active rows have no evidence either way: last
+    rows.sort(key=lambda r: (r[2] == 0, r[3] / r[2] if r[2] else 0, r[0]))
+    out = ["| reference | owner skill | sessions active | sessions read | last read |",
+           "|---|---|---|---|---|"]
+    for rel, owner, a, r, last in rows:
+        out.append(f"| {rel} | {owner} | {a} | {r} | {last[:10] or '-'} |")
+    never = sum(1 for r in rows if r[2] and r[3] == 0)
+    every = sum(1 for r in rows if r[2] and r[3] == r[2])
+    out.append("")
+    out.append(f"references: {len(rows)} · never read: {never} · read every session: {every} across {len(sessions)} sessions")
+    return "\n".join(out) + "\n"
+
+
 def main(argv):
     ap = argparse.ArgumentParser(description="the kit's failure signals, out of past transcripts", add_help=True)
     ap.add_argument("project_dirs", nargs="*")
     ap.add_argument("--since")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--markdown", action="store_true")
+    ap.add_argument("--references", action="store_true")
     # Comma-separated, current name first. The old name rides along by default so transcripts
     # recorded before the rename — "ai-migration-kit:<skill>" ids, a checkout still under
     # …/ai-migration-kit — keep counting (#611's review measured 138 records vs 101 without it);
@@ -469,6 +539,9 @@ def main(argv):
     except Exception:
         pass
     kit_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    if args.references and (args.json or args.markdown):
+        print("usage: --references is exclusive with --json and --markdown — pick one", file=sys.stderr)
+        return 2
     if args.json and args.markdown:
         print("usage: --json and --markdown are exclusive — pick one", file=sys.stderr)
         return 2
@@ -489,6 +562,13 @@ def main(argv):
         if not os.path.isdir(d) or not os.access(d, os.R_OK | os.X_OK):
             print(f"unreadable project dir: {d}", file=sys.stderr)
             return 2
+    if args.references:
+        inv = reference_inventory(kit_root)
+        per = [reference_reads(path, kit_names, inv, args.since)
+               for d in dirs for path, _ in discover_transcripts(d)]
+        # a session that never invoked a kit skill is no denominator for anything
+        sys.stdout.write(references_table(inv, [x for x in per if x[0]]))
+        return 0
     phrases, source = never_wait_phrases(kit_root)
     records, skipped, sessions = [], 0, 0
     for d in dirs:

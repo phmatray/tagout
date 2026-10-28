@@ -110,6 +110,7 @@ degradation this line exists to end.
 ```bash
 python3 skills/review-sessions/scripts/harvest.py [project-dir …] --since <date> --json > /tmp/review-sessions-<date>.jsonl
 python3 skills/review-sessions/scripts/harvest.py [project-dir …] --since <date> --markdown
+python3 skills/review-sessions/scripts/harvest.py [project-dir …] --since <date> --references
 ```
 
 The JSON is what Step 4 clusters; the markdown tally (skill × kind, counts, first/last timestamps,
@@ -224,7 +225,11 @@ only what **review-sessions** adds on top of them.
 - **What happened** opens with the tally line, then the count per disposition:
   `N signals · K clusters · f filed · r recorded · a already fixed · c recurred · d declined` — the calibration
   the owner reads (all filed means the bar was not applied; all recorded means it was used to avoid
-  work), followed by one line per cluster with its disposition and evidence.
+  work), followed by one line per cluster with its disposition and evidence. Then the `--references` footer
+  (`references: N · never read: K · read every session: M across S sessions`) and its two tails,
+  listed for the owner and never filed: *never read* files with `sessions active` ≥ 5 are
+  **deletion candidates**, *read every session* files are **fold-back candidates** (an "on demand"
+  split that buys nothing).
 - **Artifacts** lists the project directories read, the JSON and tally paths, and every issue
   `create-issue` filed or folded, by number.
 - **Assumed · skipped · unverified** names the prior-rejection lookup's mode (`semantic` or
