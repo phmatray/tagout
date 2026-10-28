@@ -492,6 +492,37 @@ grep -qF 'recurred after #N (code)' "$SKILL" || { echo "FAIL: SKILL.md Step 5 ha
 grep -q 'prose-only.*automated-checks' "$SKILL" || { echo "FAIL: SKILL.md Step 7 does not route a prose-only recurrence to automated-checks"; exit 1; }
 grep -qF 'not a rewording' "$SKILL" || { echo "FAIL: SKILL.md lacks the barrier sentence"; exit 1; }
 grep -qF 'c recurred' "$SKILL" || { echo "FAIL: SKILL.md Step 8 tally lacks recurred"; exit 1; }
+grep -qF -- '--references' "$SKILL" || { echo "FAIL: SKILL.md never names --references"; exit 1; }
 echo "ok   the skill links its five shared references and the taxonomy, files only through create-issue, never closes"
+
+# ------------------------------------------------------------------- --references (#724)
+# A fixture kit tree holding a copy of harvest.py (the inventory is read from the checkout the
+# script lives in) and kit references: one read twice through a plugin-cache path, one never read,
+# a _shared file read by Bash sed -n, and a non-.md file that is no reference.
+RK="$(kit_scratch)"
+mkdir -p "$RK/skills/review-sessions/scripts" "$RK/skills/implement-issue/references/steps" "$RK/skills/_shared" "$RK/proj"
+cp "$SCRIPT" "$RK/skills/review-sessions/scripts/harvest.py"
+: > "$RK/skills/implement-issue/references/steps/01-preconditions.md"
+: > "$RK/skills/implement-issue/references/steps/02-read-the-plan.md"
+: > "$RK/skills/implement-issue/references/helper.json"
+: > "$RK/skills/_shared/recap.md"
+RT="$RK/proj/s1.jsonl"
+write_line "$RT" assistant "$D" "$(tool_use r1 Skill '{"skill":"tagout:implement-issue"}')"
+write_line "$RT" assistant "$D" "$(tool_use r2 Read '{"file_path":"/x/.claude/plugins/cache/m/tagout/9.9.9/skills/implement-issue/references/steps/01-preconditions.md"}')"
+write_line "$RT" assistant "$D" "$(tool_use r3 Read '{"file_path":"/x/.claude/plugins/cache/m/tagout/9.9.9/skills/implement-issue/references/steps/01-preconditions.md"}')"
+write_line "$RT" assistant "$D" "$(tool_use r4 Bash '{"command":"sed -n 1,20p skills/_shared/recap.md"}')"
+REF="$RK/ref.out"
+python3 "$RK/skills/review-sessions/scripts/harvest.py" "$RK/proj" --references > "$REF" || { echo "FAIL: --references exited non-zero"; exit 1; }
+grep -qF '| skills/implement-issue/references/steps/01-preconditions.md | implement-issue | 1 | 1 | 2026-08-20 |' "$REF" || { echo "FAIL: a twice-read file (Read via cache path) must show sessions read 1"; cat "$REF"; exit 1; }
+grep -qF '| skills/implement-issue/references/steps/02-read-the-plan.md | implement-issue | 1 | 0 | - |' "$REF" || { echo "FAIL: the unread reference must show sessions read 0"; cat "$REF"; exit 1; }
+grep -qF '| skills/_shared/recap.md | _shared | 1 | 1 | 2026-08-20 |' "$REF" || { echo "FAIL: a Bash sed -n read of a _shared file must count"; cat "$REF"; exit 1; }
+if grep -q 'helper.json' "$REF"; then echo "FAIL: a non-.md file is not a reference"; exit 1; fi
+ROW3=$(sed -n 3p "$REF"); case "$ROW3" in *02-read-the-plan*) : ;; *) echo "FAIL: the unread row must sort first"; cat "$REF"; exit 1 ;; esac
+[ "$(tail -n 1 "$REF")" = 'references: 3 · never read: 1 · read every session: 2 across 1 sessions' ] || { echo "FAIL: footer wrong"; tail -n 1 "$REF"; exit 1; }
+for f in --json --markdown; do
+  rc=0; python3 "$SCRIPT" "$RK/proj" --references "$f" > "$REF.x" 2>&1 || rc=$?
+  [ "$rc" -eq 2 ] || { echo "FAIL: --references $f must exit 2, got $rc"; exit 1; }
+done
+echo "ok   --references counts sessions that read each kit reference, one per session, exclusive with --json/--markdown"
 
 echo "review-sessions golden test OK"
