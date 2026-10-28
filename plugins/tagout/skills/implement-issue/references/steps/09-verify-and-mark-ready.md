@@ -27,4 +27,4 @@ the CI check). Heed the profile's caveats — some analyzer diagnostics can't be
 ```
 
 A REFUSED means Step 7's `post-review-check.sh` never came back clean on this branch: go back to
-Step 7. "Small" sizes the review (a lower `/code-review` level), it does not skip it.
+Step 7. "Small" sizes the review (a lower review level), it does not skip it.

@@ -62,6 +62,7 @@ grep -q "review recorded for main at $BEFORE" "$OUT" || fail clean "missing the 
 R=$(new_repo dirty-untracked)
 BEFORE=$(git -C "$R" rev-parse HEAD)
 echo stray > "$R/untracked.txt"
+git -C "$R" config kit.review.main.sha "$BEFORE"   # a stale record from an earlier clean run
 run dirty_untracked "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 [ "$RC" -eq 1 ] || fail dirty_untracked "expected exit 1, got $RC"
 grep -q "REFUSED - uncommitted changes" "$OUT" || fail dirty_untracked "missing the REFUSED line"
