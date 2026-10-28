@@ -55,15 +55,19 @@ run clean "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 [ "$RC" -eq 0 ] || fail clean "expected exit 0, got $RC"
 grep -q "^post-review-check: clean" "$OUT" || fail clean "missing the clean verdict line"
 grep -qF "$BEFORE" "$OUT" || fail clean "clean line does not name the unchanged sha"
+[ "$(git -C "$R" config --get kit.review.main.sha)" = "$BEFORE" ] || fail clean "no review record (#728)"
+grep -q "review recorded for main at $BEFORE" "$OUT" || fail clean "missing the recorded line"
 
 # ------------------------------------------------------- case: dirty, untracked file (exit 1)
 R=$(new_repo dirty-untracked)
 BEFORE=$(git -C "$R" rev-parse HEAD)
 echo stray > "$R/untracked.txt"
+git -C "$R" config kit.review.main.sha "$BEFORE"   # a stale record from an earlier clean run
 run dirty_untracked "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 [ "$RC" -eq 1 ] || fail dirty_untracked "expected exit 1, got $RC"
 grep -q "REFUSED - uncommitted changes" "$OUT" || fail dirty_untracked "missing the REFUSED line"
 grep -q "untracked.txt" "$OUT" || fail dirty_untracked "output does not name the untracked file"
+! git -C "$R" config --get kit.review.main.sha > /dev/null || fail dirty_untracked "exit 1 must record nothing (#728)"
 
 # --------------------------------------------------------- case: dirty, tracked edit (exit 1)
 R=$(new_repo dirty-tracked)
@@ -91,6 +95,7 @@ grep -q "REFUSED - HEAD advanced from $BEFORE to $AFTER" "$OUT" || fail advanced
 grep -qF '(2 new commit(s))' "$OUT" || fail advanced "commit count does not read 2"
 grep -q "second commit, never authorized" "$OUT" || fail advanced "output does not list the first new commit's subject line"
 grep -q "third commit, also never authorized" "$OUT" || fail advanced "output does not list the second new commit's subject line"
+! git -C "$R" config --get kit.review.main.sha > /dev/null || fail advanced "exit 2 must record nothing (#728)"
 
 # ------------------------------------------------------------- case: wrong branch (exit 3)
 R=$(new_repo wrong-branch)
@@ -99,6 +104,7 @@ git -C "$R" checkout -q -b other
 run wrong_branch "$SCRIPT" -C "$R" --branch main --before "$BEFORE"
 [ "$RC" -eq 3 ] || fail wrong_branch "expected exit 3, got $RC"
 grep -q "REFUSED - HEAD is on 'other', expected 'main'" "$OUT" || fail wrong_branch "missing the branch-mismatch line"
+! git -C "$R" config --get kit.review.main.sha > /dev/null || fail wrong_branch "exit 3 must record nothing (#728)"
 
 # ------------------------------------------------------------- case: detached HEAD (exit 3)
 R=$(new_repo detached)

@@ -374,10 +374,10 @@ something other than `origin`, or the guard verifies a ref the push never wrote.
 ## 6. Mark ready (only after green)
 
 ```bash
-gh pr ready "$PR_NUMBER"          # number from `gh pr create`, or `gh pr list --head "$BRANCH"`
+"$GUARDS/guarded-ready.sh" -C "$WORKTREE" --branch "$BRANCH" "$PR_NUMBER"  # number from `gh pr create`, or `gh pr list --head "$BRANCH"`
 ```
 
-`gh pr ready` with no extra flag flips draft → ready-for-review. There's no separate "approve" — the
+The guard runs `gh pr ready`, which with no extra flag flips draft → ready-for-review. There's no separate "approve" — the
 human reviewer takes it from there.
 
 ---

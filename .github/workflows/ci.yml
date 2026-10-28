@@ -503,6 +503,9 @@ jobs:
       - name: Post-review-check golden test (a code-review dispatch cannot write past its own report undetected)
         run: ./tests/post-review-check/test.sh
 
+      - name: Guarded-ready golden test (a PR cannot be flipped ready with no recorded review)
+        run: ./tests/guarded-ready/test.sh
+
       - name: Finish-task golden test (one call closes a task through the three guards, in order)
         run: ./tests/finish-task/test.sh
 
