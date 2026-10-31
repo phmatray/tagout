@@ -8,6 +8,13 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [4.1.1](https://github.com/phmatray/tagout/compare/v4.1.0...v4.1.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **deps:** update non-major dependencies ([#722](https://github.com/phmatray/tagout/issues/722)) ([c63fedd](https://github.com/phmatray/tagout/commit/c63feddea5c32cb550deb20fc96b9dc457e6ea8c))
+
 ## [4.1.0](https://github.com/phmatray/tagout/compare/v4.0.0...v4.1.0) (2026-10-28)
 
 
