@@ -627,6 +627,9 @@ jobs:
       - name: Usage-report golden test (counts sub-agent transcripts too, not just top-level, #281)
         run: ./tests/usage-report/test.sh
 
+      - name: Context-cost golden test (the kit's skill entries can shorten other skills' descriptions, not only add tokens)
+        run: ./tests/context-cost/test.sh
+
       - name: Survey golden test (effort tiers by the manifest's own vocabulary, not S/M/L)
         run: ./tests/survey/test.sh
 

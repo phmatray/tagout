@@ -74,6 +74,7 @@
     "skills/auto-dev/scripts/release-branch.sh": "a guarded git-write wrapper for the supervisor (#510): it detaches a retired worker's worktree off a PR branch only after proving nothing would be stranded, and reports FREE/RELEASED/HELD; the dispatch rule that reads that state is skills/auto-dev/SKILL.md Step 3's, not a registered verdict vocabulary",
     "skills/auto-dev/scripts/survey.sh": "a deterministic issue-queue query; it orders and reports, the supervisor decides",
     "skills/auto-dev/scripts/usage_report.py": "an offline cost-accounting report, not a control-flow choice",
+    "scripts/context-cost.py": "an offline diff of two /context captures documenting what installing the kit costs a session, not a control-flow choice",
     "skills/auto-dev/scripts/wait-ci.sh": "blocks until CI is final and prints the result table; it reports state, the caller decides what to do with it",
     "skills/create-issue/scripts/wire-edges.sh": "a guarded GitHub write helper (sub-issue and blocked_by edges, 404 = text fallback); it prints ok/fallback/FAILED per edge, the calling skill decides what a fallback means for its report",
     "skills/create-pr/scripts/rewind-default.sh": "a guarded ref-move wrapper, same shape as guarded-commit.sh — it moves the local default branch back to origin/<default> once the pushed branch provably carries it, or refuses; not a control-flow choice with a verdict vocabulary of its own (#636)",
