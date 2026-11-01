@@ -26,6 +26,12 @@
 # unparseable payload, a command whose quoting cannot be trusted — exits 0 with no output.
 # `GIT_GATE=off` (also `0|false|no|disabled`) is the master switch and is checked FIRST;
 # `GIT_GATE=on` forces enforcement past the probe below, and `off` still wins.
+# Opt-in exception, `TAGOUT_HOOKS_STRICT=1|on|true|yes`: the "cannot judge" exits (no jq/awk/git,
+# unreadable or unparseable payload, an over-long command, a quote that never closes, an unreadable
+# cwd) refuse with exit 2 when the call looks like a git write, instead of letting it through. It
+# changes nothing else: `off` still wins, and once the command and its cwd are read the profile probe
+# still decides where the gate applies. Before that point (no jq, an unreadable payload or cwd) the
+# gate cannot tell a managed repository from another one, so strict refuses any git-looking call.
 #
 # Two things the switch cannot do from inside a session, and what the gate does instead (#372):
 #   * an `export GIT_GATE=off` typed into a Bash call never reaches this hook — it is spawned by the
@@ -67,22 +73,42 @@ case "${GIT_GATE:-}" in on|1|true|yes|enabled) FORCE=1 ;; esac
 # the subcommand could land anywhere in the result.
 set -f
 
-payload=$(cat) || exit 0
-command -v jq >/dev/null 2>&1 || exit 0
-command -v awk >/dev/null 2>&1 || exit 0
-command -v git >/dev/null 2>&1 || exit 0
+# Opt-in strict mode (ADR 0002, amendment): the "cannot judge" exits below refuse instead of passing.
+# `exit 2` + stderr is the PreToolUse blocking contract and needs neither jq nor awk, which is the
+# point — most of these exits are the ones where those tools are missing.
+STRICT=0
+strict_val=${TAGOUT_HOOKS_STRICT:-}
+case "${strict_val,,}" in 1|on|true|yes) STRICT=1 ;; esac
+strict_refuse() { # $1 cause. Not strict: the usual fail-open exit.
+  [ "$STRICT" = 1 ] || exit 0
+  printf 'Blocked by the git write-gate (strict mode): the gate could not judge this command (%s). TAGOUT_HOOKS_STRICT is set, so an unjudged git write is refused instead of let through. Fix the cause or unset TAGOUT_HOOKS_STRICT.\n' "$1" >&2
+  exit 2
+}
+# Refuse only when the text looks like a git/gh call: a cheap substring test, because the exits that
+# use it run before (or without) any real parse. A backslash counts as git-looking too: the gate itself
+# unwraps `g\it` (#533), so the filter must not be narrower than what it guards. Anything else passes.
+looks_gitlike() { case "$1" in *git*|*gh*|*'\'*) return 0 ;; esac; return 1; }
+strict_refuse_if_gitlike() { # $1 text to look at  $2 cause
+  looks_gitlike "$1" && strict_refuse "$2"
+  exit 0
+}
+
+payload=$(cat) || strict_refuse "the payload could not be read"
+command -v jq >/dev/null 2>&1 || strict_refuse_if_gitlike "$payload" "jq is not installed"
+command -v awk >/dev/null 2>&1 || strict_refuse_if_gitlike "$payload" "awk is not installed"
+command -v git >/dev/null 2>&1 || strict_refuse_if_gitlike "$payload" "git is not installed"
 
 # Re-checked even though hooks.json matches "Bash": the matcher is a regex, so it also catches
 # BashOutput, and would catch any future tool whose name contains "Bash".
-tool=$(jq -r '.tool_name // empty' <<<"$payload" 2>/dev/null) || exit 0
+tool=$(jq -r '.tool_name // empty' <<<"$payload" 2>/dev/null) || strict_refuse_if_gitlike "$payload" "the payload is not readable JSON"
 [ "$tool" = "Bash" ] || exit 0
 
-cmd=$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null) || exit 0
+cmd=$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null) || strict_refuse_if_gitlike "$payload" "the command could not be read from the payload"
 [ -n "$cmd" ] || exit 0
 
 # A command this long is not one of the shapes below; parsing it would cost more than the hook's
 # 5s timeout allows and a timed-out hook is an unpredictable one. Fail open, explicitly.
-[ "${#cmd}" -le 65536 ] || exit 0
+[ "${#cmd}" -le 65536 ] || strict_refuse_if_gitlike "$cmd" "the command is longer than 65536 characters"
 
 # The cheap reject, before any parsing: nothing here can matter to a command with no `git` in it and
 # no `gh` followed somewhere by `merge` — the one `gh` shape judged below (#512). `*gh*merge*`, not a
@@ -118,7 +144,11 @@ case "$cmd" in *git*|*gh*merge*|*'\'*) ;; *) exit 0 ;; esac
 # bash's arithmetic left-shift (`$((1<<2))`) is indistinguishable from a heredoc to this scan and cuts
 # there too — a real shell tokenizer is the fix for either, and not worth it for a gate whose declared
 # direction is fail-open (ADR 0002).
-cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || exit 0
+cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || strict_refuse "the working directory could not be read"
+# Strict: a cwd that is missing or not a directory is one the profile probe cannot answer about.
+if [ "$STRICT" = 1 ] && { [ -z "$cwd" ] || [ ! -d "$cwd" ]; }; then
+  strict_refuse_if_gitlike "$cmd" "the working directory is missing or is not a directory"
+fi
 # Claude Code stamps `agent_id` on a sub-agent's tool call; empty means the main thread (#643).
 agent_id=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || agent_id=""
 
@@ -317,7 +347,7 @@ function segtail(s,    p, cch) {
   if (q != "") { exit 3 }
   print "C\t" out
   for (k = 0; k < nsubs; k++) print "S\t" subs[k]
-}' 2>/dev/null) || exit 0
+}' 2>/dev/null) || strict_refuse "the quoting of the command could not be parsed"
 
 # Split the awk output back into the clean command text (one "C" line) and zero or more extracted
 # substitution bodies (one "S" line each) — two channels carried over the one stdout stream rather
@@ -345,8 +375,11 @@ if [ -n "$gate_subs" ]; then
     [ -n "$gate_subcmd" ] || continue
     gate_subpay=$(jq -nc --arg d "$cwd" --arg c "$gate_subcmd" --arg a "$agent_id" \
       '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}} + (if $a == "" then {} else {agent_id:$a} end)' \
-      2>/dev/null) || continue
-    gate_subout=$(printf '%s' "$gate_subpay" | bash "$0" 2>/dev/null)
+      2>/dev/null) || { [ "$STRICT" = 1 ] && looks_gitlike "$gate_subcmd" && strict_refuse "a substituted command could not be handed to the gate"; continue; }
+    gate_subrc=0
+    gate_subout=$(printf '%s' "$gate_subpay" | bash "$0" 2>/dev/null) || gate_subrc=$?
+    # The inner strict refusal is exit 2 on stderr, which the capture above drops: relay it here.
+    if [ "$STRICT" = 1 ] && [ "$gate_subrc" = 2 ]; then strict_refuse "a substituted command could not be judged"; fi
     if [ -n "$gate_subout" ]; then
       printf '%s\n' "$gate_subout"
       exit 0
