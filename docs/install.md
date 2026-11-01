@@ -97,11 +97,12 @@ explains where the spend goes (context re-read every turn, not output).
 To measure your own host, capture `/context` in a scratch profile without the kit and in one with
 it, from a directory with no `CLAUDE.md` above it (memory files would land in both captures):
 
+{%- assign claude_code = site.data.hosts | where: "id", "claude-code" | first %}
 ```bash
 P=$(mktemp -d); Q=$(mktemp -d); cd "$(mktemp -d)"
 CLAUDE_CONFIG_DIR="$P" claude            # log in once with /login, then quit; same for "$Q"
-CLAUDE_CONFIG_DIR="$Q" claude plugin marketplace add phmatray/tagout
-CLAUDE_CONFIG_DIR="$Q" claude plugin install tagout@tagout-marketplace
+CLAUDE_CONFIG_DIR="$Q" {{ claude_code.install[0] }}
+CLAUDE_CONFIG_DIR="$Q" {{ claude_code.install[1] }}
 CLAUDE_CONFIG_DIR="$P" claude -p "/context" > without.md
 CLAUDE_CONFIG_DIR="$Q" claude -p "/context" > with.md
 python3 <kit>/scripts/context-cost.py --baseline without.md --with tagout=with.md
