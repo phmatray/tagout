@@ -7,7 +7,8 @@
 # is structural — the agent type (no Edit/Write) and the isolation option — and this suite pins that
 # both are stated at the one dispatch site and repeated in both worker commands.
 #
-# Three textual invariants (plus 2b, #694: a one-way-door diff is reviewed at high):
+# Three textual invariants (plus 2b, #694: a one-way-door diff is reviewed at high; plus 2c: the
+# Standards fallback reviewer is linked and read-only, and the default /code-review path is intact):
 #   1. skills/implement-issue/SKILL.md carries the marked `review-dispatch` block, naming both the
 #      read-only agent type and the isolation option, and the parent-applies rule.
 #   2. Step 7 no longer offers `--fix` as a path: "Never `--fix`".
@@ -52,6 +53,19 @@ door=$(sed -n '/<!-- one-way-door:start -->/,/<!-- one-way-door:end -->/p' "$SKI
 for want in 'marketplace.json' 'plugin.json' 'migration' 'webhook' 'deletion' \
             '/code-review high origin/main...HEAD' '### One-way door' 'above `### Follow-ups`'; do
   grep -qF -- "$want" <<<"$door" || fail "one-way-door block does not name: $want"
+done
+
+# 2c. Standards fallback: with no `code-review` skill in the session, Step 7 links the kit's own
+#     read-only reviewer; the default path (an explicit-level /code-review call) is unchanged.
+FALLBACK="$KIT/skills/implement-issue/references/standards-review-fallback.md"
+grep -qF '(../standards-review-fallback.md)' "$SKILL_MD" \
+  || fail "07-review.md does not link standards-review-fallback.md"
+[ -f "$FALLBACK" ] || fail "missing $FALLBACK"
+for want in '/tmp/issue-' 'post-review-check.sh' 'never writes' 'no `code-review` skill'; do
+  grep -qF -- "$want" "$FALLBACK" || fail "standards-review-fallback.md does not carry: $want"
+done
+for want in '/code-review medium origin/main...HEAD' '/code-review high origin/main...HEAD'; do
+  grep -qF -- "$want" "$SKILL_MD" || fail "07-review.md lost the default path: $want"
 done
 
 # 3. Both worker commands carry the standing rule, with both constraints.
