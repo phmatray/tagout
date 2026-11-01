@@ -787,6 +787,9 @@ strict_verdict "ST10 strict, no awk, git commit"        block "$(pay Bash 'git c
 strict_verdict "ST11 strict, no git on PATH, git commit" block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOGIT"
 strict_verdict "ST12 strict, a tool other than Bash"    pass "$(pay NotebookEdit 'git commit -m wip' "$PROF")"
 strict_verdict "ST13 strict, empty command"             pass '{"tool_name":"Bash","cwd":"/tmp","tool_input":{}}'
+# Before the gate can read the profile it cannot tell a managed repository from another one: with no jq,
+# strict refuses a git write in a profile-less repository too (the documented price of opting in).
+strict_verdict "ST14 strict, no jq, profile-less repo, git commit" block "$(pay Bash 'git commit -m wip' "$PLAIN")" "$NOJQ"
 # ST9's control: the same command, same repository, WITHOUT strict, is also a pass (the probe, not
 # strict, decides) — so ST9 cannot be green merely because strict swallows everything.
 verdict "ST9c the same profile-less command, default mode" pass "" "$(pay Bash 'git reset --hard HEAD~1' "$PLAIN")"
