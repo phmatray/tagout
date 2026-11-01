@@ -130,6 +130,34 @@ verdict() {
   echo "ok: $name -> $decision"
 }
 
+# The strict-mode driver (TAGOUT_HOOKS_STRICT=1). `verdict` above pins exit 0 — the DEFAULT contract —
+# so strict cases get their own driver instead of loosening it. want: block (exit 2 and the stderr
+# names the strict mode), pass (exit 0, no output) or deny (exit 0 and a JSON permissionDecision deny).
+strict_verdict() { # $1 name  $2 block|pass|deny  $3 payload  $4 PATH (default $PATH)  $5 GIT_GATE (optional)
+  local name="$1" want="$2" payload="$3" gate_path="${4:-$PATH}" sw="${5:-}"
+  local out err rc=0 errf="$WORK/strict.err"
+  local -a envv
+  envv=(PATH="$gate_path" TAGOUT_HOOKS_STRICT=1)
+  if [ -n "$sw" ]; then envv+=(GIT_GATE="$sw"); fi
+  out=$(printf '%s' "$payload" | env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>"$errf") || rc=$?
+  err=$(cat "$errf")
+  case "$want" in
+    block)
+      [ "$rc" -eq 2 ] || { echo "FAIL [$name]: expected exit 2, got $rc"; echo "$out"; exit 1; }
+      grep -qF 'strict mode' <<<"$err" || { echo "FAIL [$name]: stderr lacks 'strict mode': $err"; exit 1; }
+      [ -z "$out" ] || { echo "FAIL [$name]: a strict refusal must not also print on stdout: $out"; exit 1; } ;;
+    pass)
+      [ "$rc" -eq 0 ] || { echo "FAIL [$name]: expected exit 0, got $rc ($err)"; exit 1; }
+      [ -z "$out" ] || { echo "FAIL [$name]: expected no output, got: $out"; exit 1; } ;;
+    deny)
+      [ "$rc" -eq 0 ] || { echo "FAIL [$name]: expected exit 0 with a JSON deny, got $rc ($err)"; exit 1; }
+      [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "malformed"' 2>/dev/null)" = deny ] \
+        || { echo "FAIL [$name]: expected a JSON deny, got: $out"; exit 1; } ;;
+    *) echo "FAIL [$name]: unknown expectation '$want'"; exit 1 ;;
+  esac
+  echo "ok: $name -> $want (strict)"
+}
+
 PROF=$(profile_repo); PLAIN=$(plain_repo); DIRTY=$(dirty_repo)
 [ "$PROF" != "$PLAIN" ] || { echo "FAIL: fixture helpers returned the same directory"; exit 1; }
 
@@ -738,6 +766,30 @@ verdict "A32 BashOutput is not Bash"   pass "" "$(pay BashOutput 'git commit -m 
 verdict "A33 no command in the payload" pass "" '{"tool_name":"Bash","cwd":"/tmp","tool_input":{}}'
 verdict "A34 unterminated quoting is a parse it cannot trust" pass "" \
   "$(pay Bash 'git commit -m "never closed' "$PROF")"
+
+# ------------------------------------------------ 5b. TAGOUT_HOOKS_STRICT: only an UNJUDGED git write refuses
+# Opt-in (ADR 0002 amendment). A26-A34 above pin the default; these pin the one class of paths the
+# variable inverts: the gate cannot judge a command that looks like a git write -> exit 2, not exit 0.
+# Named ST*, not S*: S7/S8 below already belong to the #643 section.
+BIG="git commit -m $(head -c 70000 /dev/zero | tr '\0' x)"
+strict_verdict "ST1 strict, no jq, git commit"          block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOJQ"
+# `pay` stamps session_id "gitgate", which the raw-payload filter would (rightly) read as git: swap it.
+strict_verdict "ST2 strict, no jq, a command with no git" pass "$(pay Bash 'ls -la' "$PROF" | sed 's/gitgate/sess1/')" "$NOJQ"
+strict_verdict "ST3 strict, non-JSON payload with git push" block 'not json, but git push origin main'
+strict_verdict "ST3b strict, non-JSON payload without git" pass 'not json at all'
+strict_verdict "ST4 strict, command over 65536 chars with git" block "$(pay Bash "$BIG" "$PROF")"
+strict_verdict "ST5 strict, unterminated quote"         block "$(pay Bash 'git commit -m "oops' "$PROF")"
+strict_verdict "ST6 strict, jq present, reset --hard still a JSON deny" deny "$(pay Bash 'git reset --hard HEAD~1' "$PROF")"
+strict_verdict "ST7 strict, an ordinary guarded call"   pass "$(pay Bash 'git status' "$PROF")"
+strict_verdict "ST8 GIT_GATE=off beats strict"          pass "$(pay Bash 'git commit -m wip' "$PROF")" "$NOJQ" off
+strict_verdict "ST9 strict, profile-less repo, same verdict as without strict" pass "$(pay Bash 'git reset --hard HEAD~1' "$PLAIN")"
+strict_verdict "ST10 strict, no awk, git commit"        block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOAWK"
+strict_verdict "ST11 strict, no git on PATH, git commit" block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOGIT"
+strict_verdict "ST12 strict, a tool other than Bash"    pass "$(pay NotebookEdit 'git commit -m wip' "$PROF")"
+strict_verdict "ST13 strict, empty command"             pass '{"tool_name":"Bash","cwd":"/tmp","tool_input":{}}'
+# ST9's control: the same command, same repository, WITHOUT strict, is also a pass (the probe, not
+# strict, decides) — so ST9 cannot be green merely because strict swallows everything.
+verdict "ST9c the same profile-less command, default mode" pass "" "$(pay Bash 'git reset --hard HEAD~1' "$PLAIN")"
 # A command past the size cap is not one of the shapes above; parsing it would outrun the hook's
 # 5s timeout, and a timed-out hook is an unpredictable one. The padding goes AFTER an intact
 # `git commit -m x`, so the tokeniser has a real write to find: the first spelling ran the whole
