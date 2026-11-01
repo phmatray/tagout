@@ -61,7 +61,7 @@ FALLBACK="$KIT/skills/implement-issue/references/standards-review-fallback.md"
 grep -qF '(../standards-review-fallback.md)' "$SKILL_MD" \
   || fail "07-review.md does not link standards-review-fallback.md"
 [ -f "$FALLBACK" ] || fail "missing $FALLBACK"
-for want in '/tmp/issue-' 'post-review-check.sh' 'never writes' 'no `code-review` skill'; do
+for want in '/tmp/issue-' 'post-review-check.sh' 'never writes' 'no `code-review` skill'; do  # tmp-lint:allow — a text pin searched for, not a path this suite writes
   grep -qF -- "$want" "$FALLBACK" || fail "standards-review-fallback.md does not carry: $want"
 done
 for want in '/code-review medium origin/main...HEAD' '/code-review high origin/main...HEAD'; do
