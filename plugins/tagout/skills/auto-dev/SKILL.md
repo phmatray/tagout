@@ -344,6 +344,7 @@ contend for one path. Keep it small and current:
 - #<n> replan (assigned <login>)
 ## Held for owner
 - #<n> → PR #<pr> — one-way door: <paths>
+- #<n> → PR #<pr> — owner approval (profile)
 ## Off-scope issues filed by workers
 - #<n> — <title> (label) from #<source>
 ## Skipped (ineligible: no-plan / manual-QA)
@@ -600,6 +601,18 @@ revert cannot undo — means **no phase-2 dispatch**: retire the slot, add
 it in the final summary with Next `/merge-pr #<n>`. Everything else lands exactly as below. The hold
 is a result, not a wait: nothing idles on the owner, and a human-run `merge-pr` is unchanged.
 <!-- one-way-door-hold:end -->
+
+<!-- owner-approval-hold:start -->
+**Every PR is held when the profile asks for owner approval.** If the repo profile
+(`.claude/skills/repo-profile.md`, `## Integration style`) carries `**Merge approval:** owner`, treat
+**every** PR exactly like a one-way door: **no phase-2 dispatch**, retire the slot, add
+`- #<issue> → PR #<n> — owner approval (profile)` under `## Held for owner` in the state file, and
+name it in the final summary with Next `/merge-pr #<n>`. Absent, `unattended`, or any other value:
+unchanged — PRs land as below, and one-way doors stay held by the block above. The profile is repo
+data (ADR-0001), not an interaction mode (ADR-0009): the rule is about the repo, not about how much
+a run is trusted, so it holds in every mode. The hold is a result, not a wait: nothing idles on the
+owner, and a human-run `merge-pr` is unchanged.
+<!-- owner-approval-hold:end -->
 
 **Phase 2 defaults to the cheapest capable tier** — small/cheap by default, decoupled from phase 1's
 tier. The supervisor hands phase 2 the CI verdict (pass/fail), merge state (clean/blocked), and the
