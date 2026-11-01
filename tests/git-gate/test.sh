@@ -133,11 +133,11 @@ verdict() {
 # The strict-mode driver (TAGOUT_HOOKS_STRICT=1). `verdict` above pins exit 0 — the DEFAULT contract —
 # so strict cases get their own driver instead of loosening it. want: block (exit 2 and the stderr
 # names the strict mode), pass (exit 0, no output) or deny (exit 0 and a JSON permissionDecision deny).
-strict_verdict() { # $1 name  $2 block|pass|deny  $3 payload  $4 PATH (default $PATH)  $5 GIT_GATE (optional)
+strict_verdict() { # $1 name  $2 block|pass|deny  $3 payload  $4 PATH (default $PATH)  $5 GIT_GATE (optional)  $6 TAGOUT_HOOKS_STRICT (default 1)
   local name="$1" want="$2" payload="$3" gate_path="${4:-$PATH}" sw="${5:-}"
   local out err rc=0 errf="$WORK/strict.err"
   local -a envv
-  envv=(PATH="$gate_path" TAGOUT_HOOKS_STRICT=1)
+  envv=(PATH="$gate_path" TAGOUT_HOOKS_STRICT="${6:-1}")
   if [ -n "$sw" ]; then envv+=(GIT_GATE="$sw"); fi
   out=$(printf '%s' "$payload" | env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>"$errf") || rc=$?
   err=$(cat "$errf")
@@ -793,6 +793,30 @@ strict_verdict "ST14 strict, no jq, profile-less repo, git commit" block "$(pay 
 # ST9's control: the same command, same repository, WITHOUT strict, is also a pass (the probe, not
 # strict, decides) — so ST9 cannot be green merely because strict swallows everything.
 verdict "ST9c the same profile-less command, default mode" pass "" "$(pay Bash 'git reset --hard HEAD~1' "$PLAIN")"
+# A substituted command the gate cannot parse: the recursive check of `$(...)` / `bash -c` used to
+# read only the inner call's stdout, so the inner strict refusal (exit 2, stderr) was dropped and the
+# outer call passed. `$'it\'s'` is valid bash that the stripper cannot follow (the commit really lands).
+NEST_SUB=$'echo $(git commit -m $\'it\\\'s\')'
+NEST_BASHC=$'bash -c "git commit -m \\$\'it\\\'s\'"'
+strict_verdict "ST15 strict, an unparseable git write inside \$(...)" block "$(pay Bash "$NEST_SUB" "$PROF")"
+strict_verdict "ST15b strict, an unparseable git write inside bash -c" block "$(pay Bash "$NEST_BASHC" "$PROF")"
+verdict "ST15c the same substitution, default mode, still fails open" pass "" "$(pay Bash "$NEST_SUB" "$PROF")"
+# The "looks like git" filter must see what the gate itself unwraps: `g\it` is git (#533).
+BIGBS="g\\it push --force origin main $(head -c 70000 /dev/zero | tr '\0' x)"
+strict_verdict "ST16 strict, over-long command spelled g\\it" block "$(pay Bash "$BIGBS" "$PROF")"
+verdict "ST16c the same over-long command, default mode" pass "" "$(pay Bash "$BIGBS" "$PROF")"
+# A cwd the gate cannot use is a cwd it cannot judge in: refuse a git-looking call, pass the rest.
+strict_verdict "ST17 strict, empty cwd, git commit" block "$(pay Bash 'git commit -m wip' '')"
+strict_verdict "ST17b strict, cwd that does not exist, git commit" block "$(pay Bash 'git commit -m wip' "$WORK/no-such-dir")"
+strict_verdict "ST17c strict, empty cwd, a command with no git" pass "$(pay Bash 'ls -la' '' | sed 's/gitgate/sess1/')"
+verdict "ST17d empty cwd, default mode" pass "" "$(pay Bash 'git commit -m wip' '')"
+# Every documented spelling switches strict on, in any case; anything else leaves the default.
+for st_on in on true yes TRUE On YES; do
+  strict_verdict "ST18 TAGOUT_HOOKS_STRICT=$st_on is strict" block "$(pay Bash 'git commit -m "oops' "$PROF")" "" "" "$st_on"
+done
+for st_off in 0 off no maybe; do
+  strict_verdict "ST19 TAGOUT_HOOKS_STRICT=$st_off is the default" pass "$(pay Bash 'git commit -m "oops' "$PROF")" "" "" "$st_off"
+done
 # A command past the size cap is not one of the shapes above; parsing it would outrun the hook's
 # 5s timeout, and a timed-out hook is an unpredictable one. The padding goes AFTER an intact
 # `git commit -m x`, so the tokeniser has a real write to find: the first spelling ran the whole
