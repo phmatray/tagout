@@ -29,7 +29,9 @@
 # Opt-in exception, `TAGOUT_HOOKS_STRICT=1|on|true|yes`: the "cannot judge" exits (no jq/awk/git,
 # unreadable or unparseable payload, an over-long command, a quote that never closes, an unreadable
 # cwd) refuse with exit 2 when the call looks like a git write, instead of letting it through. It
-# changes nothing else: `off` still wins, and the profile probe still decides where the gate applies.
+# changes nothing else: `off` still wins, and once the command and its cwd are read the profile probe
+# still decides where the gate applies. Before that point (no jq, an unreadable payload or cwd) the
+# gate cannot tell a managed repository from another one, so strict refuses any git-looking call.
 #
 # Two things the switch cannot do from inside a session, and what the gate does instead (#372):
 #   * an `export GIT_GATE=off` typed into a Bash call never reaches this hook — it is spawned by the
