@@ -54,3 +54,5 @@ positive evidence that the replacement the denial names can actually exist in th
 third hook takes the same terms; it does not get a second record.
 
 A repo whose only project marker is a `*.slnx` is treated as unmarked (#699): Roseline discovery cannot open it, so the gate lets the Read through.
+
+**Opt-in strict mode (amendment).** `TAGOUT_HOOKS_STRICT=1` inverts one class of paths, in `hooks/git-write-gate.sh` only (the hook that protects writes): when the hook cannot judge a command that looks like a git write, it refuses (exit 2) instead of letting it through. Everything else is unchanged: the default stays fail-open, `GIT_GATE=off` still wins, and the profile probe still decides where the hook applies, so strict mode never blocks a repository the kit does not manage. It exists for teams whose change-management control (ISO/IEC 27001:2022, control 8.32) cannot accept an unjudged write. The roseline gate (reads) and the Stop gate are not affected.
