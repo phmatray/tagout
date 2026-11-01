@@ -39,6 +39,7 @@ them exactly as the repo uses them.
 
 ## Integration style
 - **Merge mode:** <squash | merge | rebase>
+- **Merge approval:** <unattended | owner> _(optional; absent or `unattended` = auto-dev merges PRs as today; `owner` = auto-dev merges nothing and holds every ready PR for a human, for change-management controls that require a human to approve every merge)_
 - **PR title convention:** <note any Conventional Commits / semantic-PR-title CI gate (e.g. `feat:`/`fix:` prefix required — check `.github/workflows/` for `semantic-pull-request`) AND the issue/PR number shape, e.g. "prefix `<type>(scope):` required; title ends in (#issue); squash appends (#PR)">
 - **Branch naming:** <e.g. feat/<issue>-<slug>>
 

@@ -124,6 +124,12 @@ printf '## Held for owner\n- #42 → PR #43 — one-way door: .claude-plugin/mar
 age_past_window "$SPATH"
 verdict "#694 held-for-owner only" 0 "$(pay "$REPO" false)" "$SDIR"
 
+# ------- 2c. a PR held by the profile's `Merge approval: owner` is drained work too, not a stuck slot
+write_state "" ""
+printf '## Held for owner\n- #44 → PR #45 — owner approval (profile)\n' >> "$SPATH"
+age_past_window "$SPATH"
+verdict "owner-approval held-for-owner only" 0 "$(pay "$REPO" false)" "$SDIR"
+
 # --------------------------------------------------- 3. one in-flight slot -> REFUSE (AC3)
 write_state "- Slot A → #123 (auto-dev) — implementing" ""
 verdict "AC3 one in-flight slot refuses" 2 "$(pay "$REPO" false)" "$SDIR" "" \

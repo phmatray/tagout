@@ -114,4 +114,23 @@ step6=$(tail -n "+$STEP6" "$SKILL_MD")
 grep -qF '## Held for owner' <<<"$step6" \
   || fail "AC3: Step 6's final summary does not name the '## Held for owner' entries"
 
+# ---------------------- opt-in `Merge approval: owner`: every PR is held for the owner, never landed
+
+owner=$(sed -n '/<!-- owner-approval-hold:start -->/,/<!-- owner-approval-hold:end -->/p' "$SKILL_MD")
+[ -n "$owner" ] || fail "owner-approval: SKILL.md carries no owner-approval-hold block"
+for want in 'Merge approval:' 'owner' 'Absent' 'no phase-2 dispatch' 'retire the slot' '## Held for owner' 'owner approval (profile)' '/merge-pr #'; do
+  grep -qF -- "$want" <<<"$owner" || fail "owner-approval: owner-approval-hold block does not name: $want"
+done
+grep -qF '<!-- one-way-door-hold:start -->' "$SKILL_MD" \
+  || fail "owner-approval: the one-way-door-hold block is gone"
+grep -qF -- '— owner approval (profile)' <<<"$(sed -n '/^```markdown/,/^```/p' "$SKILL_MD")" \
+  || fail "owner-approval: the state-file template lacks the 'owner approval (profile)' held form"
+PROFILE_TPL="$KIT/skills/init/references/profile-template.md"
+[ -f "$PROFILE_TPL" ] || fail "missing $PROFILE_TPL"
+merge_approval=$(grep -F '**Merge approval:**' "$PROFILE_TPL") \
+  || fail "owner-approval: the profile template has no '**Merge approval:**' bullet"
+for want in 'unattended' 'owner'; do
+  grep -qF -- "$want" <<<"$merge_approval" || fail "owner-approval: profile template bullet does not name: $want"
+done
+
 echo "PASS: auto-dev-blocked-hold"
