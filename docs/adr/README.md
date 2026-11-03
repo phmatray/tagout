@@ -42,3 +42,4 @@ has_children: true
 | 0016 | [Tagout: one tree, two disjoint plugins, one version](0016-tagout-one-tree-two-disjoint-plugins-one-version.md) | accepted | 2026-09-14 |
 | 0017 | [The two plugin trees ship as generated copies](0017-the-two-plugin-trees-ship-as-generated-copies.md) | accepted | 2026-09-15 |
 | 0018 | [profile-repo and setup-repo merge into init](0018-profile-repo-and-setup-repo-merge-into-init.md) | accepted | 2026-10-09 |
+| 0019 | [Local tracker backend](0019-local-tracker-backend.md) | rejected | 2026-11-03 |
