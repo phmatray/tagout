@@ -297,7 +297,8 @@ want_desc = yaml.safe_load((pathlib.Path(sys.argv[1]) / ".github/repo-setup.yml"
 assert ext["description"] == want_desc, "gemini-extension.json's description is the repository's (Gemini ships the whole kit), got: " + ext["description"]
 assert "No bundled MCP server" not in ext["description"], ext["description"]
 assert ext["mcpServers"]["roseline"] == {"command": "dnx", "args": ["RoselineMCP", "--yes"]}, ext["mcpServers"]
-assert ext["mcpServers"]["adr"] == {"command": "dnx", "args": ["AdrMcp", "--yes"]}, ext["mcpServers"]
+assert ext["mcpServers"]["adr"] == {"command": "dnx", "args": ["AdrMcp", "--yes"],
+                                    "env": {"DOTNET_hostBuilder__reloadConfigOnChange": "false"}}, ext["mcpServers"]
 PY
 then ok "name, AGENTS.md as context, and the two dnx servers without a type key"
 else bad "gemini-extension.json: $(cat "$WORK/p.out")"; fi
