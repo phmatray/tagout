@@ -10,7 +10,7 @@
       "type": "stdio",
       "command": "dnx",
       "args": ["AdrMcp", "--yes"],
-      "env": {}
+      "env": { "DOTNET_hostBuilder__reloadConfigOnChange": "false" }
     }
   }
 }
