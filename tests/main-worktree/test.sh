@@ -123,7 +123,8 @@ echo "  ok: worktree-list-fails — a non-bare 'git worktree list' failure is ex
 
 # ---------------------------------------------------------------- 5. --help
 
-"$KIT/$HELPER" --help 2>&1 | grep -q 'Exit codes:' \
+help_out=$("$KIT/$HELPER" --help 2>&1)
+grep -q 'Exit codes:' <<<"$help_out" \
   || { echo "FAIL [help]: --help does not document the exit codes"; exit 1; }
 echo "  ok: help — documents the exit codes"
 
