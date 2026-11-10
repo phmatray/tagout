@@ -1,0 +1,92 @@
+{
+ "repo": "acme/widgets",
+ "prs": [
+  {
+   "number": 1,
+   "title": "feat: a (#10)",
+   "issue": 10,
+   "plan": "## 🛠️ Implementation plan\n\n### Task 1: thing 1\n\n**Files:** modify `scripts/preflight.sh`; test `tests/preflight/test.sh`.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `feat(scripts): add a`.\n",
+   "commits": [
+    {
+     "sha": "aaaaaaaa",
+     "subject": "feat(scripts): add a (#10)",
+     "files": [
+      "scripts/preflight.sh"
+     ]
+    }
+   ]
+  },
+  {
+   "number": 2,
+   "title": "feat: b (#11)",
+   "issue": 11,
+   "plan": "## 🛠️ Implementation plan\n\n### Task 1: thing 1\n\n**Files:** modify `scripts/preflight.sh:10-20`.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `feat(scripts): add b`.\n",
+   "commits": [
+    {
+     "sha": "bbbbbbbb",
+     "subject": "feat(scripts): add b",
+     "files": [
+      "README.md"
+     ]
+    }
+   ]
+  },
+  {
+   "number": 3,
+   "title": "feat: c (#12)",
+   "issue": 12,
+   "plan": "## 🛠️ Implementation plan\n\n### Task 1: thing 1\n\n**Files:** modify `scripts/decide.sh`.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `feat(scripts): add c`.\n\n### Task 2: thing 2\n\n**Files:** none expected.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `docs: note c`.\n",
+   "commits": [
+    {
+     "sha": "cccccccc",
+     "subject": "wip",
+     "files": [
+      "scripts/decide.sh"
+     ]
+    },
+    {
+     "sha": "dddddddd",
+     "subject": "docs: note c",
+     "files": [
+      "README.md"
+     ]
+    }
+   ]
+  },
+  {
+   "number": 4,
+   "title": "feat: d (#13)",
+   "issue": 13,
+   "plan": "## 🛠️ Implementation plan\n\n### Task 1: thing 1\n\n**Files:** create `scripts/brand-new.py`; test `tests/brand-new/test.sh`.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `feat(scripts): add d`.\n\n### Task 2: thing 2\n\n**Files:** modify `scripts/decide.sh`.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `feat(scripts): wire d`.\n",
+   "commits": [
+    {
+     "sha": "eeeeeeee",
+     "subject": "feat(scripts): add d",
+     "files": [
+      "scripts/brand-new.py",
+      "tests/brand-new/test.sh"
+     ]
+    },
+    {
+     "sha": "ffffffff",
+     "subject": "feat(scripts): wire d",
+     "files": [
+      "scripts/brand-new.py"
+     ]
+    }
+   ]
+  },
+  {
+   "number": 5,
+   "title": "chore: no issue",
+   "skip_reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "number": 6,
+   "title": "feat: e (#14)",
+   "issue": 14,
+   "plan": "Just prose, no task block.",
+   "commits": []
+  }
+ ]
+}
