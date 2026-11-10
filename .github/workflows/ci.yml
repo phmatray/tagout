@@ -681,5 +681,11 @@ jobs:
       - name: Decision-tally golden test (markdown tally over decide.sh's event log, #318)
         run: ./tests/decision-tally/test.sh
 
+      - name: Report-verdict golden test (autodev.report, from a worker's report line to its verdict)
+        run: ./tests/report-verdict/test.sh
+
+      - name: Fleet-counters golden test (the fleet's counts and autodev.cadence)
+        run: ./tests/fleet-counters/test.sh
+
       - name: Run-all-tests golden test (the three exits, and no drift from this file)
         run: ./tests/run-all-tests/test.sh

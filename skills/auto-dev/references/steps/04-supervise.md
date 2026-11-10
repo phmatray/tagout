@@ -19,9 +19,36 @@ depends on whether its sub-agent is **still running** or has **returned** (its r
 - **Re-dispatch** when the agent has returned — a fresh Agent spawn in Step 3's form. A returned
   deferral cannot be messaged: it returned.
 
+**A report is classified by a program, never read by eye.** When a slot's sub-agent returns, pipe
+its final message through the registered decision — one call, one word back:
+
+```bash
+scripts/report-state.sh "$STATE_FILE" --tier <the tier that worker ran on> '<its final message>' \
+  | <kit>/scripts/decide.sh autodev.report
+```
+
+`$STATE_FILE` is the pinned state file of Step 2; the fleet's counts live beside it, written only by
+`scripts/fleet-counters.sh`. The word that comes back names the bullet that applies:
+
+- `refill`, `refill-sweep` → **Reported MERGED**
+- `wait-ci` → a phase-1 `READY` (Step 3: the one-way-door read, `wait-ci.sh`, then phase 2), or **Reported BLOCKED with `DETAIL: pushed <sha>, CI restarted`**
+- `resume` → **Reported PARTIAL**
+- `redispatch` → the worker-toplevel guard refusal this step opens with
+- `release-branch` → **Reported BLOCKED with `DETAIL: branch-held guard: …`**
+- `hold-prereq`, `hold-replan` → **Reported BLOCKED with a `BLOCKED_BY:` field**
+- `escalate`, `retire` → **Reported BLOCKED/FAILED with `BLOCKED_BY: none`** (and `retire` is also a `PARTIAL` past its cap)
+- `reconcile` → the line could not be parsed, or its status does not belong to its phase: trust nothing in it and read the slot off GitHub, as for an idle one
+
+Which shape outranks which is `scripts/report-verdict.sh`'s header and nowhere else; the bullets
+below say what auto-dev does about each and why. A slot that has **not** reported — idle, silent,
+stalled at ready — has no line to classify: those bullets are read off GitHub and the idle
+notification.
+
 Then, per slot:
 
-- **Reported MERGED** (GitHub agrees) → before refilling, read the worker's `WORKTREE` field from its
+- **Reported MERGED** (GitHub agrees) → record it — `scripts/fleet-counters.sh "$STATE_FILE" merged <issue>`,
+  with `--blocking` when its survey row carried `blocking=`, then `… filed <n>…` for any issue its
+  `FILED:` field names. Before refilling, read the worker's `WORKTREE` field from its
   final report line. `merge-pr`'s own Step 7 is documented as tolerant of partial local cleanup (e.g.
   `git worktree remove` needing `--force` on a dirty leftover, or a `git branch -D` racing something
   else), so a worker can honestly report `STATUS: MERGED` alongside a `WORKTREE` value that isn't
@@ -87,9 +114,11 @@ phase-1 sub-agent against the same issue at the same tier, in Step 3's form: `im
 Step 4 resume contract re-enters the existing branch and PR and starts again at ~30K context, which
 is the entire saving. It has to be a fresh dispatch — a `SendMessage` would resume the agent *with
 the context the budget exists to discard*, so the hand-off would have cost a turn and saved nothing
-(and the agent has returned anyway; a returned sub-agent cannot be messaged). Record the phase as
-`PARTIAL ×<k>` in the state file so a `loop` re-fire can reconstruct it, and **cap consecutive
-resumes at 3**: a fourth means the issue is genuinely stuck rather than merely long, so surface and
+(and the agent has returned anyway; a returned sub-agent cannot be messaged). Record the resume —
+`scripts/fleet-counters.sh "$STATE_FILE" resumed <issue>` — and copy the `PARTIAL ×<k>` it prints
+into the state file so a `loop` re-fire can reconstruct it. **Cap consecutive resumes** — and the
+cap is the decision's, read from that count and not from yours: when it answers `retire` for a `PARTIAL` report the
+issue is genuinely stuck rather than merely long, so surface and
 retire it on the BLOCKED path below instead of resuming again — but **skip that path's tier
 escalation**. A budget exhaustion is by construction a *length* failure, not a "the model wasn't
 strong enough" one; this run's own outlier was an `effort: medium` issue that succeeded on the mid
@@ -104,7 +133,10 @@ expensive issue on its most expensive tier for no reason.
   worker's report reads the same way) → first **tier-escalate if it was on a lower model**: if the
   failure looks like the model wasn't strong enough (rather than a genuine hard blocker —
   un-mergeable conflict, missing approval, no plan), re-dispatch the *same* issue **once** on the top
-  model. If already on top, or it fails again → record it, surface it, retire the slot (it
+  model, and record that the escalation is spent: `scripts/fleet-counters.sh "$STATE_FILE" escalated <issue>`.
+  `escalate` says that one escalation is still available, `retire` that it is not — the decision
+  reads the tier and that record, so a compaction cannot hand an issue a second one. If already on
+  top, or it fails again → record it, surface it, retire the slot (it
   reported, so it has returned — nothing to stop), refill the slot (don't let one blocked issue
   stall the fleet). This escalation is what makes cheap-by-default tiering safe.
 
@@ -114,13 +146,21 @@ After any change, update the state file (in flight, completed, filed, queue).
 time — the second's `merge-pr` will sync the freshly-moved `main` and resolve. Don't block; just expect
 a transient conflict and re-nudge if needed.
 
-**Re-survey the backlog every ~5 merges — the queue is NOT static.** Every PR you land tends to spawn
+**Re-survey the backlog on a counted cadence — the queue is NOT static.** Every PR you land tends to spawn
 more issues: `merge-pr` files deferred work as follow-ups and workers file off-scope discoveries. So
 the open-issue set *grows as you drain it*, and newcomers are often small and in areas your current
-workers don't hold — exactly what breaks a same-area logjam. Re-run the Step 2 survey roughly every 5
-merges (or sooner if refills cluster into one area or the queue looks empty), fold newcomers in (small-
-first, area-tagged, eligibility-checked), and note what changed. Keep a **merge counter** in the state
-file (record the count at the last refresh) so a `loop` re-fire knows when the next refresh is due.
+workers don't hold — exactly what breaks a same-area logjam. Whether a survey is due is a registered
+decision over the counts `fleet-counters.sh` keeps, asked after every merge you record:
+
+```bash
+scripts/fleet-counters.sh "$STATE_FILE" state | <kit>/scripts/decide.sh autodev.cadence
+```
+
+`resurvey` → re-run the Step 2 survey, fold newcomers in (small-first, area-tagged,
+eligibility-checked), note what changed, then `scripts/fleet-counters.sh "$STATE_FILE" surveyed`.
+`steady` → not yet. The cadence integer lives in `scripts/cadence-verdict.sh` and is a floor, not a
+ceiling: survey sooner when refills cluster into one area or the queue looks empty. Because the
+count is in a file and not in your context, a `loop` re-fire or a compaction cannot lose it.
 
 **The harness compacts you — you don't compact yourself.** No model has a tool that runs it; a
 built-in slash command fires only when a user types it, so the supervisor's context is bounded instead by the
@@ -131,16 +171,20 @@ BOUND`, not restated here). The one standing rule: the first action after any co
 instead of amnesia. A compaction landing mid-dispatch is not a new hazard — Step 3's dispatch-time
 guard exists precisely because one can land between dispatching a worker and recording it.
 
-**Re-survey at once — not at the next ~5 — when a merged issue's row carried `blocking=`.** That
+**Re-survey at once — not at the next counted one — when a merged issue's row carried `blocking=`.** That
+is what `merged <issue> --blocking` records, and the cadence decision answers `resurvey` for it
+whatever the count. That
 issue was holding its blockees, and they entered the frontier the moment it landed. Waiting out the
 usual counter leaves them held and up to N-1 slots idle, which on a small backlog is the whole
 fleet. Same for an issue you see get unassigned. The `deps=` column is what tells you which merges
 are worth an immediate refresh and which are not.
 
-**Report the pressure, don't act on it.** At each re-survey, note two numbers since the run started:
+**Report the pressure, don't act on it.** At each re-survey, run
+`scripts/fleet-counters.sh "$STATE_FILE" summary`: it prints the two numbers since the run started,
 issues **closed by merges** and issues **filed by the fleet**. When filings meet or exceed closes, the
 run is treading water — the fleet is converting one queue into another, and no amount of parallelism
-fixes that. Say it in the next report (*"12 merged, 13 filed — the queue is not draining"*) and let the
+fixes that — and the summary says so in a line of its own (*"12 merged, 13 filed — the queue is not
+draining"*). Quote that line in the next report and let the
 owner decide; the fix is a triage pass (`triage-backlog`) or a rescoped root, and both are decisions
 that belong to them. Don't respond by suppressing filings — a worker that silently drops off-scope
 finds breaks the guarantee that makes the backlog truthful, and trades a visible problem for an

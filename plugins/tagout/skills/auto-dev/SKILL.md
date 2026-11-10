@@ -85,7 +85,7 @@ Track these as todos. Steps 4–6 are the long-running supervision loop.
 1. **Preconditions & profile** — `gh` works; load the repo profile via `init`.
 2. **Build the work queue** — survey open issues, filter to eligible, order small→medium, persist a state file.
 3. **Dispatch the first N workers** — area-isolated, using the worker-prompt contract.
-4. **Supervise (loop)** — on every report / idle notification: reconcile against GitHub, re-drive any merge stalled at "ready", retire merged workers, refill slots from the queue; **re-survey the backlog (Step 2) every ~5 merges**.
+4. **Supervise (loop)** — on every report / idle notification: reconcile against GitHub, re-drive any merge stalled at "ready", retire merged workers, refill slots from the queue; **re-survey the backlog (Step 2) when the cadence decision says so**.
 5. **Heartbeat** — keep a self-paced wakeup armed (via `loop`) as the safety net; poll CI only while actively driving a merge.
 6. **Stop & recap** — when the queue drains (or the user stops), let the last workers finish, then close with the shared recap shape: merged PRs, filed follow-ups, anything blocked.
 

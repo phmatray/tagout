@@ -21,7 +21,9 @@ summary is the only place anyone sees that before the file is discarded. Name ev
 did not land, and the stop gate does not count it as undrained.
 
 **Remove the state file** at its pinned path (Step 2) once the queue has fully drained — `rm -f
-"${AUTODEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/tagout/auto-dev/<host>/<owner>/<repo>.md"`.
+"${AUTODEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/tagout/auto-dev/<host>/<owner>/<repo>.md"`
+— and its counts with it, after quoting them: `scripts/fleet-counters.sh "$STATE_FILE" summary` for
+the totals this recap reports, then `scripts/fleet-counters.sh "$STATE_FILE" clear`.
 This is what `hooks/autodev-stop-gate.sh` (#417) reads as "no fleet is running here": its positive
 evidence is the file's presence, so leaving a drained fleet's file behind would leave the gate
 believing work is still undrained the next time a session tries to stop in this repo. Don't remove it

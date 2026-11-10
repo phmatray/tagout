@@ -75,7 +75,7 @@ collide on one file. The filesystem is the separator instead, so two repositorie
 contend for one path. Keep it small and current:
 
 ```markdown
-# auto-dev state — <repo>, N=<concurrency> · merges: <total> · queue last refreshed @ <merge# of last refresh>
+# auto-dev state — <repo>, N=<concurrency> · counts: scripts/fleet-counters.sh <this file> summary
 ## In flight
 - Slot A → #<n> (<area>) — <phase: implementing / PARTIAL ×<k> → resumed / PR #<pr> ready→merging / merged>
 - Slot B → ...

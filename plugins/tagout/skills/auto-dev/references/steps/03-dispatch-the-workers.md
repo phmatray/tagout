@@ -223,9 +223,11 @@ folding it into `DETAIL:`, and treat a `RED` as a reason to look before dispatch
 cancelled by the next merge in the train is the common
 case): record it as-is, and never upgrade it to green.
 
-**A streak of `unverified` is a finding (#479).** Keep a running count of consecutive `unverified`
-`BASE:` lines on the state board (reset by any `green` or `RED`). At **three** in a row, write
-`base health unchecked for N merges (<reason>)` on the board and carry it into Step 6's recap
+**A streak of `unverified` is a finding (#479).** Hand every trusted (or re-derived) `BASE:` line
+to `scripts/fleet-counters.sh "$STATE_FILE" base '<line>'`: it keeps the running count of
+consecutive `unverified` lines (reset by any `green` or `RED`), refuses a line outside the grammar
+instead of counting it, and once the streak is long enough to be a finding prints
+`base health unchecked for N merges (<reason>)`. Write that line on the board when it appears and carry it into Step 6's recap
 under **Assumed · skipped · unverified** — twelve merges of one run each said `unverified
 (query-failed)` and filled the board with rows that read like diligence while the base went red
 twice. The token names the remedy: `query-failed`/`api-404` is the host (the helper's by-sha
