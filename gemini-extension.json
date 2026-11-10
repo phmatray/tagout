@@ -16,7 +16,10 @@
       "args": [
         "AdrMcp",
         "--yes"
-      ]
+      ],
+      "env": {
+        "DOTNET_hostBuilder__reloadConfigOnChange": "false"
+      }
     }
   }
 }
