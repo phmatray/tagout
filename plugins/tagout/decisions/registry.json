@@ -57,6 +57,17 @@
       "stdin": true,
       "verdict": { "source": "stdout-json",
                    "vocabulary": ["resurvey","steady"] }
+    },
+    {
+      "id": "merge.approval",
+      "issue": 740,
+      "program": { "kind": "exec", "path": "skills/_shared/scripts/merge-approval.sh" },
+      "shape":   null,
+      "owner":   "skills/auto-dev/references/steps/03-dispatch-the-workers.md",
+      "suites":  ["tests/merge-approval/test.sh", "tests/decisions/test.sh"],
+      "stdin": true,
+      "verdict": { "source": "stdout-json",
+                   "vocabulary": ["land","hold"] }
     }
   ],
   "not_decisions": {
