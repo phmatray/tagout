@@ -140,6 +140,22 @@ out=$(run_check "$WORK/repo"); rc=$?
   && ok "h. || true / || : -- accept, the pipeline's status is discarded outright" \
   || { bad "h. expected rc=0, silent, got rc=$rc: $out"; }
 
+# ------------------------------------ i0. a recipe in a skill reference, and a hook -> REFUSED
+#
+# skills/ and hooks/ are scan roots too: a fenced recipe an agent pastes races like a suite does.
+scaffold
+mkdir -p "$WORK/repo/skills/x/references" "$WORK/repo/hooks"
+printf '%s\n' '```bash' 'git worktree list --porcelain | grep -Fxq "branch refs/heads/$BRANCH"' '```' \
+  > "$WORK/repo/skills/x/references/recipe.md"
+printf '%s\n' 'git status --porcelain | grep -q .' > "$WORK/repo/hooks/gate.sh"
+out=$(run_check "$WORK/repo"); rc=$?
+if [ "$rc" -eq 1 ] && grep -qF 'skills/x/references/recipe.md:2' <<<"$out" \
+   && grep -qF 'hooks/gate.sh:1' <<<"$out"; then
+  ok "i0. the shape in a skill's markdown recipe and in a hook -- REFUSED under skills/ and hooks/"
+else
+  bad "i0. expected rc=1 naming skills/x/references/recipe.md:2 and hooks/gate.sh:1, got rc=$rc: $out"
+fi
+
 # --------------------------------------------- i. find piped into grep -q, both scan roots
 scaffold
 printf '%s\n' 'find "$d" -name x | grep -q .' > "$WORK/repo/tests/fixture/i.sh"

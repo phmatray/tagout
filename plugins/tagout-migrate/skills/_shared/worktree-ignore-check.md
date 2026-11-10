@@ -132,7 +132,7 @@ the main checkout's root by hand instead, with the same recipe `main-worktree.sh
 ```bash
 WT_LIST=$(git -C <anywhere-in-the-repo> worktree list --porcelain)
 REPO_ROOT=$(printf '%s\n' "$WT_LIST" | sed -n '1s/^worktree //p')
-printf '%s\n' "$WT_LIST" | sed -n '2p' | grep -qx bare && REPO_ROOT=''   # bare: nothing to check
+[ "$(printf '%s\n' "$WT_LIST" | sed -n '2p')" = bare ] && REPO_ROOT=''   # bare: nothing to check
 
 [ -n "$REPO_ROOT" ] && git -C "$REPO_ROOT" check-ignore -q .claude/worktrees/ \
                     && git -C "$REPO_ROOT" check-ignore -q .worktrees/

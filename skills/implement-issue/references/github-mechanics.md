@@ -321,7 +321,9 @@ one that produced the incident in Step 4: being in *someone else's* worktree pas
 # --porcelain + grep -Fxq matches the branch column EXACTLY. A bare `grep -F "$BRANCH"` matches
 # substrings and the path column as well, so `feat/26-guard` would "resume" into
 # feat/26-guarded-git-writes' worktree — the wrong-checkout failure this is meant to prevent.
-git worktree list --porcelain | grep -Fxq "branch refs/heads/$BRANCH"   # THIS issue's worktree?
+# A herestring, not a pipe: `grep -q` exits on its first match, and a `git worktree list` still
+# writing would die of SIGPIPE and report this issue's own worktree as absent (#391).
+grep -Fxq "branch refs/heads/$BRANCH" <<<"$(git worktree list --porcelain)"   # THIS issue's worktree?
 gh pr list --head "$BRANCH" --json number,url,isDraft --jq '.[0]'       # PR already open?
 
 WORKTREE=<absolute path of that worktree>

@@ -12,7 +12,8 @@ reports a failure that did not happen. Measured on `tests/survey/test.sh` case 1
 #48 shipped the general doctrine (`tests/_lib.sh`'s `first_match`/`any_match`) and #123 widened one
 anti-recurrence guard (`tests/xunit-v3/test.sh` section 10) -- but only for the literal producer
 `find`, in three files. This gate generalises both: any streaming producer -- external, or the
-shell's own `printf`/`echo` (see PRODUCERS) -- anywhere under `tests/` and `scripts/`.
+shell's own `printf`/`echo` (see PRODUCERS) -- anywhere under `tests/`, `scripts/`, `skills/` and
+`hooks/` (SCAN_ROOTS), fenced recipes in their markdown included.
 
 THE SHAPE IT FLAGS: a line piping a producer into a `grep` call whose flags include `q`
 (quiet -- exit on first match, the thing that races) -- including a producer wrapped in a `sudo`,
@@ -57,6 +58,12 @@ PRODUCERS = frozenset(
 )
 
 QUIET_LONG = frozenset(("--quiet", "--silent"))
+
+# Where the shape is looked for. `skills/` and `hooks/` joined `tests/` and `scripts/` once the
+# builtin exemption fell: a recipe an agent pastes from a skill reference races exactly like a
+# suite does, and three did -- one of them the lookup that decides whether an issue already has a
+# worktree, where a lost race reads as "no" and a second worktree gets created.
+SCAN_ROOTS = ("tests", "scripts", "skills", "hooks")
 
 SELF_PATH = "scripts/sigpipe-idiom-check.py"
 FIXTURE_PREFIX = "tests/sigpipe-idiom/"
@@ -370,7 +377,7 @@ def tracked_files(repo):
     gitbin = "git"
     try:
         out = subprocess.run(
-            [gitbin, "-C", str(repo), "ls-files", "-z", "--", "tests", "scripts"],
+            [gitbin, "-C", str(repo), "ls-files", "-z", "--", *SCAN_ROOTS],
             capture_output=True, check=True,
         ).stdout
         names = [n for n in out.decode("utf-8", "replace").split("\0") if n]
@@ -380,7 +387,7 @@ def tracked_files(repo):
         pass
 
     names = []
-    for sub in ("tests", "scripts"):
+    for sub in SCAN_ROOTS:
         base = repo / sub
         if not base.is_dir():
             continue
