@@ -31,6 +31,7 @@ grain each field wants. Most fields map straight from `detect`'s output; these n
 | **Build/test/format commands** | Don't transcribe CI noise verbatim — pick the *real gates* from the CI-gates lines (the `build`, `test`, and `--verify-no-changes`/`--check` commands CI fails on) and the canonical local commands for the stack (table below). Read `package.json` scripts (detect prints them) for Node repos rather than guessing. |
 | **Single-suite filter** | The fast per-task command the lifecycle skills lean on (e.g. `dotnet test --filter "FullyQualifiedName~<Suite>"`, `cargo test <name>`, `pytest -k`, `go test ./pkg/...`). |
 | **Integration style** | Infer from `detect`'s subjects + branch protection: `… (#N)` subjects on a linear `main` ⇒ **squash**; merge commits ⇒ **merge**; linear with neither ⇒ **rebase**. |
+| **Merge approval** | **Never inferred, never defaulted.** Write the `**Merge approval:**` bullet only when the owner asked for it, with exactly `owner` or `unattended`; otherwise leave the bullet out — the template's placeholder left in place holds every PR. On `--refresh`, carry an existing bullet over **verbatim**: it is the owner's decision, not a fact `detect` can re-derive, and dropping it turns a repository that requires a human merge back into one that merges unattended. |
 | **Labels** | Classify the live strings detect listed into *type* (bug/enhancement), *priority* tiers, *effort* sizes, and *scope/area*. Record the **exact** strings — the skills apply them verbatim. If an axis has **no** live labels, record "none" and **name the remedy**: `init`'s manifest half creates the taxonomy (see below). Never invent one here. |
 | **Conflict hot-spots** | From the candidates + the build system: version file (**take-higher**), changelog/docs (**union**), lockfiles & generated/snapshot files (**regenerate**, never hand-merge). State the rule per file. |
 | **Architecture grain** | Distil the `CLAUDE.md`/`README` hits into the few "keep X agnostic / touch layers in order / never do Y" rules that should shape a plan. Blank-with-TODO is fine if the repo states none. |
@@ -61,7 +62,7 @@ bash "<skill-dir>/../init/scripts/repo-profile.sh" show >/dev/null && echo "prof
 
 Keep **every** schema section; leave an explicit `<!-- TODO: <what's needed and where to find it> -->`
 for anything `detect` couldn't prove. On `--refresh`, preserve human-filled TODO answers you can still see
-in the existing file.
+in the existing file, and the `**Merge approval:**` bullet exactly as it stands.
 
 Then report, short and concrete:
 - Where it lives and whether you generated it or read it back.

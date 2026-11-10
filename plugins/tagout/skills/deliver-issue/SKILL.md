@@ -97,7 +97,7 @@ Create a task per item and work them in order.
 2. **Resolve the issue** — file, seed, or verify; stop on a closed, blocked or assigned issue, and on a decomposed filing.
 3. **Phase 1** — dispatch the worker command for `#N` in a fresh sub-agent; read its report line; re-dispatch on `PARTIAL` (at most three times).
 4. **Wait for CI** — in this context, with `wait-ci.sh`; the worker never waits.
-5. **Phase 2** — unless `--stop-at ready`: dispatch the merge command for the PR in a fresh sub-agent; read its report line.
+5. **Phase 2** — unless `--stop-at ready` or the profile reserves merges for the owner (`merge.approval`): dispatch the merge command for the PR in a fresh sub-agent; read its report line.
 6. **Recap** — the shared shape: issue, PR, squash sha, base-CI verdict, follow-ups filed, the hand-off.
 
 ---
@@ -232,6 +232,17 @@ told the verdict it starts from.
 `/merge-pr #<pr>`.
 
 ## Step 5 — Phase 2: land it, in a fresh context
+
+**First ask whether this repository lets an unattended run merge at all (#740)** — the same
+registered decision `auto-dev` asks before its phase 2, over the committed profile:
+
+```bash
+<kit>/skills/init/scripts/repo-profile.sh show | <kit>/scripts/decide.sh merge.approval
+```
+
+`hold` — or no verdict at all (a non-zero exit, an empty answer) — ends the run here exactly as
+`--stop-at ready` would: **dispatch nothing**, and go to Step 6 with the PR ready, the rule the
+program named, and the hand-off `/merge-pr #<pr>` for the owner. `land` continues below.
 
 Dispatch the **existing** merge command in a **new** sub-agent — never a `SendMessage` into the
 phase-1 agent; the fresh context is the saving — with the CI verdict pasted into the prompt so the

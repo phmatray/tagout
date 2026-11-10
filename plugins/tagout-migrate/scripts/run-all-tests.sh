@@ -351,6 +351,7 @@ add_suite "tests/decision-tally/test.sh"
 add_suite "tests/report-verdict/test.sh"
 
 add_suite "tests/fleet-counters/test.sh"
+add_suite "tests/merge-approval/test.sh"
 
 add_suite "tests/run-all-tests/test.sh"
 
