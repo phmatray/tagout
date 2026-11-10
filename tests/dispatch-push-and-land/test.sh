@@ -41,7 +41,7 @@ conjunction 'Resolve the conflict on PR #1350, push, then merge it once green.' 
 conjunction 'Invoke `auto-dev-merge` with args `<n>`. CI IS ALREADY GREEN — VERIFIED.' \
   && fail "the conjunction detector fires on the phase-2 template, which carries no push verb"
 
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
 
 # 1. Every dispatch template's prompt is free of the conjunction. A template is an `Agent(` call;

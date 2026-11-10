@@ -123,6 +123,7 @@ evidence than a `0 hits` from semantic search, and the recap has to let the owne
 ## Consumers
 
 - `skills/auto-dev/SKILL.md` — a worker's off-scope capture, and the retro's recorded-not-filed candidates, both face the bar before anything is filed
+- `skills/auto-dev/references/steps/06-stop-and-recap.md` — Step 6 of auto-dev, split out of its SKILL.md for progressive disclosure: the retro's `lessons:` candidates are recorded, not filed
 - `skills/create-issue/SKILL.md` — an idea discovered rather than handed in faces the bar before it becomes an issue
 - `skills/merge-pr/SKILL.md` — Step 6c puts each cluster of follow-ups to the bar before routing it
 - `skills/review-sessions/SKILL.md` — Step 6 applies the bar to every still-present cluster before filing

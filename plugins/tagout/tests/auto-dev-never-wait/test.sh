@@ -60,7 +60,7 @@ done
 # 2. skills/auto-dev/SKILL.md Step 4 recognizes a worker killed by an in-worker wait — all plan
 #    checkboxes ticked plus a deferral-shaped final line — and prescribes a tail prompt, not a
 #    restart, as the recovery.
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
 
 grep -qi "checkboxes.*ticked" "$SKILL_MD" \

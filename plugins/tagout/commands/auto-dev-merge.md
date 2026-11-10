@@ -35,7 +35,8 @@ sub-agent: one writer per worktree, and that writer is you.
 
 **Your first act, before you touch anything else: verify it actually worked.** Run
 `git rev-parse --show-toplevel` and compare it to the `SUPERVISOR_TOPLEVEL` value in this prompt,
-with the `worker-toplevel guard` block in `skills/auto-dev/SKILL.md` Step 3 (`WORKER_TOPLEVEL` =
+with the `worker-toplevel guard` block of auto-dev's Step 3 — the marked lines in
+`skills/auto-dev/references/steps/03-dispatch-the-workers.md`; read that block, not the file (`WORKER_TOPLEVEL` =
 your value, `SUPERVISOR_TOPLEVEL` = the prompt's). PROCEED → carry on normally. REFUSE (they match,
 or `git rev-parse` itself fails because this isn't a git directory at all) → **stop before touching
 anything** and your final message is: `ISSUE: <the issue #$1 closes> | PR: $1 | STATUS: BLOCKED |
