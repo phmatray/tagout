@@ -204,6 +204,9 @@ kit_init() {
   fi
   # Trap FIRST, then the probe: the probe can exit 1, and a directory created before the handler is
   # armed is stranded on the one path that is meant to be loud — eight suites' worth per CI run.
+  # Who armed the handler — see kit_cleanup for the forked child this is compared against. Empty on
+  # bash 3.2, which has no BASHPID; the comparison is then skipped and the handler behaves as before.
+  KIT_LIB_OWNER="${BASHPID:-}"
   trap kit_cleanup EXIT
   KIT_LIB_TMP=$(mktemp -d)
   kit_require_find_quit
@@ -241,6 +244,16 @@ kit_cleanup() {
   # would replace the status this handler exists to report.
   local rc=$?
   local g failed=0
+  # Only the shell that armed this handler may run it. A forked child — `( sleep 10; kill "$pid" ) &`,
+  # the watchdog shape — still carries the parent's EXIT trap for the instant between the fork and
+  # bash resetting it, and a SIGTERM landing in that instant runs THIS handler in the child: the
+  # suite's whole scratch tree is removed while the suite is still using it. Measured on
+  # tests/plan-freshness case C20 (the case whose script exits soonest, so its watchdog is killed
+  # soonest): `out.txt: No such file or directory`, 1 of 10 runs of the whole plan at 8 jobs, and
+  # 128 of 300 on a bare fork-then-kill loop under bash 5.2.
+  if [ -n "${BASHPID:-}" ] && [ -n "${KIT_LIB_OWNER:-}" ] && [ "$BASHPID" != "$KIT_LIB_OWNER" ]; then
+    exit "$rc"
+  fi
   [ -n "$KIT_LIB_TMP" ] && rm -rf "$KIT_LIB_TMP"
   # EVERY guard runs, then the status is decided. Exiting on the first failure hides the rest: with
   # ci-template's two guards registered in the order samples-then-template, a run that damaged BOTH

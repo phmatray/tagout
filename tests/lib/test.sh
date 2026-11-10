@@ -22,7 +22,9 @@
 #      narrowed to that instrument in #160, which is also what §13 exists to cover the remainder of;
 #  11. `kit_source` loads a helper and refuses, by name, one it cannot;
 #  12. no suite sources a shared helper unguarded — the anti-recurrence check for §11;
-#  13. no suite writes a literal `/tmp/…` path — a text-keyed lint, not a coverage claim (#160).
+#  13. no suite writes a literal `/tmp/…` path — a text-keyed lint, not a coverage claim (#160);
+#  14. a forked child killed before bash resets its inherited EXIT trap does not run the handler —
+#      the scratch tree survives a watchdog that is killed the instant it is started.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -1087,5 +1089,37 @@ if [ -n "$tmp_offenders" ]; then
   exit 1
 fi
 echo "  [13] no suite writes an un-exempted literal /tmp/… path"
+
+# ---------------------------------------------------------------------------
+# 14. The handler runs in the shell that armed it, and in no forked child of it.
+# ---------------------------------------------------------------------------
+# The watchdog shape `( sleep N; kill "$pid" ) &` followed at once by `kill "$dog"`: a SIGTERM that
+# lands between the fork and bash resetting the child's traps runs the PARENT's EXIT trap in the
+# child. Before the owner check, that removed the suite's whole scratch tree mid-run — measured on
+# tests/plan-freshness C20 under load, and at round 16 of a 300-round fork-then-kill loop.
+#
+# Driven deterministically rather than by racing a signal: the handler is CALLED in a subshell,
+# which is exactly the state the race produces (same function, different process). The tree must
+# survive it, and the subshell must still leave with its own status. bash 3.2 has no BASHPID, so
+# the owner check is skipped there by design and this case has nothing to assert.
+if [ -n "${BASHPID:-}" ]; then
+  r=$(run_suite '
+s=$(kit_scratch)
+: > "$s/evidence"
+sub=0
+( kit_cleanup ) || sub=$?
+[ -f "$s/evidence" ] && echo "SCRATCH-SURVIVED sub=$sub" || echo "SCRATCH-GONE sub=$sub"
+')
+  case "$r" in
+    0\|*"SCRATCH-SURVIVED sub=0"*) : ;;
+    *) echo "FAIL: kit_cleanup run in a forked child removed the scratch tree or changed the status: $r"; exit 1 ;;
+  esac
+  # And the owner itself still cleans up: the check must not turn the handler off altogether.
+  r=$(run_suite 's=$(kit_scratch); echo "TMP=$KIT_LIB_TMP"')
+  tmp_dir=${r#*TMP=}
+  [ -n "$tmp_dir" ] && [ ! -e "$tmp_dir" ] || {
+    echo "FAIL: the owning shell no longer removes its scratch tree at exit: $r"; exit 1; }
+fi
+echo "  [14] the handler run in a forked child leaves the scratch tree alone; the owner still removes it"
 
 echo "tests/_lib.sh golden test OK"
