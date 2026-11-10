@@ -39,6 +39,10 @@
   `dotnet test samples/LegacyShop` leg for a faster local pass; `--with-network` adds the
   network-dependent renovate.json acceptance gate CI also runs. `--list` prints the plan without
   running anything.
+  `--jobs auto` (or `--jobs N`) runs the plan's ~90 independent items in parallel and prints the
+  **same report in the same order** — measured ~6 min serial against ~1 min at 8 jobs — so prefer
+  `./scripts/run-all-tests.sh --jobs auto` for the pre-ready full pass; drop the flag only to
+  reproduce a failure in isolation.
 - **Single-suite filter (per-task, fast):** `./tests/<suite>/test.sh` — e.g. `./tests/preflight/test.sh`.
   This is the per-task command the lifecycle skills should lean on; suites are independent.
 - **Format/lint apply:** none — no formatter is configured for the shell/python/markdown sources.

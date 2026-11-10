@@ -15,7 +15,7 @@
 # PyYAML to, #170 Task 1), and refuses with a distinct exit code and message before running anything
 # whose failure would otherwise be misread as a real regression.
 #
-# Usage: scripts/run-all-tests.sh [--quick] [--with-network] [--list]
+# Usage: scripts/run-all-tests.sh [--quick] [--with-network] [--list] [--jobs N|auto]
 #   --quick        skip the dotnet fixture build/test (samples/LegacyShop) — everything else runs.
 #                  Also skips the prerequisites declared `for: run-all-tests` (the .NET 6 runtime,
 #                  #642), since that fixture is the only thing on this list that needs it.
@@ -23,6 +23,14 @@
 #                  parse sweep under a real bash 3.2, which pulls `bash:3.2` through Docker (#144);
 #                  both need network access, so both are skipped by default and this script also
 #                  runs offline.
+#   --jobs N|auto  run up to N plan items at once (`auto` = this machine's cores, capped at 8).
+#                  The default is 1, and the REPORT is the same at any N: `ok`/`FAIL` lines come
+#                  out in plan order, the first failure in plan order is the one named, and the
+#                  exit codes below do not change. What changes is wall-clock — the plan is ~90
+#                  independent items, measured at ~6 min serial against ~1 min at 8 — and that an
+#                  item AFTER the failing one may already have run. Items still in flight when a
+#                  failure is reported are left to finish rather than killed, so no suite is cut
+#                  off halfway through its own cleanup.
 #   --list         print the plan (one `gate <cmd>` / `suite <path>` line per item) and exit 0.
 #                  Does not touch prerequisites, so it is cheap and always available — this is what
 #                  tests/run-all-tests/test.sh's anti-drift case relies on.
@@ -43,13 +51,37 @@ cd "$KIT_DIR"
 QUICK=0
 WITH_NETWORK=0
 LIST=0
-for arg in "$@"; do
-  case "$arg" in
+JOBS=1
+# `auto` asks the machine: nproc (Linux, Git Bash), then getconf (macOS has no nproc), then sysctl,
+# and 1 when none answers. Capped at 8 — past that the suites contend for the disk more than for a
+# core, and several of them assert on wall-clock deadlines.
+auto_jobs() {
+  local n
+  n=$(nproc 2>/dev/null) || n=$(getconf _NPROCESSORS_ONLN 2>/dev/null) || n=$(sysctl -n hw.ncpu 2>/dev/null) || n=1
+  case "$n" in ''|*[!0-9]*) n=1 ;; esac
+  [ "$n" -ge 1 ] || n=1
+  [ "$n" -le 8 ] || n=8
+  printf '%s\n' "$n"
+}
+set_jobs() {
+  case "$1" in
+    auto) JOBS=$(auto_jobs) ;;
+    ''|*[!0-9]*|0*) printf 'run-all-tests.sh: --jobs takes a positive integer or `auto`, got "%s"\n' "$1" >&2; exit 1 ;;
+    *) JOBS="$1" ;;
+  esac
+}
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --quick) QUICK=1 ;;
     --with-network) WITH_NETWORK=1 ;;
     --list) LIST=1 ;;
-    *) printf 'run-all-tests.sh: unknown flag %s\n' "$arg" >&2; exit 1 ;;
+    --jobs)
+      [ "$#" -ge 2 ] || { printf 'run-all-tests.sh: --jobs needs a value (a positive integer or `auto`)\n' >&2; exit 1; }
+      set_jobs "$2"; shift ;;
+    --jobs=*) set_jobs "${1#--jobs=}" ;;
+    *) printf 'run-all-tests.sh: unknown flag %s\n' "$1" >&2; exit 1 ;;
   esac
+  shift
 done
 
 # --- The plan: ONE ordered list, transcribed from .github/workflows/ci.yml's `kit` job in step
@@ -370,10 +402,71 @@ run_item() {
 
 gate_count=0
 suite_count=0
-for i in "${!ITEM_KINDS[@]}"; do
-  if [ "${ITEM_KINDS[$i]}" = gate ]; then gate_count=$((gate_count + 1)); else suite_count=$((suite_count + 1)); fi
-  run_item "${ITEM_NAMES[$i]}" "${ITEM_CMDS[$i]}" || exit 1
+count_item() {
+  if [ "${ITEM_KINDS[$1]}" = gate ]; then gate_count=$((gate_count + 1)); else suite_count=$((suite_count + 1)); fi
+}
+
+if [ "$JOBS" -le 1 ]; then
+  for i in "${!ITEM_KINDS[@]}"; do
+    count_item "$i"
+    run_item "${ITEM_NAMES[$i]}" "${ITEM_CMDS[$i]}" || exit 1
+  done
+  printf 'ok  %d gates, %d suites\n' "$gate_count" "$suite_count"
+  exit 0
+fi
+
+# --- --jobs N: the same plan, the same report, up to N items in flight. Each item runs exactly as
+# run_item runs it (`bash -eo pipefail -c`), with its output and exit status written to a scratch
+# file instead of a variable. The loop below then does two things per pass: tops the pool back up
+# to N, and reports the HEAD of the plan if it has finished — so lines come out in plan order
+# however the items raced, and the failure that is named is the first one in plan order, not the
+# first one to finish. No `wait -n` (bash 4.3+): the status file's existence is the completion
+# signal, which is what keeps this parsing and running under macOS bash 3.2 (#131). The status is
+# written to a temporary name and renamed, so a file that exists is a file that is complete.
+JOBS_TMP=$(mktemp -d "${TMPDIR:-/tmp}/run-all-tests.XXXXXX") || { printf 'run-all-tests.sh: mktemp failed\n' >&2; exit 1; }
+trap 'rm -rf "$JOBS_TMP"' EXIT
+
+start_item() {
+  local i="$1"
+  (
+    bash -eo pipefail -c "${ITEM_CMDS[$i]}" > "$JOBS_TMP/$i.out" 2>&1 < /dev/null
+    printf '%s\n' "$?" > "$JOBS_TMP/$i.rc.tmp"
+    mv "$JOBS_TMP/$i.rc.tmp" "$JOBS_TMP/$i.rc"
+  ) &
+}
+
+finished_count() {
+  set -- "$JOBS_TMP"/*.rc
+  if [ -e "$1" ]; then printf '%s\n' "$#"; else printf '0\n'; fi
+}
+
+total=${#ITEM_KINDS[@]}
+started=0
+reported=0
+while [ "$reported" -lt "$total" ]; do
+  finished=$(finished_count)
+  while [ "$started" -lt "$total" ] && [ $((started - finished)) -lt "$JOBS" ]; do
+    start_item "$started"
+    started=$((started + 1))
+  done
+  if [ ! -f "$JOBS_TMP/$reported.rc" ]; then
+    sleep 0.1
+    continue
+  fi
+  count_item "$reported"
+  rc=$(cat "$JOBS_TMP/$reported.rc")
+  if [ "$rc" != 0 ]; then
+    printf 'FAIL %s\n' "${ITEM_NAMES[$reported]}"
+    tail -n 25 "$JOBS_TMP/$reported.out"
+    # Named first, drained second: the verdict is already on screen, and whatever is still in
+    # flight finishes its own cleanup rather than being killed halfway through it.
+    wait
+    exit 1
+  fi
+  printf 'ok   %s\n' "${ITEM_NAMES[$reported]}"
+  reported=$((reported + 1))
 done
+wait
 
 printf 'ok  %d gates, %d suites\n' "$gate_count" "$suite_count"
 exit 0
