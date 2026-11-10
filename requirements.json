@@ -22,7 +22,7 @@
     { "name": "frontend-design", "level": "required", "when": "before writing any rewritten UI" },
     { "name": "dataviz", "level": "required", "when": "before any dashboard (audit or report)" },
     { "name": "artifact-design", "level": "required", "when": "before any dashboard (audit or report)" },
-    { "name": "code-review", "level": "recommended", "requiredBy": ["implement-issue"], "token": "code-review", "when": "review pass before the ready-flip" },
+    { "name": "code-review", "level": "recommended", "requiredBy": ["implement-issue"], "token": "code-review", "when": "review pass before the ready-flip; absent → implement-issue Step 7 falls back to skills/_shared/standards-review-fallback.md (merge-pr's ready correction too)" },
     { "name": "archify", "level": "recommended", "when": "before drawing a legacy app's architecture — phase 1, the executive audit, the report; degrades to the mermaid fence the phase already writes" }
   ]
 }
