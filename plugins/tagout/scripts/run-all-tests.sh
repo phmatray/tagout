@@ -246,7 +246,7 @@ out=$(bash "$KIT/skills/init/scripts/repo-profile.sh" show "$PWD") || rc=$?
 [ "$rc" = 3 ] && [ "$out" = "NO_PROFILE" ]
 for g in guarded-commit guarded-push guarded-merge; do
   script="$KIT/skills/implement-issue/scripts/$g.sh"
-  bash "$script" --help | grep -q 'Exit codes:'
+  grep -q 'Exit codes:' <<<"$(bash "$script" --help)"
   if bash "$script" -C "$PWD" no-such-branch -- -m x 2>/dev/null; then
     echo "$g.sh accepted a path that is not a git repository"; exit 1
   fi

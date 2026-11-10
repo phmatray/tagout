@@ -167,7 +167,7 @@ echo "  ok: bad-arg — exit 3"
 
 # 16. --help documents the exit codes, matching the guards in skills/implement-issue/scripts and
 #     the plugin-install simulation in ci.yml that greps for exactly this.
-bash "$KIT/$GUARD" --help 2>&1 | grep -q 'Exit codes:' \
+grep -q 'Exit codes:' <<<"$(bash "$KIT/$GUARD" --help 2>&1)" \
   || { echo "FAIL [help]: --help does not document the exit codes"; exit 1; }
 echo "  ok: help — documents the exit codes"
 

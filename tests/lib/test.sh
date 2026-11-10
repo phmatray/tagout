@@ -1088,4 +1088,37 @@ if [ -n "$tmp_offenders" ]; then
 fi
 echo "  [13] no suite writes an un-exempted literal /tmp/… path"
 
+# ------------------------------------------------------------ 14. only the owner runs the cleanup
+#
+# A subshell inherits kit_cleanup until bash resets its traps, and a `( … ) &` killed inside that
+# window runs it — which deleted a suite's whole scratch root mid-run (tests/plan-freshness, about
+# one run in six under load). The race itself is 1 in 4000, so this case does not wait for it: it
+# calls the handler from a subshell directly, which is exactly what the race does, and asserts the
+# scratch root survives. Then it lets the owner exit and asserts the root is gone, so the guard
+# cannot be satisfied by a handler that simply stopped cleaning up.
+owner_probe="$scratch/owner-probe.sh"
+cat > "$owner_probe" <<'PROBE'
+#!/usr/bin/env bash
+set -euo pipefail
+. "$1/tests/_lib.sh"
+kit_init "$1"
+root="$KIT_LIB_TMP"
+printf '%s\n' "$root" > "$2"
+( kit_cleanup ) || true
+[ -d "$root" ] || { echo "CHILD-DELETED"; exit 7; }
+echo "SURVIVED"
+PROBE
+owner_rc=0
+owner_out=$(bash "$owner_probe" "$PWD" "$scratch/owner-root.txt" 2>&1) || owner_rc=$?
+if [ "${BASHPID:-}" = "" ]; then
+  echo "  [14] skipped — this bash has no BASHPID, so the owner guard is a documented no-op here"
+else
+  [ "$owner_rc" -eq 0 ] && [ "$owner_out" = "SURVIVED" ] || {
+    echo "FAIL: kit_cleanup ran from a subshell deleted the owner's scratch root (rc=$owner_rc): $owner_out"; exit 1; }
+  owner_root=$(cat "$scratch/owner-root.txt")
+  [ -n "$owner_root" ] && [ ! -e "$owner_root" ] || {
+    echo "FAIL: the owner's own exit left its scratch root behind: $owner_root"; exit 1; }
+  echo "  [14] kit_cleanup from a subshell leaves the scratch root alone; the owner's exit removes it"
+fi
+
 echo "tests/_lib.sh golden test OK"

@@ -471,7 +471,7 @@ echo "  ok: unreadable-target — exit 2"
 
 # 20. --help documents the exit codes, matching every other guard in this kit and the shape ci.yml
 #     greps for in its plugin-install simulation.
-bash "$KIT/$GUARD" --help 2>&1 | grep -q 'Exit codes:' \
+grep -q 'Exit codes:' <<<"$(bash "$KIT/$GUARD" --help 2>&1)" \
   || { echo "FAIL [help]: --help does not document the exit codes"; exit 1; }
 echo "  ok: help — documents the exit codes"
 

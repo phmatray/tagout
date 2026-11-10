@@ -54,8 +54,19 @@ from pathlib import Path
 # a parallel run of the whole plan red about every other time. A builtin gets no exemption: the
 # remedy is the same herestring, and it costs nothing.
 PRODUCERS = frozenset(
-    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq printf echo".split()
+    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq printf echo bash sh".split()
 )
+
+
+def is_producer(word):
+    """A command whose output can still be in flight when `grep -q` exits.
+
+    The named ones, plus anything that is plainly a script being run: a path held in a variable
+    (`"$KIT/$GUARD" --help`), or a `.sh`/`.py` file. `bash "$script" --help | grep -q 'Exit codes:'`
+    was the last shape seen failing in a parallel run -- a help text is several lines, and the
+    match is on one of the first.
+    """
+    return word in PRODUCERS or word.startswith("$") or word.endswith((".sh", ".py"))
 
 QUIET_LONG = frozenset(("--quiet", "--silent"))
 
@@ -137,6 +148,12 @@ def split_pipeline_clauses(line):
         if depth == 0:
             if c == ";":
                 flush_clause()
+                i += 1
+                continue
+            if c == "&" and ((i > 0 and line[i - 1] == ">") or (i + 1 < n and line[i + 1] == ">")):
+                # `2>&1`, `>&2`, `&>file`: a redirection, not a clause separator. Splitting here
+                # cut `script --help 2>&1 | grep -q …` in two and hid its producer.
+                buf.append(c)
                 i += 1
                 continue
             if c == "&":
@@ -317,7 +334,7 @@ def offending_line(line):
         if not grep_dash_q(clause[-1]):
             continue
         for idx, segment in enumerate(clause[:-1]):
-            if producer_word(segment, is_clause_head=(idx == 0)) in PRODUCERS:
+            if is_producer(producer_word(segment, is_clause_head=(idx == 0))):
                 return True
 
     # A `$(...)`/backtick substitution is opaque to split_pipeline_clauses (its paren-depth

@@ -204,6 +204,11 @@ kit_init() {
   fi
   # Trap FIRST, then the probe: the probe can exit 1, and a directory created before the handler is
   # armed is stranded on the one path that is meant to be loud — eight suites' worth per CI run.
+  # Who owns the scratch root: the process that is about to create it. kit_cleanup refuses to run
+  # anywhere else (see there). BASHPID, not $$ — $$ is the same number in every subshell, which is
+  # exactly what has to be told apart; bash 3.2 has no BASHPID, so there both sides fall back to $$
+  # and the guard is a no-op rather than a breakage.
+  KIT_LIB_OWNER="${BASHPID:-$$}"
   trap kit_cleanup EXIT
   KIT_LIB_TMP=$(mktemp -d)
   kit_require_find_quit
@@ -240,6 +245,12 @@ kit_cleanup() {
   # FIRST statement, always. A `rm`, an `echo`, even a `local d` with a command substitution in it
   # would replace the status this handler exists to report.
   local rc=$?
+  # Only the process that created the scratch root may delete it. A subshell inherits this handler
+  # until bash resets its traps, and a `( … ) &` that is killed in that window — a watchdog torn
+  # down the instant a fast case finishes — runs it: measured 1 in 4000 on a loaded machine, and it
+  # was tests/plan-freshness losing its whole scratch root mid-suite, about one run in six under
+  # load. The child exits with its own status and touches nothing.
+  [ "${BASHPID:-$$}" = "${KIT_LIB_OWNER:-${BASHPID:-$$}}" ] || exit "$rc"
   local g failed=0
   [ -n "$KIT_LIB_TMP" ] && rm -rf "$KIT_LIB_TMP"
   # EVERY guard runs, then the status is decided. Exiting on the first failure hides the rest: with
