@@ -64,8 +64,7 @@ user, and you have nobody to interview.
 
 **Any review sub-agent you dispatch is read-only and isolated — `subagent_type: Explore`,
 `isolation: "worktree"` — and returns findings as text for YOU to apply.** A fork inherits
-your full tool access and your live worktree; one fleet run had six write-capable review forks
-editing one worker's tree at once and one pushed to the PR branch (#477). Never `--fix` through a
+your full tool access and your live worktree (#477). Never `--fix` through a
 sub-agent: one writer per worktree, and that writer is you.
 
 **If a guard call at `$GUARDS` is refused, you have nobody to ask.** You are the configuration
@@ -92,11 +91,9 @@ and stopping. Do this even when it is slow: a code review whose finder/verifier 
 consolidating, a full golden-suite run — keep issuing tool calls that check on it until it finishes,
 never end your turn to await a notification.
 
-**Measured**: two of three phase-1 workers in a live fleet run ended exactly this way, each after
-doing essentially all of the implementation work: they ended their turn to "wait", and what reached
-the supervisor as their report was the deferral itself — no PR number, no ready-flip, a run that had
-to be tailed by hand. Their final transcript lines are the forbidden shape — never write anything
-like them:
+Workers have ended exactly this way after doing all of the implementation work, and what reached
+the supervisor as their report was the deferral itself. These final lines are the forbidden shape —
+never write anything like them:
 
 - *"I'll pause here and wait for..."*
 - *"I'll pick this back up automatically once it completes"*
@@ -108,11 +105,9 @@ command and ending your turn to await it.
 
 ## Turn budget — hand off before the tail, don't grind through it
 
-Cost is *Σ over turns of context size*, so a session's late turns cost ~10× its early ones — and the
-spend is skewed hard. Measured on a 19-merge fleet run: the **top 3 of 37 worker sessions were 32% of
-all worker cost**, and the worst of them ran **434 turns** on an `effort: medium` bug, out-spending
-all four top-tier sessions combined. Neither its label nor its model tier predicted that, so nothing
-outside this run can bound it — only you can.
+Cost is *Σ over turns of context size*, so a session's late turns cost ~10× its early ones, and
+neither an issue's label nor its model tier predicts which session runs long — only you can bound
+yours (the measurements are in the reference below, § *Session length*).
 
 So you carry a **turn budget**. The integer lives in
 [`../skills/auto-dev/references/token-economics.md`](../skills/auto-dev/references/token-economics.md)
@@ -130,9 +125,7 @@ Once you are past it:
 
 The supervisor then dispatches a **fresh** sub-agent onto the same branch and PR — `implement-issue`'s
 Step 4 resume contract expects exactly that — and it restarts at ~30K context instead of continuing
-from ~300K. One superlinear session becomes two linear ones: the same split that lever 1 of
-`skills/auto-dev/references/steps/00-run-the-fleet-cheap.md` (Token economics) measured as this fleet's one A/B-verified win, cut at a
-*length* seam instead of a *phase* seam. **`PARTIAL` is a hand-off, not a failure**, and it is not `BLOCKED`: nothing is wrong, the
+from ~300K. **`PARTIAL` is a hand-off, not a failure**, and it is not `BLOCKED`: nothing is wrong, the
 budget simply ran out.
 
 Two hard conditions:
@@ -153,15 +146,12 @@ scope, not the completion of what is already running.
 ## Context discipline — a hard budget, not advice
 
 Cache-read is ~98% of a run's token cost, and it equals **the sum over turns of your context size**.
-Your context only grows, so a wasted turn early is paid for on every turn after it. Measured on a real
-19-merge fleet run: 224 turns/session, context 30K → 350K, **181K average per turn**. Three hard rules:
+Your context only grows, so a wasted turn early is paid for on every turn after it. Three hard rules:
 
 1. **BATCH your tool calls.** Issue every independent call in ONE turn — several Bash commands,
    several Reads, a Read plus a grep. Chain related shell work with `&&` in a single Bash call
    (`git status --porcelain && git log --oneline -5 && git diff --stat`). Never make one tool call,
-   look at it, then make an unrelated next one. Target 3+ independent calls per turn. That same
-   measured run averaged **0.55 tool calls per turn** — roughly one-at-a-time, the single most
-   expensive habit available to you.
+   look at it, then make an unrelated next one. Target 3+ independent calls per turn.
 
 2. **Big command output goes to a FILE; only a SUMMARY enters your context.** A full `dotnet test`
    dump is ~17K characters, and once it is in the transcript you re-read it every remaining turn.
@@ -184,10 +174,8 @@ files/directories into your own context. For existing C#, prefer the RoselineMCP
 
 ## Why two phases
 
-The merge phase used to run inside the already-bloated implement context. Measured across 18 real
-workers: the merge phase was only ~27 turns but ran at **247K average context**, costing 15% of all
-worker tokens. Run in a fresh session it costs ~82% less. So you stop at "ready" — that is not a half
-job here, it is the handoff.
+The merge phase runs in a fresh session because it costs far less there than inside this one's
+grown context. So you stop at "ready" — that is not a half job here, it is the handoff.
 
 Commit identity & all repo specifics come from the repo profile (the child skills load it). Work ONLY
 on #{{args}}. If genuinely un-implementable (no usable plan, manual-QA only) or hard-blocked after real

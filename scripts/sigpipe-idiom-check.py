@@ -66,7 +66,9 @@ SCRIPT_SUFFIXES = (".sh",)
 
 
 def is_producer(word):
-    return word in PRODUCERS or word.endswith(SCRIPT_SUFFIXES)
+    # A path held in a variable (`"$KIT/$GUARD" --help | grep -q …`) is a script run for its output
+    # too; the suffix test cannot see it, so the leading `$` stands in.
+    return word in PRODUCERS or word.endswith(SCRIPT_SUFFIXES) or word.startswith("$")
 
 QUIET_LONG = frozenset(("--quiet", "--silent"))
 

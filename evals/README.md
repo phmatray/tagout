@@ -318,3 +318,43 @@ intents.** The genuinely *unmarked* query (no in-flight/land-now cue), `"the PR 
 fix it"`, defaults to **`implement-issue`** (the sync interpretation) — `merge-pr` never fired for it —
 so a bare "fix the conflicts" never accidentally *lands* a PR. No description gap found; no follow-up
 needed.
+
+## Behaviour: plan adherence (#739)
+
+Everything above measures whether a skill **fires**. This section measures one thing a skill
+**does** once it runs. `implement-issue` executes a plan task by task; each task names its files on
+a `**Files:**` line and its commit message in its final step
+([`plan-shape.md`](../skills/_shared/plan-shape.md)). [`behaviour/plan_adherence.py`](behaviour/plan_adherence.py)
+compares the two over merged pull requests: **a task is adherent when the commit carrying its
+message touches at least one file the task names.**
+
+| Read on | Pull requests | Adherent tasks | Outside the rate |
+|---|---|---|---|
+| 2026-11-10 — [`plan-adherence-2026-11-10.json`](results/behaviour/plan-adherence-2026-11-10.json) | 80 read (merged 2026-09-15 → 2026-11-10), 51 scored, 29 skipped | **64 / 64** (100%) | 23 with no matching commit, 8 naming no file |
+
+Read the last column before the third. The rate only covers a task that has both a named file and
+a commit whose subject is the plan's message; the 23 tasks **with no matching commit** are the
+finding here — the work landed, under a subject the plan did not give (several tasks folded into
+one commit, or a reworded subject), so file-level adherence could not be judged for them at all.
+A rate quoted without them overstates what was measured. The 29 skipped pull requests name no
+issue (23: dependency updates, release PRs, direct fixes) or close an issue that carries no plan (6).
+
+Two metrics from the original proposal are **not** here, each for a reason of method rather than
+of effort: *test-first order* is invisible in a history where a task is one commit holding both its
+test and its code, and a *false-done rate* needs required checks, which this repository does not
+have while branch protection is off.
+
+```bash
+# Collect (read-only `gh api` calls; writes one local file), then score offline.
+python3 evals/behaviour/plan_adherence.py collect --repo phmatray/tagout --last 80 --out bundle.json
+python3 evals/behaviour/plan_adherence.py score bundle.json            # exit 3 = nothing measured, no rate
+# Re-derive a published result from the pull requests it names:
+python3 evals/behaviour/plan_adherence.py collect --repo phmatray/tagout \
+  --prs "$(jq -r '.prs | join(",")' evals/results/behaviour/plan-adherence-2026-11-10.json)" --out bundle.json
+```
+
+The bundle is not committed: it is the plans and file lists of every pull request read, public data
+a result's own `prs` list rebuilds. `tests/plan-adherence/test.sh` drives `score` over fixture
+histories — an adherent task, a non-adherent one, an unmatched one, a task naming no file, two
+skips — and pins that a bundle in which nothing could be measured prints **no rate** rather than a
+percentage, the same refusal the trigger bench makes for a result it did not measure (#461).

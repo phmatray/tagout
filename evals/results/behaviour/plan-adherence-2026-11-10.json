@@ -1,0 +1,1643 @@
+{
+ "metric": "plan-adherence",
+ "repo": "phmatray/tagout",
+ "merged_from": "2026-09-15T09:57:31Z",
+ "merged_to": "2026-11-10T13:49:04Z",
+ "numerator": 64,
+ "denominator": 64,
+ "rate": 1.0,
+ "tasks_unmatched": 23,
+ "tasks_without_files": 8,
+ "prs_read": 80,
+ "prs_scored": 51,
+ "prs": [
+  621,
+  625,
+  626,
+  627,
+  628,
+  629,
+  630,
+  631,
+  632,
+  633,
+  638,
+  639,
+  646,
+  649,
+  650,
+  651,
+  655,
+  657,
+  660,
+  661,
+  662,
+  663,
+  664,
+  665,
+  669,
+  670,
+  671,
+  672,
+  673,
+  674,
+  675,
+  676,
+  677,
+  680,
+  681,
+  682,
+  683,
+  684,
+  685,
+  686,
+  687,
+  688,
+  690,
+  691,
+  692,
+  695,
+  696,
+  697,
+  698,
+  704,
+  705,
+  706,
+  707,
+  708,
+  709,
+  711,
+  714,
+  716,
+  717,
+  718,
+  719,
+  720,
+  721,
+  722,
+  726,
+  727,
+  729,
+  730,
+  732,
+  733,
+  735,
+  754,
+  756,
+  758,
+  759,
+  760,
+  761,
+  767,
+  768,
+  769
+ ],
+ "skipped": [
+  {
+   "pr": 768,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 759,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 758,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 756,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 754,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 735,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 722,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 720,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 733,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 721,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 718,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 719,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 697,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 717,
+   "reason": "issue #713 carries no plan (no `### Task N` block)"
+  },
+  {
+   "pr": 716,
+   "reason": "issue #715 carries no plan (no `### Task N` block)"
+  },
+  {
+   "pr": 711,
+   "reason": "issue #710 carries no plan (no `### Task N` block)"
+  },
+  {
+   "pr": 665,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 708,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 698,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 695,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 683,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 677,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 674,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 676,
+   "reason": "issue #653 carries no plan (no `### Task N` block)"
+  },
+  {
+   "pr": 675,
+   "reason": "issue #652 carries no plan (no `### Task N` block)"
+  },
+  {
+   "pr": 670,
+   "reason": "issue #654 carries no plan (no `### Task N` block)"
+  },
+  {
+   "pr": 669,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 639,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "pr": 621,
+   "reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  }
+ ],
+ "per_pr": [
+  {
+   "pr": 769,
+   "issue": 743,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "no_files",
+     "named": [],
+     "commit": null,
+     "message": null
+    },
+    {
+     "task": 2,
+     "verdict": "no_files",
+     "named": [],
+     "commit": null,
+     "message": "feat(hooks): opt-in strict mode refuses git writes when git-write-gate cannot run"
+    },
+    {
+     "task": 3,
+     "verdict": "no_files",
+     "named": [],
+     "commit": null,
+     "message": null
+    }
+   ]
+  },
+  {
+   "pr": 767,
+   "issue": 740,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "no_files",
+     "named": [],
+     "commit": "f5f38631",
+     "message": "feat(auto-dev): hold every PR for the owner when the profile asks for merge approval"
+    },
+    {
+     "task": 2,
+     "verdict": "no_files",
+     "named": [],
+     "commit": null,
+     "message": null
+    }
+   ]
+  },
+  {
+   "pr": 761,
+   "issue": 738,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "no_files",
+     "named": [],
+     "commit": null,
+     "message": null
+    },
+    {
+     "task": 2,
+     "verdict": "no_files",
+     "named": [],
+     "commit": "520367ca",
+     "message": "feat(implement-issue): fall back to the kit's own Standards reviewer when no code-review skill is loaded"
+    },
+    {
+     "task": 3,
+     "verdict": "no_files",
+     "named": [],
+     "commit": null,
+     "message": "docs(implement-issue): name the Standards-review fallback where prerequisites are listed"
+    }
+   ]
+  },
+  {
+   "pr": 760,
+   "issue": 736,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "scripts/context-cost.py",
+      "tests/context-cost/test.sh",
+      "tests/context-cost/fixtures/*.md",
+      "scripts/run-all-tests.sh",
+      ".github/workflows/ci.yml",
+      "decisions/registry.json",
+      "plugins/*/scripts/",
+      "./tests/context-cost/test.sh"
+     ],
+     "commit": "9a68ddfe",
+     "message": "feat(scripts): context-cost.py diffs /context captures to price the kit's standing cost"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "docs/install.md",
+      "./scripts/run-all-tests.sh"
+     ],
+     "commit": "a09e2253",
+     "message": "docs(install): what the kit costs a session, measured, and how to measure yours"
+    }
+   ]
+  },
+  {
+   "pr": 732,
+   "issue": 731,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/merge-pr/references/steps/01-preconditions.md",
+      "skills/merge-pr/references/steps/02-worktree.md",
+      "skills/merge-pr/references/steps/04-corrections-loop.md",
+      "tests/skills/test.sh"
+     ],
+     "commit": "183f0c61",
+     "message": "feat(merge-pr): a draft is flipped ready only through guarded-ready, after a review if none is recorded"
+    }
+   ]
+  },
+  {
+   "pr": 729,
+   "issue": 728,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "skills/implement-issue/scripts/post-review-check.sh",
+      "tests/post-review-check/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(implement-issue): post-review-check records a clean review on the branch"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "skills/implement-issue/scripts/guarded-ready.sh",
+      "tests/guarded-ready/test.sh",
+      ".github/workflows/ci.yml"
+     ],
+     "commit": null,
+     "message": "feat(implement-issue): guarded-ready refuses a ready-flip with no recorded review"
+    },
+    {
+     "task": 3,
+     "verdict": "unmatched",
+     "named": [
+      "skills/implement-issue/references/steps/09-verify-and-mark-ready.md",
+      "commands/auto-dev-worker.md",
+      "tests/skills/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(implement-issue): the ready-flip goes through guarded-ready"
+    }
+   ]
+  },
+  {
+   "pr": 730,
+   "issue": 724,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "7b89029a",
+     "message": "feat(review-sessions): report which skill references transcripts ever read"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "skills/review-sessions/SKILL.md",
+      "skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(review-sessions): quote unread and always-read references in the recap"
+    }
+   ]
+  },
+  {
+   "pr": 727,
+   "issue": 723,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "8c576ad1",
+     "message": "feat(review-sessions): harvest the owner's corrections as a user-correction signal"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "skills/review-sessions/SKILL.md",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(review-sessions): name the user-correction kind in the harvest contract and the skill"
+    }
+   ]
+  },
+  {
+   "pr": 726,
+   "issue": 725,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/review-sessions/SKILL.md",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "46c24930",
+     "message": "feat(review-sessions): a failure that recurs after a prose-only fix files for a barrier"
+    }
+   ]
+  },
+  {
+   "pr": 714,
+   "issue": 712,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh",
+      "harvest.py"
+     ],
+     "commit": null,
+     "message": "fix(review-sessions): a bare init skill call is not the kit's init (#712)"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "evals/trigger_eval.py",
+      "tests/evals-stage-skills/test.sh"
+     ],
+     "commit": "3c399bef",
+     "message": "fix(evals): bare init is not the kit's init (#712)"
+    }
+   ]
+  },
+  {
+   "pr": 709,
+   "issue": 703,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/profile-repo/SKILL.md",
+      "skills/setup-repo/SKILL.md",
+      "evals/profile-repo-trigger-eval.json",
+      "evals/setup-repo-trigger-eval.json",
+      "evals/init-trigger-eval.json",
+      "evals/run_all.py",
+      "evals/trigger_eval.py",
+      "tests/skills/check-frontmatter.py"
+     ],
+     "commit": "bd4073bf",
+     "message": "feat(init): delete profile-repo and setup-repo and fold their trigger contracts into init"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/auto-dev/SKILL.md",
+      "skills/create-issue/SKILL.md",
+      "skills/create-pr/SKILL.md",
+      "skills/deliver-issue/SKILL.md",
+      "skills/implement-issue/SKILL.md",
+      "skills/merge-pr/SKILL.md",
+      "skills/review-followups/SKILL.md",
+      "skills/review-sessions/SKILL.md",
+      "skills/review-sessions/scripts/harvest.py",
+      "skills/triage-backlog/SKILL.md",
+      "skills/_shared/recap.md",
+      "skills/_shared/preconditions.md",
+      "skills/_shared/tracker-contract.md",
+      "skills/_shared/worktree-ignore-check.md",
+      "skills/init/SKILL.md",
+      "skills/init/scripts/repo-profile.sh",
+      "skills/init/scripts/repo-setup.sh",
+      "skills/auto-dev/scripts/survey.sh",
+      "scripts/followups.py",
+      "scripts/recap-wiring-check.py",
+      "scripts/worktrees-ignored.sh",
+      "scripts/preflight.sh",
+      "scripts/main-worktree.sh",
+      "scripts/tracker.sh",
+      "scripts/tracker/azure-devops.sh",
+      "scripts/decision-check.py",
+      "scripts/run-all-tests.sh",
+      "requirements.json",
+      "decisions/registry.json",
+      "templates/repo-setup.yml",
+      ".github/repo-setup.yml",
+      ".gitignore",
+      "tests/release-title-gate/test.sh",
+      "tests/worktrees-ignored/test.sh",
+      "tests/preflight/test.sh",
+      "tests/repo-profile/test.sh",
+      "tests/repo-setup/test.sh",
+      "tests/skills/test.sh",
+      "tests/survey/test.sh",
+      "tests/adr/check-adrs.py"
+     ],
+     "commit": "9eef4f99",
+     "message": "feat(init): every skill, script and manifest hands off to init"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "AGENTS.md",
+      ".claude/CLAUDE.md",
+      "README.md",
+      "ARCHITECTURE.md",
+      "docs/methodology.md",
+      "docs/index.md",
+      "evals/README.md",
+      ".claude/skills/repo-profile.md",
+      "docs/adr/0001-the-repo-profile-is-committed-data-not-a-skill.md",
+      "docs/adr/0013-profile-repo-and-setup-repo-stay-a-reader-and-a-writer.md",
+      "tests/routing-context/test.sh"
+     ],
+     "commit": "3489b121",
+     "message": "feat(init): route AGENTS.md, the docs and the generated trees to init"
+    }
+   ]
+  },
+  {
+   "pr": 706,
+   "issue": 699,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "hooks/roseline-gate.sh",
+      "tests/roseline/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(hooks): roseline-gate fails open when the only marker is a .slnx (#699)"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "hooks/roseline-gate.sh",
+      ".csproj",
+      "tests/roseline/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(hooks): roseline-gate denial names the tools as installed and passes the project (#699)"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "plugins/tagout/hooks/roseline-gate.sh",
+      "plugins/tagout-migrate/hooks/roseline-gate.sh",
+      "docs/adr/0002-the-roseline-gate-fails-open-always.md"
+     ],
+     "commit": "4c759e4a",
+     "message": "chore(hooks): regenerate plugin copies of roseline-gate (#699)"
+    }
+   ]
+  },
+  {
+   "pr": 707,
+   "issue": 702,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/profile-repo/scripts/repo-profile.sh",
+      "skills/init/scripts/repo-profile.sh",
+      "skills/setup-repo/scripts/repo-setup.sh",
+      "skills/init/scripts/repo-setup.sh",
+      "skills/setup-repo/scripts/parse-manifest.py",
+      "skills/init/scripts/parse-manifest.py",
+      "skills/setup-repo/scripts/project-area-options.py",
+      "skills/init/scripts/project-area-options.py",
+      "skills/profile-repo/references/generating.md",
+      "skills/init/references/generating.md",
+      "skills/profile-repo/references/profile-template.md",
+      "skills/init/references/profile-template.md",
+      "tests/repo-profile/test.sh",
+      "tests/repo-setup/test.sh"
+     ],
+     "commit": "145420b0",
+     "message": "feat(init): move the profile and setup scripts under skills/init"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "skills/_shared/preconditions.md",
+      "skills/_shared/tracker-contract.md",
+      "skills/init/SKILL.md",
+      "skills/profile-repo/SKILL.md",
+      "skills/setup-repo/SKILL.md",
+      "skills/auto-dev/scripts/survey.sh",
+      "scripts/decision-check.py",
+      "scripts/main-worktree.sh",
+      "scripts/preflight.sh",
+      "scripts/run-all-tests.sh",
+      "scripts/tracker.sh",
+      "scripts/tracker/azure-devops.sh",
+      "decisions/registry.json",
+      "requirements.json",
+      "templates/repo-setup.yml",
+      ".github/repo-setup.yml",
+      ".github/workflows/ci.yml",
+      ".claude/skills/repo-profile.md",
+      "docs/adr/0001-the-repo-profile-is-committed-data-not-a-skill.md",
+      "tests/adr/check-adrs.py",
+      "tests/preflight/test.sh",
+      "tests/skills/test.sh",
+      "tests/survey/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(init): every consumer reads the profile and setup scripts from skills/init"
+    }
+   ]
+  },
+  {
+   "pr": 705,
+   "issue": 693,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "scripts/tracker.sh",
+      "scripts/tracker/azure-devops.sh",
+      "tests/tracker/test.sh"
+     ],
+     "commit": "676d521e",
+     "message": "refactor(tracker): dispatcher hands a backend the profile detail it already resolved"
+    }
+   ]
+  },
+  {
+   "pr": 704,
+   "issue": 701,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "docs/adr/0018-profile-repo-and-setup-repo-merge-into-init.md",
+      "docs/adr/0013-profile-repo-and-setup-repo-stay-a-reader-and-a-writer.md",
+      "docs/adr/README.md"
+     ],
+     "commit": "13302c98",
+     "message": "feat(init): record the merge of profile-repo and setup-repo into init (ADR 0018)"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/init/SKILL.md",
+      "evals/init-trigger-eval.json",
+      "evals/run_all.py",
+      "evals/trigger_eval.py"
+     ],
+     "commit": "8ea1760f",
+     "message": "feat(init): an init skill runs profile, plan, apply and refresh in one command"
+    },
+    {
+     "task": 3,
+     "verdict": "unmatched",
+     "named": [
+      "README.md",
+      "ARCHITECTURE.md",
+      "skills/_shared/recap.md",
+      ".github/repo-setup.yml",
+      ".claude/skills/repo-profile.md",
+      ".github/ISSUE_TEMPLATE/feature_request.yml",
+      ".github/ISSUE_TEMPLATE/bug_report.yml"
+     ],
+     "commit": null,
+     "message": "feat(init): route the README, ARCHITECTURE and recap table to init"
+    }
+   ]
+  },
+  {
+   "pr": 696,
+   "issue": 694,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/references/steps/07-review.md",
+      "tests/review-angle-isolation/test.sh"
+     ],
+     "commit": "94399bd7",
+     "message": "feat(implement-issue): a one-way-door diff is reviewed at high and marked in the PR"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/auto-dev/SKILL.md",
+      "tests/auto-dev-blocked-hold/test.sh",
+      "tests/autodev-stop-gate/test.sh"
+     ],
+     "commit": "6ad84f28",
+     "message": "feat(auto-dev): hold a one-way-door PR for the owner instead of landing it"
+    }
+   ]
+  },
+  {
+   "pr": 690,
+   "issue": 509,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/tracker/azure-devops.sh",
+      "decisions/registry.json",
+      "tests/tracker/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(tracker): Azure DevOps read verbs and the process-to-type map"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/tracker/azure-devops.sh",
+      "tests/tracker/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(tracker): Azure DevOps write verbs set the Markdown format with every description"
+    },
+    {
+     "task": 3,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/tracker/azure-devops.sh",
+      "tests/tracker/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(tracker): Azure DevOps native parent and predecessor links"
+    },
+    {
+     "task": 4,
+     "verdict": "adherent",
+     "named": [
+      "requirements.json",
+      "tests/preflight/test.sh"
+     ],
+     "commit": "7699bd57",
+     "message": "feat(tracker): az prerequisite for Azure DevOps create-issue"
+    }
+   ]
+  },
+  {
+   "pr": 692,
+   "issue": 508,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/tracker/gitlab.sh",
+      "decisions/registry.json",
+      "tests/tracker/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(tracker): GitLab read verbs over glab api"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/tracker/gitlab.sh",
+      "tests/tracker/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(tracker): GitLab write verbs — bodies sent from the file, never an argument"
+    },
+    {
+     "task": 3,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/tracker/gitlab.sh",
+      "tests/tracker/test.sh"
+     ],
+     "commit": null,
+     "message": "feat(tracker): GitLab link verbs answer fallback where the tier has no relation"
+    },
+    {
+     "task": 4,
+     "verdict": "adherent",
+     "named": [
+      "requirements.json",
+      "skills/profile-repo/scripts/repo-profile.sh",
+      ".gitlab/issue_templates/*",
+      "skills/create-issue/references/issue-template.md",
+      "tests/preflight/test.sh",
+      "tests/repo-profile/test.sh"
+     ],
+     "commit": "3e104a08",
+     "message": "feat(tracker): glab prerequisite and GitLab issue templates for create-issue"
+    }
+   ]
+  },
+  {
+   "pr": 691,
+   "issue": 689,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "docs/methodology.md",
+      "tests/methodology-drift/test.sh",
+      ".github/workflows/ci.yml",
+      "scripts/run-all-tests.sh",
+      "scripts/ci-wiring-check.py"
+     ],
+     "commit": "21a60a01",
+     "message": "docs(methodology): create-pr and debug-issue rows match their current behaviour after #636"
+    }
+   ]
+  },
+  {
+   "pr": 682,
+   "issue": 678,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/scripts/make-worktree.sh",
+      "tests/make-worktree-base/test.sh"
+     ],
+     "commit": "98c2d36f",
+     "message": "fix(implement-issue): branch worktrees off the remote default branch, not a hardcoded local main"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/references/steps/04-worktree.md",
+      "skills/implement-issue/SKILL.md"
+     ],
+     "commit": "a57cc9a7",
+     "message": "docs(implement-issue): say worktrees start from the resolved default branch"
+    }
+   ]
+  },
+  {
+   "pr": 684,
+   "issue": 636,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/create-pr/scripts/rewind-default.sh",
+      "tests/rewind-default/test.sh",
+      ".github/workflows/ci.yml",
+      "decisions/registry.json"
+     ],
+     "commit": "aa1cd1d7",
+     "message": "feat(create-pr): rewind-default.sh moves the local default back only once the pushed branch carries its commits"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "tests/create-pr/test.sh",
+      "skills/create-pr/references/steps/02-locate-the-work.md",
+      "skills/create-pr/references/steps/03-open.md",
+      "skills/create-pr/SKILL.md",
+      "evals/create-pr-trigger-eval.json",
+      "skills/debug-issue/SKILL.md",
+      "skills/_shared/recap.md",
+      "ARCHITECTURE.md"
+     ],
+     "commit": "94543471",
+     "message": "feat(create-pr): take a debug-issue fix off the default branch into a pull request"
+    }
+   ]
+  },
+  {
+   "pr": 688,
+   "issue": 596,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "tests/auto-dev-blocked-hold/test.sh",
+      "tests/auto-dev-blocked-hold/test.sh"
+     ],
+     "commit": "0d510df3",
+     "message": "test(auto-dev): pin the BLOCKED_BY pointer text in read-the-plan.md (#596)"
+    }
+   ]
+  },
+  {
+   "pr": 686,
+   "issue": 603,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/create-issue/scripts/wire-edges.sh",
+      "tracker.sh",
+      "tests/wire-edges/test.sh"
+     ],
+     "commit": "0bb97b8e",
+     "message": "fix(create-issue): wire-edges.sh resolves the tracker once and relays the backend's own dry-run format (#603)"
+    }
+   ]
+  },
+  {
+   "pr": 687,
+   "issue": 679,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      ".github/banner.svg",
+      ".github/banner.png",
+      "README.md"
+     ],
+     "commit": "ff9fbf29",
+     "message": "docs(readme): a Tagout wordmark banner in the lock-out-tag design system"
+    }
+   ]
+  },
+  {
+   "pr": 685,
+   "issue": 602,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "hooks/git-write-gate.sh",
+      "tests/git-gate/test.sh"
+     ],
+     "commit": "11ecb20a",
+     "message": "fix(git-write-gate): share the substitution-span walk between quote states (#602)"
+    }
+   ]
+  },
+  {
+   "pr": 680,
+   "issue": 641,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "tests/create-pr/test.sh"
+     ],
+     "commit": "8003b69d",
+     "message": "test(open-pr): run the draft flag and base out of open-pr.md under a stub gh"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "tests/pr-existence-guard/test.sh"
+     ],
+     "commit": "c01749a0",
+     "message": "test(open-pr): feed implement-issue's scaffold PR body to the PR-existence guard"
+    }
+   ]
+  },
+  {
+   "pr": 681,
+   "issue": 612,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "docs/_data/hosts.yml",
+      "README.md",
+      "README.md",
+      "tests/host-adapters/test.sh",
+      "tests/skills/test.sh"
+     ],
+     "commit": "5edd8e10",
+     "message": "feat(plugin): README and the host table lead with Tagout and install both plugins"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "docs/_config.yml",
+      "docs/index.md",
+      "docs/install.md",
+      "docs/methodology.md",
+      "PRODUCT.md",
+      "DESIGN.md"
+     ],
+     "commit": "64f63920",
+     "message": "feat(plugin): the site and the product docs lead with the lifecycle"
+    }
+   ]
+  },
+  {
+   "pr": 673,
+   "issue": 668,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/merge-pr/scripts/parent-decision-note.sh",
+      "tests/merge-pr-parent/test.sh"
+     ],
+     "commit": "2c4ce5e4",
+     "message": "feat(merge-pr): parent-decision-note.sh takes -R like its siblings"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "scripts/tracker.sh",
+      "scripts/tracker/github.sh",
+      "tests/tracker/test.sh"
+     ],
+     "commit": "a8ffe726",
+     "message": "feat(tracker): accept -R as an alias of --repo on the router and the verbs"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/scripts/guarded-commit.sh",
+      "skills/implement-issue/scripts/guarded-merge.sh",
+      "tests/guarded-git/test.sh"
+     ],
+     "commit": "8c9113ab",
+     "message": "fix(guards): print the usage line under a guarded-commit/merge refusal"
+    }
+   ]
+  },
+  {
+   "pr": 672,
+   "issue": 667,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "1df03437",
+     "message": "fix(review-sessions): count a hook-deny only for the kit's own gates"
+    }
+   ]
+  },
+  {
+   "pr": 671,
+   "issue": 666,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "hooks/roseline-gate.sh",
+      "tests/roseline/test.sh"
+     ],
+     "commit": "8c409ec6",
+     "message": "fix(hooks): namespace the roseline gate's one-shot marker"
+    }
+   ]
+  },
+  {
+   "pr": 633,
+   "issue": 624,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "evals/run_all.py",
+      "tests/evals-stage-skills/test.sh",
+      ".github/workflows/ci.yml",
+      "scripts/ci-wiring-check.py"
+     ],
+     "commit": "1393d802",
+     "message": "fix(evals): stage skills by copy so the eval runner starts on a Windows checkout (#624)"
+    }
+   ]
+  },
+  {
+   "pr": 663,
+   "issue": 656,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "tests/skills/test.sh",
+      "commands/auto-dev-worker.md"
+     ],
+     "commit": "a3dd6b21",
+     "message": "docs(auto-dev): state the nesting guarantee conditionally, with what to do when it doesn't hold"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "tests/skills/test.sh",
+      "skills/implement-issue/references/steps/03-execution-mode.md"
+     ],
+     "commit": "4bd1c56b",
+     "message": "docs(implement-issue): have a dispatched sub-agent verify its own edits landed before reporting success"
+    }
+   ]
+  },
+  {
+   "pr": 664,
+   "issue": 659,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/scripts/post-review-check.sh",
+      "plugins/tagout/skills/implement-issue/scripts/post-review-check.sh",
+      "tests/post-review-check/test.sh"
+     ],
+     "commit": "ec8b21a3",
+     "message": "fix(implement-issue): post-review-check.sh proves whether a code-review dispatch wrote past its own report"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "tests/post-review-check/test.sh"
+     ],
+     "commit": "225f03ea",
+     "message": "test(implement-issue): pin post-review-check.sh's dirty-tree, advanced-HEAD and wrong-branch cases"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/references/steps/07-review.md"
+     ],
+     "commit": "5c9712d3",
+     "message": "docs(implement-issue): Step 7 calls post-review-check.sh instead of a three-command memory aid"
+    }
+   ]
+  },
+  {
+   "pr": 662,
+   "issue": 658,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "hooks/git-write-gate.sh",
+      "plugins/tagout/hooks/git-write-gate.sh",
+      "plugins/tagout-migrate/hooks/git-write-gate.sh",
+      "tests/git-gate/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(hooks): the write-gate judges a shell's -c string and eval's argument (#<issue>)"
+    }
+   ]
+  },
+  {
+   "pr": 661,
+   "issue": 642,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/preflight.sh",
+      "requirements.json",
+      "plugins/tagout/requirements.json",
+      "plugins/tagout-migrate/requirements.json",
+      "plugins/tagout/scripts/preflight.sh",
+      "plugins/tagout-migrate/scripts/preflight.sh",
+      "tests/preflight/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(scripts): preflight checks a for-scoped prerequisite only when asked, and declares the .NET 6 runtime for run-all-tests (#N)"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "scripts/run-all-tests.sh",
+      "plugins/tagout/scripts/run-all-tests.sh",
+      "plugins/tagout-migrate/scripts/run-all-tests.sh",
+      ".claude/skills/repo-profile.md",
+      "tests/run-all-tests/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(scripts): run-all-tests refuses a missing .NET 6 runtime as a prerequisite instead of failing the LegacyShop gate (#N)"
+    }
+   ]
+  },
+  {
+   "pr": 657,
+   "issue": 644,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/scripts/_assert-branch.sh",
+      "tests/guarded-git/test.sh"
+     ],
+     "commit": "2c7c4ab1",
+     "message": "fix(implement-issue): name the recorded worktree path when the liveness guard finds it gone"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/scripts/_assert-branch.sh",
+      "tests/guarded-git/test.sh"
+     ],
+     "commit": "30ac12c1",
+     "message": "fix(implement-issue): let the liveness guard follow a branch into the live worktree that holds it"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "skills/auto-dev/SKILL.md",
+      "skills/auto-dev/scripts/release-branch.sh",
+      "commands/auto-dev-worker.md",
+      "commands/auto-dev-worker.toml",
+      "plugins/tagout/skills/auto-dev/SKILL.md",
+      "plugins/tagout/skills/auto-dev/scripts/release-branch.sh",
+      "plugins/tagout/commands/auto-dev-worker.md",
+      "plugins/tagout/skills/implement-issue/scripts/_assert-branch.sh"
+     ],
+     "commit": "b35c78e9",
+     "message": "fix(implement-issue): say where the second-worktree refusal and the record heal actually happen"
+    }
+   ]
+  },
+  {
+   "pr": 660,
+   "issue": 647,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/scripts/plan-freshness.sh",
+      "plugins/tagout/skills/implement-issue/scripts/plan-freshness.sh",
+      "tests/plan-freshness/test.sh"
+     ],
+     "commit": "74487b28",
+     "message": "fix(implement-issue): resolve plan paths through cat-file stdin so Git Bash cannot rewrite them (#647)"
+    }
+   ]
+  },
+  {
+   "pr": 655,
+   "issue": 645,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "plugins/tagout/skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "eda15055",
+     "message": "fix(review-sessions): harvest.py counts a tool-error only when a Bash call failed on its own, never a harness tool error"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/review-sessions/scripts/harvest.py",
+      "plugins/tagout/skills/review-sessions/scripts/harvest.py",
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "e7723e8b",
+     "message": "fix(review-sessions): harvest.py skips a quoted wait phrase, report line or nudge, and a deny line in output that did not fail"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "tests/review-sessions/test.sh"
+     ],
+     "commit": "567db29b",
+     "message": "fix(review-sessions): the harvest suite's own fixture no longer reads back as a suite failure"
+    }
+   ]
+  },
+  {
+   "pr": 651,
+   "issue": 640,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/_shared/new-recipe.md",
+      "skills/implement-issue/scripts/plan-freshness.sh",
+      "tests/plan-freshness/test.sh"
+     ],
+     "commit": "3f0fe2ad",
+     "message": "fix(implement-issue): read a path an earlier task creates as SKIP, not MISSING"
+    },
+    {
+     "task": 2,
+     "verdict": "unmatched",
+     "named": [
+      "skills/_shared/new-recipe.md"
+     ],
+     "commit": null,
+     "message": null
+    }
+   ]
+  },
+  {
+   "pr": 650,
+   "issue": 637,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "tests/tracker/test.sh",
+      "scripts/tracker/github.sh",
+      "scripts/tracker/contract.json"
+     ],
+     "commit": "9f07df62",
+     "message": "fix(tracker): report the origin remote's slug beside the canonical one in the repo verb"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "tests/skills/test.sh",
+      "skills/_shared/preconditions.md"
+     ],
+     "commit": "1782f942",
+     "message": "fix(preconditions): repoint a stale origin at Step 1 so issue and PR searches stop returning []"
+    }
+   ]
+  },
+  {
+   "pr": 649,
+   "issue": 648,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "tests/skills/check-shared-refs.py",
+      "tests/skills/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(tests): check-shared-refs.py prints its refusal on a non-UTF-8 stdout (#<this issue>)"
+    }
+   ]
+  },
+  {
+   "pr": 646,
+   "issue": 643,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "hooks/git-write-gate.sh",
+      "hooks/git-write-gate.sh",
+      "hooks/git-write-gate.sh",
+      "hooks/git-write-gate.sh",
+      "tests/git-gate/test.sh",
+      "plugins/tagout/hooks/git-write-gate.sh",
+      "plugins/tagout-migrate/hooks/git-write-gate.sh"
+     ],
+     "commit": "55ce85b1",
+     "message": "fix(hooks): the write-gate judges a sub-agent's GIT_GATE=off-prefixed write instead of allowing it"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "hooks/git-write-gate.sh",
+      "tests/git-gate/test.sh",
+      "plugins/tagout/hooks/git-write-gate.sh",
+      "plugins/tagout-migrate/hooks/git-write-gate.sh"
+     ],
+     "commit": "a06a9843",
+     "message": "fix(hooks): a sub-agent's write-gate denial names the guard fallback instead of the GIT_GATE=off prefix"
+    },
+    {
+     "task": 3,
+     "verdict": "adherent",
+     "named": [
+      "skills/_shared/guard-invocation.md",
+      "commands/auto-dev-worker.md",
+      "commands/auto-dev-merge.md",
+      "README.md",
+      "README.md",
+      "tests/git-gate/test.sh",
+      "plugins/tagout/commands/auto-dev-worker.md",
+      "plugins/tagout/commands/auto-dev-merge.md",
+      "plugins/tagout/skills/_shared/guard-invocation.md",
+      "plugins/tagout-migrate/"
+     ],
+     "commit": "2517d2e4",
+     "message": "fix(hooks): the worker, merge and guard doctrine name a GIT_GATE=off-prefixed write as forbidden"
+    }
+   ]
+  },
+  {
+   "pr": 629,
+   "issue": 578,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/implement-issue/references/steps/07-review.md"
+     ],
+     "commit": "8f2396da",
+     "message": "docs(implement-issue): name the code-review dispatch's write risk and require a post-review diff check"
+    }
+   ]
+  },
+  {
+   "pr": 627,
+   "issue": 601,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "tests/skills/test.sh",
+      "skills/implement-issue/references/steps/07-review.md",
+      "skills/implement-issue/references/steps/03-execution-mode.md",
+      "skills/implement-issue/references/spec-review.md",
+      "plugins/*/skills/implement-issue/"
+     ],
+     "commit": "99fa348c",
+     "message": "fix(implement-issue): resolve every review diff range against a fetched origin/main (#601)"
+    }
+   ]
+  },
+  {
+   "pr": 630,
+   "issue": 587,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "hooks/git-write-gate.sh",
+      "skills/implement-issue/scripts/plan-freshness.sh",
+      "tests/plan-freshness/test.sh"
+     ],
+     "commit": null,
+     "message": "fix(implement-issue): skip a backtick-quoted \")\" when pairing Files-line asides"
+    }
+   ]
+  },
+  {
+   "pr": 626,
+   "issue": 599,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "unmatched",
+     "named": [
+      "README.md",
+      "NEWNAME-does-not-exist.md"
+     ],
+     "commit": null,
+     "message": null
+    }
+   ]
+  },
+  {
+   "pr": 631,
+   "issue": 579,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "tests/run-all-tests/test.sh"
+     ],
+     "commit": "cd304c71",
+     "message": "fix(tests): run-all-tests' drift guard fails a coincidental first-line match instead of passing on it (#<issue>)"
+    }
+   ]
+  },
+  {
+   "pr": 632,
+   "issue": 586,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/merge-pr/scripts/base-run-verdict.sh",
+      "tests/merge-base-ci/test.sh"
+     ],
+     "commit": "8f74b844",
+     "message": "fix(merge-pr): name needs-approval in the post-merge base-run report"
+    }
+   ]
+  },
+  {
+   "pr": 628,
+   "issue": 622,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/merge-pr/scripts/approve-runs.sh",
+      "tests/approve-runs/test.sh",
+      "plugins/tagout/skills/merge-pr/scripts/approve-runs.sh"
+     ],
+     "commit": "3ac95cee",
+     "message": "fix(merge-pr): recognise this repo's own release automation so approve-runs can land the release PR (#622)"
+    }
+   ]
+  },
+  {
+   "pr": 625,
+   "issue": 623,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "scripts/decision-check.py",
+      "tests/decisions/test.sh",
+      "plugins/tagout/scripts/decision-check.py",
+      "plugins/tagout-migrate/scripts/decision-check.py"
+     ],
+     "commit": "e44c20d9",
+     "message": "fix(scripts): resolve bash through which() so decision-check reaches a verdict on Windows (#623)"
+    }
+   ]
+  },
+  {
+   "pr": 638,
+   "issue": 635,
+   "tasks": [
+    {
+     "task": 1,
+     "verdict": "adherent",
+     "named": [
+      "skills/_shared/open-pr.md",
+      "tests/pr-existence-guard/test.sh",
+      "skills/implement-issue/references/github-mechanics.md",
+      "skills/implement-issue/references/steps/04-worktree.md",
+      "skills/implement-issue/references/steps/05-open-the-draft-pr.md",
+      "skills/implement-issue/SKILL.md"
+     ],
+     "commit": "895f4485",
+     "message": "feat(create-pr): move the PR-open recipe into skills/_shared/open-pr.md, read by implement-issue Steps 4–5"
+    },
+    {
+     "task": 2,
+     "verdict": "adherent",
+     "named": [
+      "skills/create-pr/SKILL.md",
+      "skills/create-pr/references/steps/01-preconditions.md",
+      "skills/create-pr/references/steps/02-locate-the-work.md",
+      "skills/create-pr/references/steps/03-open.md",
+      "skills/create-pr/references/steps/04-recap.md",
+      "evals/create-pr-trigger-eval.json",
+      "tests/create-pr/test.sh",
+      "skills/_shared/open-pr.md",
+      "evals/run_all.py",
+      "evals/trigger_eval.py",
+      "README.md",
+      "AGENTS.md",
+      "skills/_shared/recap.md",
+      "ARCHITECTURE.md",
+      ".github/workflows/ci.yml",
+      ".github/repo-setup.yml",
+      ".claude/skills/repo-profile.md"
+     ],
+     "commit": "c48c393c",
+     "message": "feat(create-pr): open a pull request for a finished feature branch through the shared recipe"
+    }
+   ]
+  }
+ ]
+}
