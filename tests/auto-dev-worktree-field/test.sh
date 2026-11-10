@@ -27,7 +27,7 @@ kit_init "$KIT"
 
 fail() { echo "FAIL: $1"; exit 1; }
 
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
 
 # 1. Step 2's state-file schema example carries a '## Needs manual sweep' section with a one-line

@@ -310,7 +310,7 @@ echo "ok: usage_report.py consumes --main/--top values instead of reading them a
 # discover_transcripts() has reached workflow-nested transcripts (`subagents/workflows/wf_*/*.jsonl`)
 # since #382; the orchestrator's Cost accounting paragraph in SKILL.md must not keep telling it
 # they are uncounted, or the retro discounts a total that is complete.
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 if grep -q 'workflows", "wf_\*"' "$SCRIPT"; then
   if grep -q 'not yet counted' "$SKILL_MD"; then
     echo "FAIL: skills/auto-dev/SKILL.md still says workflow-nested sub-agents are 'not yet counted' while usage_report.py discovers them (#385)"; exit 1; fi

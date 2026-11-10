@@ -35,7 +35,8 @@ sub-agent: one writer per worktree, and that writer is you.
 
 **Your first act, before you touch anything else: verify it actually worked.** Run
 `git rev-parse --show-toplevel` and compare it to the `SUPERVISOR_TOPLEVEL` value in this prompt,
-with the `worker-toplevel guard` block in `skills/auto-dev/SKILL.md` Step 3 (`WORKER_TOPLEVEL` =
+with the `worker-toplevel guard` block of auto-dev's Step 3 — the marked lines in
+`skills/auto-dev/references/steps/03-dispatch-the-workers.md`; read that block, not the file (`WORKER_TOPLEVEL` =
 your value, `SUPERVISOR_TOPLEVEL` = the prompt's). PROCEED → carry on normally. REFUSE (they match,
 or `git rev-parse` itself fails because this isn't a git directory at all) → **stop before touching
 anything** and your final message is: `ISSUE: <the issue #$1 closes> | PR: $1 | STATUS: BLOCKED |
@@ -88,6 +89,8 @@ three outcomes for it. Carry that answer into the `BASE:` field verbatim — a r
 your own merge is YOUR finding, not the next worker's, and `unverified` (the run was cancelled by the
 next merge in the train, most often) is an answer to report, not a blank to omit.
 
-Your FINAL message must be this single line and nothing else:
+Your FINAL message must be this single line and nothing else. A program reads it, not a person:
+write `WORKTREE: cleaned up` — those two words and nothing after them — only when the worktree and
+the branch are both gone, and say what remains otherwise; any other text is filed for a manual sweep.
 
 ISSUE: <number of the issue this PR closes, digits only> | PR: $1 | STATUS: MERGED|BLOCKED|FAILED | DETAIL: <1–2 sentences> | FILED: <issues you opened, or none> | WORKTREE: <cleaned up / what remains> | BASE: <green | RED #<bug> | unverified: <why>>

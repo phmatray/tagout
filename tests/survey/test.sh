@@ -1237,7 +1237,7 @@ echo "ok: limit-window — a body-line blocker past a bounded gh issue list wind
 # documents is a column the supervisor will not act on. Step 4's re-survey trigger is pinned in the
 # same way — waiting the usual ~5 merges after landing a blocker leaves its blockees, and the slots
 # they would fill, idle.
-SKILL="$KIT/skills/auto-dev/SKILL.md"
+SKILL="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 [ -r "$SKILL" ] || { echo "FAIL: $SKILL missing"; exit 1; }
 for token in 'deps=' 'blocked_by=' 'parent(' 'blocking='; do
   grep -qF -- "$token" "$SKILL" || {

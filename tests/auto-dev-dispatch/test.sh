@@ -37,7 +37,7 @@ kit_init "$KIT"
 
 fail() { echo "FAIL: $1"; exit 1; }
 
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 WORKER_MD="$KIT/commands/auto-dev-worker.md"
 MERGE_MD="$KIT/commands/auto-dev-merge.md"
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
@@ -75,7 +75,7 @@ toplevel_fact_count=$(printf '%s\n' "$STEP3" | grep -cF 'SUPERVISOR_TOPLEVEL=' |
   || fail "Step 3's dispatch prompts pass 'SUPERVISOR_TOPLEVEL=' $toplevel_fact_count time(s); expected at least 2 (phase-1 AND phase-2 prompts)"
 
 # Gotchas names the cwd-inheritance hazard, so the next reader doesn't rediscover it cold.
-GOTCHAS=$(awk '/^## Gotchas /{flag=1} flag' "$SKILL_MD")
+GOTCHAS=$(awk '/^## Gotchas /{flag=1; print; next} /^## /{flag=0} flag' "$SKILL_MD")   # to the next heading: the step files follow the router in the assembled prose
 [ -n "$GOTCHAS" ] || fail "skills/auto-dev/SKILL.md has no '## Gotchas' section"
 printf '%s\n' "$GOTCHAS" | grep -qi "inherit" \
   || fail "Gotchas does not name the cwd-inheritance hazard (#412)"

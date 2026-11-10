@@ -40,7 +40,7 @@ kit_init "$KIT"
 fail() { echo "FAIL: $1"; exit 1; }
 
 REF="$KIT/skills/auto-dev/references/token-economics.md"
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 WORKER_MD="$KIT/commands/auto-dev-worker.md"
 for f in "$REF" "$SKILL_MD" "$WORKER_MD"; do
   [ -f "$f" ] || fail "missing $f"

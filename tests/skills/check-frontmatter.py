@@ -6,6 +6,9 @@ Checks for each skills/*/SKILL.md:
 - description present, <= 1024 characters, no XML tags; and a WARN (exit code
   unchanged) above a 750-character soft ceiling, because a description is
   always-loaded context paid for on every turn (#323);
+- body (everything after the frontmatter) <= 32000 bytes, with a WARN (exit code
+  unchanged) above 20000: the body loads whole when the skill fires and is
+  re-read on every later turn, so step bodies belong under references/steps/;
 - compatibility <= 500 characters when present;
 - license present (kit requirement, not the guide's);
 - metadata.author and metadata.suite present (stable facts about the skill);
@@ -69,6 +72,21 @@ warnings = []
 # here: a ceiling below what the bench has cleared only teaches a reader to ignore a standing
 # warning. Tighten it the run after the bench says the shorter forms still fire.
 DESCRIPTION_SOFT_CEILING = 750
+
+# A SKILL.md body loads WHOLE when the skill fires and is then re-read on every later turn of that
+# session, so its size is paid turns-many times — the same arithmetic as the description above, on
+# a pool ~40x larger. #473 made the number visible; these two constants are the ceiling it was
+# waiting for. The measured case: auto-dev's body was 84 KB, loaded into the one session that runs
+# for hundreds of turns and reloaded at every compaction, while only its Step 4 is the loop. It is
+# now a router over `references/steps/`, like implement-issue and merge-pr (#499), and the largest
+# body left is ~23 KB.
+#
+# Over the SOFT ceiling WARNs and leaves the exit code alone — that skill is the next candidate for
+# the same split. Over the HARD ceiling fails: nothing in the kit is near it, so the only way to
+# reach it is to grow a monolith back, and the remedy is always the same — the step bodies go under
+# `references/steps/`, where `kit_skill_prose` (tests/_lib.sh) still lets a suite pin their wording.
+BODY_SOFT_CEILING = 20000
+BODY_HARD_CEILING = 32000
 
 skill_files = sorted(ROOT.glob("skills/*/SKILL.md"))
 if not skill_files:
@@ -196,6 +214,16 @@ for f in skill_files:
         continue
     fm = m.group(1)
     body_sizes[skill] = len(text[m.end():].encode("utf-8"))
+    if body_sizes[skill] > BODY_HARD_CEILING:
+        errors.append(
+            f"{skill}: SKILL.md body is {body_sizes[skill]} bytes (kit limit: {BODY_HARD_CEILING}) — "
+            f"it loads whole and is re-read every turn; keep the contract and the checklist in "
+            f"SKILL.md and move the step bodies to skills/{skill}/references/steps/")
+    elif body_sizes[skill] > BODY_SOFT_CEILING:
+        warnings.append(
+            f"{skill}: SKILL.md body is {body_sizes[skill]} bytes — over the {BODY_SOFT_CEILING}-byte "
+            f"soft ceiling; the hard limit is {BODY_HARD_CEILING}. Split its steps into "
+            f"skills/{skill}/references/steps/ before it grows further")
 
     try:
         data = yaml.safe_load(fm)
@@ -344,9 +372,9 @@ for entry in req.get("tools", []) + req.get("mcps", []) + req.get("sessionSkills
 # Skill body size — nothing measured this before now. Descriptions got a soft ceiling once their
 # growth was made visible (#323); the body — the pool actually paid at invocation, not merely at
 # discovery, and roughly 40x larger in total — never got the same visibility. Report it whenever
-# this point in the script is reached, regardless of whether errors or warnings were found: no
-# threshold, no effect on the exit code. The number has to exist before anyone can decide what a
-# ceiling should be (#473).
+# this point in the script is reached, regardless of whether errors or warnings were found. The
+# number had to exist before anyone could decide what a ceiling should be (#473); the ceiling is
+# BODY_SOFT_CEILING / BODY_HARD_CEILING above, applied per skill as each file is read.
 print("body sizes (bytes, frontmatter excluded):")
 for skill, size in sorted(body_sizes.items(), key=lambda kv: -kv[1]):
     print(f"  {skill}: {size}")

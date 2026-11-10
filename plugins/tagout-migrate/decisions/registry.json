@@ -35,6 +35,28 @@
       "stdin": true,
       "verdict": { "source": "stdout-json",
                    "vocabulary": ["capable","missing","unsupported"] }
+    },
+    {
+      "id": "autodev.report",
+      "issue": 756,
+      "program": { "kind": "exec", "path": "skills/auto-dev/scripts/report-verdict.sh" },
+      "shape":   null,
+      "owner":   "skills/auto-dev/references/steps/04-supervise.md",
+      "suites":  ["tests/report-verdict/test.sh", "tests/decisions/test.sh"],
+      "stdin": true,
+      "verdict": { "source": "stdout-json",
+                   "vocabulary": ["reconcile","redispatch","release-branch","wait-ci","refill","refill-sweep","resume","hold-prereq","hold-replan","escalate","retire"] }
+    },
+    {
+      "id": "autodev.cadence",
+      "issue": 756,
+      "program": { "kind": "exec", "path": "skills/auto-dev/scripts/cadence-verdict.sh" },
+      "shape":   null,
+      "owner":   "skills/auto-dev/references/steps/04-supervise.md",
+      "suites":  ["tests/fleet-counters/test.sh", "tests/decisions/test.sh"],
+      "stdin": true,
+      "verdict": { "source": "stdout-json",
+                   "vocabulary": ["resurvey","steady"] }
     }
   ],
   "not_decisions": {
@@ -68,6 +90,8 @@
     "scripts/worktrees-ignored.sh": "a structural guard (worktree homes are ignored), not a control-flow choice with a verdict vocabulary",
     "skills/_shared/scripts/_gh-host.sh": "sourced by the kit's gh-calling scripts, never executed on its own — resolves which host gh talks to, not a decision",
     "skills/auto-dev/scripts/analyze_cache.py": "an offline token-usage analysis report, not a control-flow choice",
+    "skills/auto-dev/scripts/fleet-counters.sh": "the one writer of the fleet's tallies (merges, PARTIAL resumes, the unverified-base streak, issues filed) — it counts and prints report lines; the two control-flow choices that read its numbers are the registered decisions autodev.report and autodev.cadence, each with a program of its own",
+    "skills/auto-dev/scripts/report-state.sh": "the gathering half of autodev.report: it parses a worker's report line into a JSON state and adds the fleet's counts for that issue; report-verdict.sh decides on that state, this script emits no verdict",
     "skills/auto-dev/scripts/decision-tally.sh": "a read-only tally over decide.sh's own event log (counts, ratios and two printed threshold flags); it reports on decisions already made, it does not make one of its own",
     "skills/auto-dev/scripts/measure_phase2.py": "an offline cost-measurement report, not a control-flow choice",
     "skills/auto-dev/scripts/reconcile.sh": "a deterministic GitHub ground-truth query for the supervisor loop; it reports state, the supervisor decides",

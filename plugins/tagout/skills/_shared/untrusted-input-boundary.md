@@ -116,6 +116,8 @@ link, and a file that adds one without appearing below.
 - `skills/merge-pr/references/steps/06-follow-ups.md` — Step 6 of merge-pr, split out of its SKILL.md for progressive disclosure (#499)
 - `skills/merge-pr/references/steps/04-corrections-loop.md` — Step 4 of merge-pr, split out of its SKILL.md for progressive disclosure (#499)
 - `skills/auto-dev/SKILL.md` — issue titles, labels and bodies at survey, and what a worker inherits
+- `skills/auto-dev/references/steps/02-build-the-work-queue.md` — Step 2 of auto-dev, split out of its SKILL.md for progressive disclosure: the survey reads issue titles, labels and bodies
+- `skills/auto-dev/references/steps/03-dispatch-the-workers.md` — Step 3 of auto-dev, split out the same way: the worker-prompt contract a worker inherits and does not renegotiate
 - `skills/deliver-issue/SKILL.md` — the body of the one issue it is handed (`#N`), probed for a plan
   before the worker that will execute that plan is dispatched
 - `skills/create-issue/SKILL.md` — other issues' bodies, during the duplicate and root-cause sweep
