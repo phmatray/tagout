@@ -106,13 +106,14 @@ it, from a directory with no `CLAUDE.md` above it (memory files would land in bo
 
 {%- assign claude_code = site.data.hosts | where: "id", "claude-code" | first %}
 ```bash
+KIT=~/.tagout                            # the kit root: a clone, or the plugin's install directory
 P=$(mktemp -d); Q=$(mktemp -d); cd "$(mktemp -d)"
 CLAUDE_CONFIG_DIR="$P" claude            # log in once with /login, then quit; same for "$Q"
 CLAUDE_CONFIG_DIR="$Q" {{ claude_code.install[0] }}
 CLAUDE_CONFIG_DIR="$Q" {{ claude_code.install[1] }}
 CLAUDE_CONFIG_DIR="$P" claude -p "/context" > without.md
 CLAUDE_CONFIG_DIR="$Q" claude -p "/context" > with.md
-python3 <kit>/scripts/context-cost.py --baseline without.md --with tagout=with.md
+python3 "$KIT/scripts/context-cost.py" --baseline without.md --with tagout=with.md
 ```
 
 ## Uninstall

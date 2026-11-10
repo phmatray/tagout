@@ -34,6 +34,15 @@ has "$out" "2.0k -> 2.0k (0)" "2a other skills unchanged"
 hasnt "$out" "the listing is capped" "2b no shrink claimed when nothing shrank"
 echo "ok: roomy host — no shrink claimed"
 
+# 2c. A capped host that DROPS a skill instead of shortening it: the skill still counts, as 0, and
+#     is named. Comparing only the skills present in both captures would report no shrink for it.
+out=$(python3 -I "$SCRIPT" --baseline "$FIX/baseline.md" --with "kit=$FIX/dropped.md")
+has "$out" "the 2 other skills the baseline lists: 2.0k -> 700 (-1.3k)" "2c a dropped skill counts as 0"
+has "$out" "the listing is capped" "2d the shrink is named when a skill is dropped"
+has "$out" "1 dropped from the listing entirely: beta" "2e the dropped skill is named"
+hasnt "$(python3 -I "$SCRIPT" --baseline "$FIX/baseline.md" --with "kit=$FIX/capped.md")" "dropped from the listing" "2f nothing dropped, nothing claimed"
+echo "ok: dropped skill — counted as 0 and named"
+
 # 3. Refusals: a file /context did not produce, and a --with without LABEL=.
 rc=0; python3 -I "$SCRIPT" --baseline "$FIX/not-context.md" --with "kit=$FIX/capped.md" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 2 ] || fail "3a a non-/context file must exit 2, got $rc"

@@ -17,7 +17,8 @@ It reports three things a plain total hides:
      shorten other skills' descriptions instead — a cost in triggering, not in tokens, and the
      one a total alone reports as "free".
 
-Rows shown as `< N` (a description cut to almost nothing) count as 0. Deferred categories are
+Rows shown as `< N` (a description cut to almost nothing) count as 0, and so does a skill the
+baseline lists that a capture no longer lists at all — it is named as dropped. Deferred categories are
 loaded on demand and are reported, never added to the loaded total.
 Exit codes: 0 report printed · 2 usage error or a file /context did not produce.
 """
@@ -94,17 +95,23 @@ def report(base, runs, kit):
     print()
     for label, r in runs:
         mine = {n: v for n, (src, v) in r["skills"].items() if kit in src}
-        common = [n for n in base["skills"] if n in r["skills"] and kit not in r["skills"][n][0]]
-        before = sum(base["skills"][n][1] for n in common)
-        after = sum(r["skills"][n][1] for n in common)
+        # Every non-kit skill the baseline listed. One the capture no longer lists was cut from the
+        # listing entirely — the hardest form of the shrink — so it counts as 0, never as "absent
+        # from the comparison".
+        others = [n for n in base["skills"] if kit not in base["skills"][n][0]]
+        dropped = [n for n in others if n not in r["skills"]]
+        before = sum(base["skills"][n][1] for n in others)
+        after = sum(r["skills"][n][1] for n in others if n in r["skills"])
         servers = {}
         for _, (server, v) in r["mcp"].items():
             if kit in server:
                 servers[server] = servers.get(server, 0) + v
         print(f"**{label}** — kit skill entries: {len(mine)}, {k(sum(mine.values()))} tokens; "
-              f"the {len(common)} other skills present in both: {k(before)} -> {k(after)} ({signed(after - before)})"
+              f"the {len(others)} other skills the baseline lists: {k(before)} -> {k(after)} ({signed(after - before)})"
               + (" — the listing is capped, so the kit's entries shortened other skills' descriptions"
-                 if after < before else ""))
+                 if after < before else "")
+              + (f"; {len(dropped)} dropped from the listing entirely: {', '.join(sorted(dropped))}"
+                 if dropped else ""))
         for server, v in sorted(servers.items()):
             print(f"  - MCP server `{server}`: {k(v)} tokens of tool definitions (deferred unless loaded)")
 
