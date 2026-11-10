@@ -158,6 +158,19 @@ else
   bad "i0. expected rc=1 naming skills/x/references/recipe.md:2 and hooks/gate.sh:1, got rc=$rc: $out"
 fi
 
+# ------------------------------------------- i1. a script's own output into grep -q -> REFUSED
+scaffold
+printf '%s\n' 'bash "$script" --help | grep -q "Exit codes:"' > "$WORK/repo/tests/fixture/j1.sh"
+printf '%s\n' '"$KIT/$HELPER" --help 2>&1 | grep -q "Exit codes:"' > "$WORK/repo/tests/fixture/j2.sh"
+printf '%s\n' './scripts/tool.sh --list | grep -q suite' > "$WORK/repo/tests/fixture/j3.sh"
+out=$(run_check "$WORK/repo"); rc=$?
+if [ "$rc" -eq 1 ] && grep -qF 'tests/fixture/j1.sh:1' <<<"$out" \
+   && grep -qF 'tests/fixture/j2.sh:1' <<<"$out" && grep -qF 'tests/fixture/j3.sh:1' <<<"$out"; then
+  ok "i1. bash <script>, a script path in a variable, and a .sh path into grep -q -- REFUSED"
+else
+  bad "i1. expected rc=1 naming j1.sh, j2.sh and j3.sh, got rc=$rc: $out"
+fi
+
 # --------------------------------------------- i. find piped into grep -q, both scan roots
 scaffold
 printf '%s\n' 'find "$d" -name x | grep -q .' > "$WORK/repo/tests/fixture/i.sh"
