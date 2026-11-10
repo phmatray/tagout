@@ -817,6 +817,43 @@ done
 for st_off in 0 off no maybe; do
   strict_verdict "ST19 TAGOUT_HOOKS_STRICT=$st_off is the default" pass "$(pay Bash 'git commit -m "oops' "$PROF")" "" "" "$st_off"
 done
+# ST20: the hook runs under macOS bash 3.2, where `${var,,}` is a runtime "bad substitution" — printed
+# on every Bash call, and a strict mode that never turned on. parse-sweep cannot see it (the line
+# PARSES under 3.2 and fails when run), so the spelling itself is refused here.
+if grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*(,,?|\^\^?)\}' "$GATE"; then
+  echo "FAIL [ST20]: git-write-gate.sh case-folds with a bash-4 expansion — bash 3.2 cannot run it"; exit 1
+fi
+echo "ok: ST20 no bash-4 case-fold expansion in the hook"
+# ST21: a substitution whose own check DIED is as unjudged as one that refused. The inner check is
+# `bash "$0"`; this shim lets the outer call through to the real bash and kills the inner one (137).
+KILLSUB=$(shim_path "$WORK/killsub"); rm -f "$KILLSUB/bash"
+real_bash=$(command -v bash)
+printf '#!/bin/sh\nif [ -n "$GATE_TEST_INNER" ]; then exit 137; fi\nGATE_TEST_INNER=1; export GATE_TEST_INNER\nexec "%s" "$@"\n' "$real_bash" > "$KILLSUB/bash"
+chmod +x "$KILLSUB/bash"
+strict_verdict "ST21 strict, the check of a substituted command is killed" block "$(pay Bash 'echo $(git push --force)' "$PROF")" "$KILLSUB"
+verdict "ST21c the same killed check, default mode, still fails open" pass "" "$(pay Bash 'echo $(git push --force)' "$PROF")" "$KILLSUB"
+# ST22-23: once the command and its cwd are readable, the profile probe decides where strict applies —
+# a command the gate cannot PARSE in a repository the kit does not manage is ADR 0002's deadlock.
+strict_verdict "ST22 strict, unparseable quoting, profile-less repo" pass "$(pay Bash "git commit -m \$'it\\'s'" "$PLAIN")"
+strict_verdict "ST22b strict, the same quoting, profiled repo" block "$(pay Bash "git commit -m \$'it\\'s'" "$PROF")"
+strict_verdict "ST23 strict, over-long git command, profile-less repo" pass "$(pay Bash "$BIG" "$PLAIN")"
+strict_verdict "ST23b strict, an unjudgeable substitution, profile-less repo" pass "$(pay Bash "$NEST_SUB" "$PLAIN")"
+# ST24-26: valid shell the stripper cannot follow — a comment holding `&` and an apostrophe, then a
+# read-only call — is refused, and the refusal has a per-command escape, because the prefix walk that
+# normally honours `GIT_GATE=off` runs on the parse that just failed. Not for a sub-agent (#643).
+CMT=$'# rebase & don\'t push\ngit status'
+strict_verdict "ST24 strict, a comment the stripper cannot follow" block "$(pay Bash "$CMT" "$PROF")"
+grep -qF 'GIT_GATE=off' "$WORK/strict.err" \
+  || { echo "FAIL [ST24]: the refusal does not name the per-command escape: $(cat "$WORK/strict.err")"; exit 1; }
+strict_verdict "ST25 strict, the same command behind a leading GIT_GATE=off" pass "$(pay Bash "GIT_GATE=off $CMT" "$PROF")"
+strict_verdict "ST26 strict, a sub-agent's leading GIT_GATE=off is not honoured" block "$(pay_sub Bash "GIT_GATE=off $CMT" "$PROF")"
+if grep -qF 'start it with' "$WORK/strict.err"; then
+  echo "FAIL [ST26]: a sub-agent's refusal offers the GIT_GATE=off escape it cannot use"; exit 1
+fi
+strict_verdict "ST26b strict, GIT_GATE=offbeat is not the switch" block "$(pay Bash "GIT_GATE=offbeat $CMT" "$PROF")"
+# ST27: "looks like git" is the gate's own cheap reject, not a wider one — `though` holds `gh`.
+BIGPROSE="echo though it was a long thought $(head -c 70000 /dev/zero | tr '\0' x)"
+strict_verdict "ST27 strict, over-long prose holding 'gh' but no git and no merge" pass "$(pay Bash "$BIGPROSE" "$PROF")"
 # A command past the size cap is not one of the shapes above; parsing it would outrun the hook's
 # 5s timeout, and a timed-out hook is an unpredictable one. The padding goes AFTER an intact
 # `git commit -m x`, so the tokeniser has a real write to find: the first spelling ran the whole

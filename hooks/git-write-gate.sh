@@ -28,10 +28,14 @@
 # `GIT_GATE=on` forces enforcement past the probe below, and `off` still wins.
 # Opt-in exception, `TAGOUT_HOOKS_STRICT=1|on|true|yes`: the "cannot judge" exits (no jq/awk/git,
 # unreadable or unparseable payload, an over-long command, a quote that never closes, an unreadable
-# cwd) refuse with exit 2 when the call looks like a git write, instead of letting it through. It
-# changes nothing else: `off` still wins, and once the command and its cwd are read the profile probe
-# still decides where the gate applies. Before that point (no jq, an unreadable payload or cwd) the
-# gate cannot tell a managed repository from another one, so strict refuses any git-looking call.
+# cwd, a substituted command whose own check did not finish) refuse with exit 2 when the call looks
+# like a git write, instead of letting it through. It changes nothing else: `off` still wins, and
+# once the command and its cwd are read the profile probe still decides where the gate applies — an
+# over-long or unparseable command in a repository the kit does not manage passes, as it does by
+# default. Before that point (no jq, an unreadable payload or cwd) the gate cannot tell a managed
+# repository from another one, so strict refuses any git-looking call. A command strict refuses
+# because it could not be PARSED still has its per-command escape: a `GIT_GATE=off ` prefix at the
+# very start of the command, on the main thread (a sub-agent's prefix is not honoured, #643).
 #
 # Two things the switch cannot do from inside a session, and what the gate does instead (#372):
 #   * an `export GIT_GATE=off` typed into a Bash call never reaches this hook — it is spawned by the
@@ -77,20 +81,57 @@ set -f
 # `exit 2` + stderr is the PreToolUse blocking contract and needs neither jq nor awk, which is the
 # point — most of these exits are the ones where those tools are missing.
 STRICT=0
-strict_val=${TAGOUT_HOOKS_STRICT:-}
-case "${strict_val,,}" in 1|on|true|yes) STRICT=1 ;; esac
+# Spelled out per letter rather than case-folded: the lowercasing expansion is bash 4 and this hook runs under macOS
+# bash 3.2, where it is a "bad substitution" printed on EVERY Bash call and a strict mode that never
+# turns on (skills/_shared/scripts/_gh-host.sh states the rule). A pattern also spawns nothing.
+case "${TAGOUT_HOOKS_STRICT:-}" in
+  1|[oO][nN]|[tT][rR][uU][eE]|[yY][eE][sS]) STRICT=1 ;;
+esac
 strict_refuse() { # $1 cause. Not strict: the usual fail-open exit.
   [ "$STRICT" = 1 ] || exit 0
   printf 'Blocked by the git write-gate (strict mode): the gate could not judge this command (%s). TAGOUT_HOOKS_STRICT is set, so an unjudged git write is refused instead of let through. Fix the cause or unset TAGOUT_HOOKS_STRICT.\n' "$1" >&2
   exit 2
 }
 # Refuse only when the text looks like a git/gh call: a cheap substring test, because the exits that
-# use it run before (or without) any real parse. A backslash counts as git-looking too: the gate itself
-# unwraps `g\it` (#533), so the filter must not be narrower than what it guards. Anything else passes.
-looks_gitlike() { case "$1" in *git*|*gh*|*'\'*) return 0 ;; esac; return 1; }
+# use it run before (or without) any real parse. It is the SAME test as the cheap reject below, on
+# purpose — `*gh*merge*`, not a bare `*gh*`, so prose containing "though" or "github" is not a git
+# write here either; a backslash counts because the gate itself unwraps `g\it` (#533). A filter
+# narrower than the gate would let a write through; one wider refuses what the gate never judges.
+looks_gitlike() { case "$1" in *git*|*gh*merge*|*'\'*) return 0 ;; esac; return 1; }
 strict_refuse_if_gitlike() { # $1 text to look at  $2 cause
   looks_gitlike "$1" && strict_refuse "$2"
   exit 0
+}
+
+# The profile probe — explained at length at "the probe" below, defined here because the strict exits
+# above the walk need it too.
+is_profiled() { # $1 a directory
+  local dir="$1" top
+  [ -n "$dir" ] || return 1
+  [ -d "$dir" ] || return 1
+  top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 1
+  [ -n "$top" ] || return 1
+  [ -f "$top/.claude/skills/repo-profile.md" ]
+}
+
+# The strict exit for a command the gate could READ but not PARSE (over-long, a quote that never
+# closes, a substitution whose check did not finish). The payload is readable here, so the two things
+# the default path consults still apply before anything is refused: the profile probe — a repository
+# the kit does not manage is never refused, which is ADR 0002's deadlock and what a machine-wide
+# TAGOUT_HOOKS_STRICT would otherwise cause in every other repository — and the per-command escape,
+# which the prefix walk below can no longer offer because the parse it runs on is what failed.
+strict_refuse_where_managed() { # $1 cause
+  [ "$STRICT" = 1 ] || exit 0
+  local d a
+  d=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || strict_refuse "the working directory could not be read"
+  if [ -z "$d" ] || [ ! -d "$d" ]; then strict_refuse "the working directory is missing or is not a directory"; fi
+  [ "$FORCE" = 1 ] || is_profiled "$d" || exit 0
+  a=$(jq -r '.agent_id // empty | strings' <<<"$payload" 2>/dev/null) || a=""
+  if [ -z "$a" ]; then
+    case "$cmd" in "GIT_GATE=off "*|"GIT_GATE=0 "*|"GIT_GATE=false "*|"GIT_GATE=no "*|"GIT_GATE=disabled "*) exit 0 ;; esac
+    strict_refuse "$1; to run this one command anyway, start it with \`GIT_GATE=off \`"
+  fi
+  strict_refuse "$1"
 }
 
 payload=$(cat) || strict_refuse "the payload could not be read"
@@ -108,7 +149,10 @@ cmd=$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null) || strict_
 
 # A command this long is not one of the shapes below; parsing it would cost more than the hook's
 # 5s timeout allows and a timed-out hook is an unpredictable one. Fail open, explicitly.
-[ "${#cmd}" -le 65536 ] || strict_refuse_if_gitlike "$cmd" "the command is longer than 65536 characters"
+if [ "${#cmd}" -gt 65536 ]; then
+  looks_gitlike "$cmd" || exit 0
+  strict_refuse_where_managed "the command is longer than 65536 characters"
+fi
 
 # The cheap reject, before any parsing: nothing here can matter to a command with no `git` in it and
 # no `gh` followed somewhere by `merge` — the one `gh` shape judged below (#512). `*gh*merge*`, not a
@@ -347,7 +391,7 @@ function segtail(s,    p, cch) {
   if (q != "") { exit 3 }
   print "C\t" out
   for (k = 0; k < nsubs; k++) print "S\t" subs[k]
-}' 2>/dev/null) || strict_refuse "the quoting of the command could not be parsed"
+}' 2>/dev/null) || strict_refuse_where_managed "the quoting of the command could not be parsed"
 
 # Split the awk output back into the clean command text (one "C" line) and zero or more extracted
 # substitution bodies (one "S" line each) — two channels carried over the one stdout stream rather
@@ -375,11 +419,13 @@ if [ -n "$gate_subs" ]; then
     [ -n "$gate_subcmd" ] || continue
     gate_subpay=$(jq -nc --arg d "$cwd" --arg c "$gate_subcmd" --arg a "$agent_id" \
       '{tool_name:"Bash",cwd:$d,tool_input:{command:$c}} + (if $a == "" then {} else {agent_id:$a} end)' \
-      2>/dev/null) || { [ "$STRICT" = 1 ] && looks_gitlike "$gate_subcmd" && strict_refuse "a substituted command could not be handed to the gate"; continue; }
+      2>/dev/null) || { if [ "$STRICT" = 1 ] && looks_gitlike "$gate_subcmd"; then strict_refuse_where_managed "a substituted command could not be handed to the gate"; fi; continue; }
     gate_subrc=0
     gate_subout=$(printf '%s' "$gate_subpay" | bash "$0" 2>/dev/null) || gate_subrc=$?
-    # The inner strict refusal is exit 2 on stderr, which the capture above drops: relay it here.
-    if [ "$STRICT" = 1 ] && [ "$gate_subrc" = 2 ]; then strict_refuse "a substituted command could not be judged"; fi
+    # Strict: ANY non-zero exit of the inner check is a substitution that was never judged — its own
+    # strict refusal (exit 2, on the stderr the capture above drops), and just as much a check that
+    # was killed or could not start (137, 127, 126). Reading only 2 let those pass as judged.
+    if [ "$STRICT" = 1 ] && [ "$gate_subrc" != 0 ]; then strict_refuse_where_managed "a substituted command could not be judged"; fi
     if [ -n "$gate_subout" ]; then
       printf '%s\n' "$gate_subout"
       exit 0
@@ -457,14 +503,6 @@ guard_hint() { # $1 a kit-relative path
 # but proving that would put a second `git` spawn on the path of every Bash call, and an untracked
 # profile is a repository mid-adoption rather than one to stop enforcing in. `GIT_GATE=on` short-circuits it, the same way `ROSELINE_GATE=on`
 # does: the user is the only authority this hook can consult about a repo it cannot recognise.
-is_profiled() { # $1 a directory
-  local dir="$1" top
-  [ -n "$dir" ] || return 1
-  [ -d "$dir" ] || return 1
-  top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || return 1
-  [ -n "$top" ] || return 1
-  [ -f "$top/.claude/skills/repo-profile.md" ]
-}
 
 # The directory the probe answers about, for the segment being judged. It starts as the payload's
 # cwd and moves with every `cd <literal path>` the walk meets (#372): `cd /tmp/shop && git commit`
