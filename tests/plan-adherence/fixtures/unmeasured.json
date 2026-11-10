@@ -1,0 +1,25 @@
+{
+ "repo": "acme/widgets",
+ "prs": [
+  {
+   "number": 7,
+   "title": "chore: no issue",
+   "skip_reason": "names no issue (no `(#N)` in the title, no `Closes #N` in the body)"
+  },
+  {
+   "number": 8,
+   "title": "feat: f (#15)",
+   "issue": 15,
+   "plan": "## 🛠️ Implementation plan\n\n### Task 1: thing 1\n\n**Files:** none expected.\n\n- [ ] **Step 1:** Write the failing test.\n- [ ] **Step 2:** Commit: `docs: f`.\n",
+   "commits": [
+    {
+     "sha": "gggggggg",
+     "subject": "docs: f",
+     "files": [
+      "README.md"
+     ]
+    }
+   ]
+  }
+ ]
+}

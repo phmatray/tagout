@@ -578,6 +578,9 @@ jobs:
       - name: Plan-freshness golden test (every modify path verified against main before a task runs, #322)
         run: ./tests/plan-freshness/test.sh
 
+      - name: Plan-adherence golden test (a rate is printed with its denominator, and nothing measured is no rate, #739)
+        run: ./tests/plan-adherence/test.sh
+
       - name: Roseline golden test (shipped MCP config + the gate, driven to red)
         run: ./tests/roseline/test.sh
 
