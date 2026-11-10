@@ -2531,7 +2531,12 @@ else
   echo "ok   [bare ready-flip] no bare gh pr ready under skills/ or commands/"
 fi
 MP=skills/merge-pr/references/steps
-order=$(grep '^| `ready`' $MP/04-corrections-loop.md | grep -o 'code-review medium\|post-review-check.sh\|guarded-ready.sh' $MP/04-corrections-loop.md | head -3 | tr '\n' ' ')
+# One producer, read to EOF. This used to be `grep '^| `ready`' FILE | grep -o … FILE | head -3`: the
+# second grep was handed the file too, so it never read the first one's output, and whenever it
+# finished first the writer died of SIGPIPE — under `set -euo pipefail` that ended the suite right
+# here with no FAIL line (measured: 4 of 10 runs of the whole plan at 8 jobs). `sed -n '1,3p'`
+# rather than `head -3` for the same reason: it reads its input to the end and hangs up on nobody.
+order=$(grep -o 'code-review medium\|post-review-check.sh\|guarded-ready.sh' $MP/04-corrections-loop.md | sed -n '1,3p' | tr '\n' ' ')
 if grep -q 'guarded-ready.sh' $MP/01-preconditions.md \
     && [ "$order" = "code-review medium post-review-check.sh guarded-ready.sh " ] \
     && grep -q 'NEEDS_REVIEW' $MP/02-worktree.md; then

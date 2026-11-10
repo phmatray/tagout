@@ -102,12 +102,15 @@ verdict() {
   local name="$1" want="$2" want_msg="$3" payload="$4" gate_path="${5:-$PATH}" sw="${6:-}" root="${7:-}"
   local out decision rc=0
   local -a envv
+  # The payload reaches the gate by herestring, never `printf … | bash "$GATE"`: with GIT_GATE=off
+  # the gate exits before it reads stdin, the writer dies of SIGPIPE, and under this suite's
+  # pipefail the gate "exited 141" (measured on A22, 1 of 10 runs of the whole plan at 8 jobs).
   envv=(PATH="$gate_path")
   if [ -n "$sw" ]; then envv+=(GIT_GATE="$sw"); fi
   if [ -n "$root" ]; then
-    out=$(printf '%s' "$payload" | env "${envv[@]}" CLAUDE_PLUGIN_ROOT="$root" bash "$GATE" 2>/dev/null) || rc=$?
+    out=$(env "${envv[@]}" CLAUDE_PLUGIN_ROOT="$root" bash "$GATE" 2>/dev/null <<<"$payload") || rc=$?
   else
-    out=$(printf '%s' "$payload" | env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>/dev/null) || rc=$?
+    out=$(env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>/dev/null <<<"$payload") || rc=$?
   fi
   # Exit status is half the PreToolUse contract — a non-zero exit blocks the tool regardless of
   # stdout, so a regression that turned a fail-open path into `exit 2` would be scored "pass" here
@@ -196,9 +199,9 @@ verdict "K6  no root keeps the kit-relative spelling" \
 # ...and the absence half, which verdict() cannot express: neither reason names an absolute path.
 reason_for() { # $1 payload  $2 CLAUDE_PLUGIN_ROOT ("" = unset)
   if [ -n "$2" ]; then
-    printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$2" bash "$GATE" 2>/dev/null
+    env CLAUDE_PLUGIN_ROOT="$2" bash "$GATE" 2>/dev/null <<<"$1"
   else
-    printf '%s' "$1" | env -u CLAUDE_PLUGIN_ROOT bash "$GATE" 2>/dev/null
+    env -u CLAUDE_PLUGIN_ROOT bash "$GATE" 2>/dev/null <<<"$1"
   fi | jq -r '.hookSpecificOutput.permissionDecisionReason // ""'
 }
 for c in 'git commit -m x' 'git push' 'git push --force origin main' 'git merge feature' \
