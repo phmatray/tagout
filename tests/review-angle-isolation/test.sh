@@ -72,9 +72,10 @@ done
 # merge-pr's draft flip is the second place a Standards review is prescribed: it must name the
 # fallback too, or a host with no `code-review` skill is left to stop or improvise there.
 MERGE_READY="$KIT/skills/merge-pr/references/steps/04-corrections-loop.md"
-grep -F '| `ready` |' "$MERGE_READY" | grep -qF '(../../../_shared/standards-review-fallback.md)' \
+ready_row=$(grep -F '| `ready` |' "$MERGE_READY") || fail "merge-pr's corrections table has no ready row"
+grep -qF '(../../../_shared/standards-review-fallback.md)' <<<"$ready_row" \
   || fail "merge-pr's ready correction does not link the shared standards-review-fallback.md"
-grep -F '| `ready` |' "$MERGE_READY" | grep -qF '/code-review medium origin/<base>...HEAD' \
+grep -qF '/code-review medium origin/<base>...HEAD' <<<"$ready_row" \
   || fail "merge-pr's ready correction lost the default /code-review call"
 for want in '/code-review medium origin/main...HEAD' '/code-review high origin/main...HEAD'; do
   grep -qF -- "$want" "$SKILL_MD" || fail "07-review.md lost the default path: $want"
