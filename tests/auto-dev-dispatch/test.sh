@@ -218,11 +218,11 @@ fi
 # The release has one home (release-branch.sh) and one caller (the supervisor), so Step 3 must
 # carry the guard that runs it — scoped to its own subsection, never a whole-file grep, for the
 # reason 3a gives — and name every entry point that re-enters a branch an earlier tree may hold.
-RELEASE_SECTION=$(printf '%s\n' "$STEP3" | awk '
+RELEASE_SECTION=$(awk '
   /^### ⛔ Dispatch-time guard — release the PR branch before re-dispatching onto it/ { flag=1 }
-  flag && /^### The worker-prompt contract/ { exit }
+  flag && /^### The worker-prompt contract/ { flag=0 }
   flag { print }
-')
+' <<<"$STEP3")
 [ -n "$RELEASE_SECTION" ] \
   || fail "Step 3 has no '### ⛔ Dispatch-time guard — release the PR branch before re-dispatching onto it' subsection (#510)"
 grep -qF 'release-branch.sh' <<<"$RELEASE_SECTION" \
@@ -243,11 +243,11 @@ grep -Eqi 'never.{0,40}FREE' <<<"$RELEASE_SECTION" \
 # The verdict words the guard acts on are the script's own, read from its --help rather than retyped
 # here: a verdict renamed or added in the script but not in the prose that consumes it fails.
 RB_HELP=$("$KIT/skills/auto-dev/scripts/release-branch.sh" --help)
-VERDICT_WORDS=$(printf '%s\n' "$RB_HELP" | awk '
+VERDICT_WORDS=$(awk '
   /^One verdict line/ { on = 1; next }
   /^Exit codes:/      { on = 0 }
   on && /^  [A-Z]/    { print $1; if ($1 == "HELD") print $3 }
-')
+' <<<"$RB_HELP")
 n_words=$(printf '%s\n' "$VERDICT_WORDS" | grep -c . || true)
 [ "$n_words" -ge 7 ] \
   || fail "read $n_words verdict word(s) from release-branch.sh --help; expected FREE, RELEASED and HELD with its four reasons"

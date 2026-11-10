@@ -54,8 +54,19 @@ from pathlib import Path
 # a parallel run of the whole plan red about every other time. A builtin gets no exemption: the
 # remedy is the same herestring, and it costs nothing.
 PRODUCERS = frozenset(
-    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq printf echo".split()
+    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq printf echo bash sh".split()
 )
+
+# A script run for its output is a producer like any other: `bash x.sh --help | grep -q 'Exit codes:'`
+# lost this race on a loaded machine and, with a pipe shrunk to 8 kB, every time (#744) -- a guard's
+# help is several kB written in more than one write, and `grep -q` closes the pipe at the first
+# match. `bash`/`sh` are on the list above for the launcher spelling; this suffix catches the script
+# invoked directly (`./x.sh --help | grep -q y`).
+SCRIPT_SUFFIXES = (".sh",)
+
+
+def is_producer(word):
+    return word in PRODUCERS or word.endswith(SCRIPT_SUFFIXES)
 
 QUIET_LONG = frozenset(("--quiet", "--silent"))
 
@@ -140,6 +151,14 @@ def split_pipeline_clauses(line):
                 i += 1
                 continue
             if c == "&":
+                # `2>&1`, `>&2` and `&>file` are redirections, not the background operator: the
+                # `&` there ends nothing. Splitting on it cut `producer 2>&1 | grep -q x` into a
+                # clause with no producer, which is how every `--help 2>&1 | grep -q` site in
+                # #744 passed this gate.
+                if (buf and buf[-1] == ">") or (i + 1 < n and line[i + 1] == ">"):
+                    buf.append(c)
+                    i += 1
+                    continue
                 flush_clause()
                 i += 2 if (i + 1 < n and line[i + 1] == "&") else 1
                 continue
@@ -317,7 +336,7 @@ def offending_line(line):
         if not grep_dash_q(clause[-1]):
             continue
         for idx, segment in enumerate(clause[:-1]):
-            if producer_word(segment, is_clause_head=(idx == 0)) in PRODUCERS:
+            if is_producer(producer_word(segment, is_clause_head=(idx == 0))):
                 return True
 
     # A `$(...)`/backtick substitution is opaque to split_pipeline_clauses (its paren-depth

@@ -130,6 +130,11 @@ kit_init "$KIT"
 kit_guard kit_guard_samples_unchanged
 kit_guard no_pycache
 
+# Every `dotnet test` summary below is PARSED (`Total: N`, `Failed!`), and dotnet prints it in the
+# UI language: under a French locale it is `Total : 6`, the count reads as 0 and the suite fails
+# with "v3 ran 0 tests" on a tree that is green (#744). Pinned once, for the whole suite.
+export DOTNET_CLI_UI_LANGUAGE=en
+
 # ---------------------------------------------------------------------------
 # 0. No knob in the transform reads the environment.
 #

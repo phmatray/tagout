@@ -207,6 +207,12 @@ step_named "Garde — le bundle front committé correspond toujours à ses sourc
 [ -s "$scratch/guard.sh" ] || { echo "FAIL: the guard step has an empty run: body"; exit 1; }
 bash -n "$scratch/guard.sh" || { echo "FAIL: the guard body is not valid bash"; exit 1; }
 
+# The scratch repositories below commit a bundle under `dist/`, and a developer's personal git
+# excludes commonly list `dist/` — `git add -A` then stages nothing and the commit stops with
+# "nothing to commit" (#744). BOTH halves are needed: git reads `$XDG_CONFIG_HOME/git/ignore` by
+# default, and a `~/.gitconfig` can name another file through `core.excludesFile`.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$scratch/xdg"
+
 # One place for the identity/gpgsign workaround every scratch commit below needs.
 # `commit.gpgsign=false` is not decoration: with signing on globally and no usable key in this
 # shell, the commit fails, `set -e` aborts, and every section below reports as broken with a gpg
@@ -226,6 +232,12 @@ mk_repo() {
   git -C "$root" add -A
   git_commit_all "$root" "commit the bundle"
 }
+
+# The bundle really is in the commit — not silently dropped by an excludes file this suite did not
+# write. Every section below reasons from a committed `web/dist`.
+mk_repo "$scratch/excludes-probe" "probe.js"
+[ "$(git -C "$scratch/excludes-probe" ls-files web/dist/index.html)" = "web/dist/index.html" ] || {
+  echo "FAIL: mk_repo did not commit web/dist/index.html — a personal git excludes file is leaking into the scratch repositories"; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 1c. The config step is the whole point of #96, so it is driven, not merely read.
