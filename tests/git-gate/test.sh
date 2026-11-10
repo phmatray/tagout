@@ -130,6 +130,34 @@ verdict() {
   echo "ok: $name -> $decision"
 }
 
+# The strict-mode driver (TAGOUT_HOOKS_STRICT=1). `verdict` above pins exit 0 — the DEFAULT contract —
+# so strict cases get their own driver instead of loosening it. want: block (exit 2 and the stderr
+# names the strict mode), pass (exit 0, no output) or deny (exit 0 and a JSON permissionDecision deny).
+strict_verdict() { # $1 name  $2 block|pass|deny  $3 payload  $4 PATH (default $PATH)  $5 GIT_GATE (optional)  $6 TAGOUT_HOOKS_STRICT (default 1)
+  local name="$1" want="$2" payload="$3" gate_path="${4:-$PATH}" sw="${5:-}"
+  local out err rc=0 errf="$WORK/strict.err"
+  local -a envv
+  envv=(PATH="$gate_path" TAGOUT_HOOKS_STRICT="${6:-1}")
+  if [ -n "$sw" ]; then envv+=(GIT_GATE="$sw"); fi
+  out=$(printf '%s' "$payload" | env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>"$errf") || rc=$?
+  err=$(cat "$errf")
+  case "$want" in
+    block)
+      [ "$rc" -eq 2 ] || { echo "FAIL [$name]: expected exit 2, got $rc"; echo "$out"; exit 1; }
+      grep -qF 'strict mode' <<<"$err" || { echo "FAIL [$name]: stderr lacks 'strict mode': $err"; exit 1; }
+      [ -z "$out" ] || { echo "FAIL [$name]: a strict refusal must not also print on stdout: $out"; exit 1; } ;;
+    pass)
+      [ "$rc" -eq 0 ] || { echo "FAIL [$name]: expected exit 0, got $rc ($err)"; exit 1; }
+      [ -z "$out" ] || { echo "FAIL [$name]: expected no output, got: $out"; exit 1; } ;;
+    deny)
+      [ "$rc" -eq 0 ] || { echo "FAIL [$name]: expected exit 0 with a JSON deny, got $rc ($err)"; exit 1; }
+      [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // "malformed"' 2>/dev/null)" = deny ] \
+        || { echo "FAIL [$name]: expected a JSON deny, got: $out"; exit 1; } ;;
+    *) echo "FAIL [$name]: unknown expectation '$want'"; exit 1 ;;
+  esac
+  echo "ok: $name -> $want (strict)"
+}
+
 PROF=$(profile_repo); PLAIN=$(plain_repo); DIRTY=$(dirty_repo)
 [ "$PROF" != "$PLAIN" ] || { echo "FAIL: fixture helpers returned the same directory"; exit 1; }
 
@@ -738,6 +766,94 @@ verdict "A32 BashOutput is not Bash"   pass "" "$(pay BashOutput 'git commit -m 
 verdict "A33 no command in the payload" pass "" '{"tool_name":"Bash","cwd":"/tmp","tool_input":{}}'
 verdict "A34 unterminated quoting is a parse it cannot trust" pass "" \
   "$(pay Bash 'git commit -m "never closed' "$PROF")"
+
+# ------------------------------------------------ 5b. TAGOUT_HOOKS_STRICT: only an UNJUDGED git write refuses
+# Opt-in (ADR 0002 amendment). A26-A34 above pin the default; these pin the one class of paths the
+# variable inverts: the gate cannot judge a command that looks like a git write -> exit 2, not exit 0.
+# Named ST*, not S*: S7/S8 below already belong to the #643 section.
+BIG="git commit -m $(head -c 70000 /dev/zero | tr '\0' x)"
+strict_verdict "ST1 strict, no jq, git commit"          block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOJQ"
+# `pay` stamps session_id "gitgate", which the raw-payload filter would (rightly) read as git: swap it.
+strict_verdict "ST2 strict, no jq, a command with no git" pass "$(pay Bash 'ls -la' "$PROF" | sed 's/gitgate/sess1/')" "$NOJQ"
+strict_verdict "ST3 strict, non-JSON payload with git push" block 'not json, but git push origin main'
+strict_verdict "ST3b strict, non-JSON payload without git" pass 'not json at all'
+strict_verdict "ST4 strict, command over 65536 chars with git" block "$(pay Bash "$BIG" "$PROF")"
+strict_verdict "ST5 strict, unterminated quote"         block "$(pay Bash 'git commit -m "oops' "$PROF")"
+strict_verdict "ST6 strict, jq present, reset --hard still a JSON deny" deny "$(pay Bash 'git reset --hard HEAD~1' "$PROF")"
+strict_verdict "ST7 strict, an ordinary guarded call"   pass "$(pay Bash 'git status' "$PROF")"
+strict_verdict "ST8 GIT_GATE=off beats strict"          pass "$(pay Bash 'git commit -m wip' "$PROF")" "$NOJQ" off
+strict_verdict "ST9 strict, profile-less repo, same verdict as without strict" pass "$(pay Bash 'git reset --hard HEAD~1' "$PLAIN")"
+strict_verdict "ST10 strict, no awk, git commit"        block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOAWK"
+strict_verdict "ST11 strict, no git on PATH, git commit" block "$(pay Bash 'git commit -m wip' "$PROF")" "$NOGIT"
+strict_verdict "ST12 strict, a tool other than Bash"    pass "$(pay NotebookEdit 'git commit -m wip' "$PROF")"
+strict_verdict "ST13 strict, empty command"             pass '{"tool_name":"Bash","cwd":"/tmp","tool_input":{}}'
+# Before the gate can read the profile it cannot tell a managed repository from another one: with no jq,
+# strict refuses a git write in a profile-less repository too (the documented price of opting in).
+strict_verdict "ST14 strict, no jq, profile-less repo, git commit" block "$(pay Bash 'git commit -m wip' "$PLAIN")" "$NOJQ"
+# ST9's control: the same command, same repository, WITHOUT strict, is also a pass (the probe, not
+# strict, decides) — so ST9 cannot be green merely because strict swallows everything.
+verdict "ST9c the same profile-less command, default mode" pass "" "$(pay Bash 'git reset --hard HEAD~1' "$PLAIN")"
+# A substituted command the gate cannot parse: the recursive check of `$(...)` / `bash -c` used to
+# read only the inner call's stdout, so the inner strict refusal (exit 2, stderr) was dropped and the
+# outer call passed. `$'it\'s'` is valid bash that the stripper cannot follow (the commit really lands).
+NEST_SUB=$'echo $(git commit -m $\'it\\\'s\')'
+NEST_BASHC=$'bash -c "git commit -m \\$\'it\\\'s\'"'
+strict_verdict "ST15 strict, an unparseable git write inside \$(...)" block "$(pay Bash "$NEST_SUB" "$PROF")"
+strict_verdict "ST15b strict, an unparseable git write inside bash -c" block "$(pay Bash "$NEST_BASHC" "$PROF")"
+verdict "ST15c the same substitution, default mode, still fails open" pass "" "$(pay Bash "$NEST_SUB" "$PROF")"
+# The "looks like git" filter must see what the gate itself unwraps: `g\it` is git (#533).
+BIGBS="g\\it push --force origin main $(head -c 70000 /dev/zero | tr '\0' x)"
+strict_verdict "ST16 strict, over-long command spelled g\\it" block "$(pay Bash "$BIGBS" "$PROF")"
+verdict "ST16c the same over-long command, default mode" pass "" "$(pay Bash "$BIGBS" "$PROF")"
+# A cwd the gate cannot use is a cwd it cannot judge in: refuse a git-looking call, pass the rest.
+strict_verdict "ST17 strict, empty cwd, git commit" block "$(pay Bash 'git commit -m wip' '')"
+strict_verdict "ST17b strict, cwd that does not exist, git commit" block "$(pay Bash 'git commit -m wip' "$WORK/no-such-dir")"
+strict_verdict "ST17c strict, empty cwd, a command with no git" pass "$(pay Bash 'ls -la' '' | sed 's/gitgate/sess1/')"
+verdict "ST17d empty cwd, default mode" pass "" "$(pay Bash 'git commit -m wip' '')"
+# Every documented spelling switches strict on, in any case; anything else leaves the default.
+for st_on in on true yes TRUE On YES; do
+  strict_verdict "ST18 TAGOUT_HOOKS_STRICT=$st_on is strict" block "$(pay Bash 'git commit -m "oops' "$PROF")" "" "" "$st_on"
+done
+for st_off in 0 off no maybe; do
+  strict_verdict "ST19 TAGOUT_HOOKS_STRICT=$st_off is the default" pass "$(pay Bash 'git commit -m "oops' "$PROF")" "" "" "$st_off"
+done
+# ST20: the hook runs under macOS bash 3.2, where `${var,,}` is a runtime "bad substitution" — printed
+# on every Bash call, and a strict mode that never turned on. parse-sweep cannot see it (the line
+# PARSES under 3.2 and fails when run), so the spelling itself is refused here.
+if grep -nE '\$\{[A-Za-z_][A-Za-z0-9_]*(,,?|\^\^?)\}' "$GATE"; then
+  echo "FAIL [ST20]: git-write-gate.sh case-folds with a bash-4 expansion — bash 3.2 cannot run it"; exit 1
+fi
+echo "ok: ST20 no bash-4 case-fold expansion in the hook"
+# ST21: a substitution whose own check DIED is as unjudged as one that refused. The inner check is
+# `bash "$0"`; this shim lets the outer call through to the real bash and kills the inner one (137).
+KILLSUB=$(shim_path "$WORK/killsub"); rm -f "$KILLSUB/bash"
+real_bash=$(command -v bash)
+printf '#!/bin/sh\nif [ -n "$GATE_TEST_INNER" ]; then exit 137; fi\nGATE_TEST_INNER=1; export GATE_TEST_INNER\nexec "%s" "$@"\n' "$real_bash" > "$KILLSUB/bash"
+chmod +x "$KILLSUB/bash"
+strict_verdict "ST21 strict, the check of a substituted command is killed" block "$(pay Bash 'echo $(git push --force)' "$PROF")" "$KILLSUB"
+verdict "ST21c the same killed check, default mode, still fails open" pass "" "$(pay Bash 'echo $(git push --force)' "$PROF")" "$KILLSUB"
+# ST22-23: once the command and its cwd are readable, the profile probe decides where strict applies —
+# a command the gate cannot PARSE in a repository the kit does not manage is ADR 0002's deadlock.
+strict_verdict "ST22 strict, unparseable quoting, profile-less repo" pass "$(pay Bash "git commit -m \$'it\\'s'" "$PLAIN")"
+strict_verdict "ST22b strict, the same quoting, profiled repo" block "$(pay Bash "git commit -m \$'it\\'s'" "$PROF")"
+strict_verdict "ST23 strict, over-long git command, profile-less repo" pass "$(pay Bash "$BIG" "$PLAIN")"
+strict_verdict "ST23b strict, an unjudgeable substitution, profile-less repo" pass "$(pay Bash "$NEST_SUB" "$PLAIN")"
+# ST24-26: valid shell the stripper cannot follow — a comment holding `&` and an apostrophe, then a
+# read-only call — is refused, and the refusal has a per-command escape, because the prefix walk that
+# normally honours `GIT_GATE=off` runs on the parse that just failed. Not for a sub-agent (#643).
+CMT=$'# rebase & don\'t push\ngit status'
+strict_verdict "ST24 strict, a comment the stripper cannot follow" block "$(pay Bash "$CMT" "$PROF")"
+grep -qF 'GIT_GATE=off' "$WORK/strict.err" \
+  || { echo "FAIL [ST24]: the refusal does not name the per-command escape: $(cat "$WORK/strict.err")"; exit 1; }
+strict_verdict "ST25 strict, the same command behind a leading GIT_GATE=off" pass "$(pay Bash "GIT_GATE=off $CMT" "$PROF")"
+strict_verdict "ST26 strict, a sub-agent's leading GIT_GATE=off is not honoured" block "$(pay_sub Bash "GIT_GATE=off $CMT" "$PROF")"
+if grep -qF 'start it with' "$WORK/strict.err"; then
+  echo "FAIL [ST26]: a sub-agent's refusal offers the GIT_GATE=off escape it cannot use"; exit 1
+fi
+strict_verdict "ST26b strict, GIT_GATE=offbeat is not the switch" block "$(pay Bash "GIT_GATE=offbeat $CMT" "$PROF")"
+# ST27: "looks like git" is the gate's own cheap reject, not a wider one — `though` holds `gh`.
+BIGPROSE="echo though it was a long thought $(head -c 70000 /dev/zero | tr '\0' x)"
+strict_verdict "ST27 strict, over-long prose holding 'gh' but no git and no merge" pass "$(pay Bash "$BIGPROSE" "$PROF")"
 # A command past the size cap is not one of the shapes above; parsing it would outrun the hook's
 # 5s timeout, and a timed-out hook is an unpredictable one. The padding goes AFTER an intact
 # `git commit -m x`, so the tokeniser has a real write to find: the first spelling ran the whole

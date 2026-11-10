@@ -425,7 +425,8 @@ jobs:
           # happened to be sitting in. That is the exact scenario this simulation exists to catch.
           for g in guarded-commit guarded-push guarded-merge; do
             script="$KIT/skills/implement-issue/scripts/$g.sh"
-            grep -q 'Exit codes:' <<<"$(bash "$script" --help)"
+            help_out=$(bash "$script" --help)
+            grep -q 'Exit codes:' <<<"$help_out"
             if bash "$script" -C "$PWD" no-such-branch -- -m x 2>/dev/null; then
               echo "$g.sh accepted a path that is not a git repository"; exit 1
             fi
@@ -435,7 +436,8 @@ jobs:
           # `-- <git args>` — so it gets its own check rather than joining the loop above, which
           # would otherwise pass it an argument list it does not accept.
           mw_script="$KIT/skills/implement-issue/scripts/make-worktree.sh"
-          grep -q 'Exit codes:' <<<"$(bash "$mw_script" --help)"
+          help_out=$(bash "$mw_script" --help)
+          grep -q 'Exit codes:' <<<"$help_out"
           if bash "$mw_script" -C "$PWD" no-such-branch 2>/dev/null; then
             echo "make-worktree.sh accepted a path that is not a git repository"; exit 1
           fi

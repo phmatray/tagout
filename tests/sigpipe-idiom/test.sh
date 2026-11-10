@@ -22,6 +22,8 @@
 #   q. `sudo -u user env VAR=val <producer>`                 -> REFUSED, flags stripped too (#457)
 #   r. a `$(...)` after an earlier double-quoted apostrophe  -> REFUSED, not swallowed (#457)
 #   s. a quoted `)` inside a `$(...)` span                   -> REFUSED, span not truncated (#457)
+#   t. a script's --help piped into grep -q (`bash x.sh`, `./x.sh`) -> REFUSED (#744);
+#      the same help captured first and read by herestring  -> accept
 #
 # Sections are labelled, never fractioned -- a denominator goes stale the moment a case is added.
 #
@@ -260,6 +262,21 @@ out=$(run_check "$WORK/repo"); rc=$?
 [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -qF 'tests/fixture/s.sh:1' \
   && ok "s. a quoted ) inside \$(...) does not truncate the span early (#457)" \
   || { bad "s. expected rc=1 naming tests/fixture/s.sh:1, got rc=$rc: $out"; }
+
+# ------------------------------------ t. a script's --help into grep -q -> REFUSED (#744)
+scaffold
+printf '%s\n' 'bash "$x" --help 2>&1 | grep -q y' > "$WORK/repo/tests/fixture/t.sh"
+printf '%s\n' './guard.sh --help | grep -q y'     > "$WORK/repo/tests/fixture/t2.sh"
+out=$(run_check "$WORK/repo"); rc=$?
+[ "$rc" -eq 1 ] && grep -qF 'tests/fixture/t.sh:1' <<<"$out" && grep -qF 'tests/fixture/t2.sh:1' <<<"$out" \
+  && ok "t. a script run for its --help, by launcher or directly, into grep -q -- refused (#744)" \
+  || { bad "t. expected rc=1 naming tests/fixture/t.sh:1 and t2.sh:1, got rc=$rc: $out"; }
+scaffold
+printf '%s\n' 'help_out=$(bash "$x" --help 2>&1)' 'grep -q y <<<"$help_out"' > "$WORK/repo/tests/fixture/t3.sh"
+out=$(run_check "$WORK/repo"); rc=$?
+[ "$rc" -eq 0 ] \
+  && ok "t3. the same help captured first and read by herestring -- accepted" \
+  || { bad "t3. expected rc=0 for the captured form, got rc=$rc: $out"; }
 
 echo
 if [ "$fails" -eq 0 ]; then
