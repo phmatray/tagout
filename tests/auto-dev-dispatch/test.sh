@@ -139,36 +139,51 @@ printf '%s\n' "$STEP4_INTRO" | grep -qi "re-dispatch" \
 printf '%s\n' "$STEP4_INTRO" | grep -Eqi "not.{0,40}BLOCKED|never.{0,40}BLOCKED" \
   || fail "Step 4's intro does not say a same-cwd refusal is NOT counted as a BLOCKED issue"
 
-# 3b. The decision itself, extracted and RUN — not just grepped for — same discipline as
-#     tests/pr-existence-guard/test.sh.
-BEGIN_MARK='# >>> worker-toplevel guard'
-END_MARK='# <<< worker-toplevel guard'
-n_begin=$(grep -c -F -- "$BEGIN_MARK" "$SKILL_MD" || true)
-n_end=$(grep -c -F -- "$END_MARK" "$SKILL_MD" || true)
-[ "$n_begin" = "1" ] && [ "$n_end" = "1" ] \
-  || fail "skills/auto-dev/SKILL.md must carry EXACTLY ONE marked worker-toplevel guard program (found $n_begin/$n_end)"
-
-PROG="$(kit_scratch)/worker-toplevel-guard.sh"
-awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
-  index($0, b) { inside = 1 }
-  inside       { print }
-  inside && index($0, e) { exit }
-' "$SKILL_MD" > "$PROG"
-[ -s "$PROG" ] || fail "extracted an empty worker-toplevel guard program from $SKILL_MD"
-
-# Matching toplevel — the shared-worktree hazard itself — must be a refusal (non-zero exit).
-match_out="$(kit_scratch)/match.out"
-if WORKER_TOPLEVEL=/repo SUPERVISOR_TOPLEVEL=/repo bash "$PROG" > "$match_out" 2>&1; then
-  fail "the worker-toplevel guard exited 0 on a MATCHING toplevel (should refuse):
-$(cat "$match_out" 2>/dev/null)"
+# 3b. The decision itself, RUN — not just grepped for. It was a marked block in Step 3 that a worker
+#     pasted; it is a script now, so this drives the very file a worker executes, from real
+#     directories rather than from two strings handed to it.
+GUARD="$KIT/skills/auto-dev/scripts/worker-toplevel-guard.sh"
+[ -x "$GUARD" ] || fail "$GUARD missing or not executable"
+grep -qF 'worker-toplevel-guard.sh "$SUPERVISOR_TOPLEVEL"' "$SKILL_MD" \
+  || fail "Step 3 no longer invokes worker-toplevel-guard.sh with the supervisor's toplevel"
+if grep -qF '# >>> worker-toplevel guard' "$SKILL_MD"; then
+  fail "Step 3 still carries the marked worker-toplevel block — the script is its one home now"
 fi
+for f in "$WORKER_MD" "$MERGE_MD"; do
+  grep -qF 'skills/auto-dev/scripts/worker-toplevel-guard.sh' "$f" \
+    || fail "$f does not tell the worker to run worker-toplevel-guard.sh as its first act"
+done
 
-# A differing toplevel — the normal isolated case — must proceed (exit 0).
-diff_out="$(kit_scratch)/diff.out"
-if ! WORKER_TOPLEVEL=/repo/.claude/worktrees/agent-x SUPERVISOR_TOPLEVEL=/repo bash "$PROG" > "$diff_out" 2>&1; then
-  fail "the worker-toplevel guard exited non-zero on a DIFFERING toplevel (should proceed):
-$(cat "$diff_out" 2>/dev/null)"
-fi
+G_SCRATCH="$(kit_scratch)"
+SUP="$G_SCRATCH/supervisor"; WRK="$G_SCRATCH/worker"; BARE="$G_SCRATCH/not-a-repo"
+mkdir -p "$SUP/sub" "$WRK" "$BARE"
+git -C "$SUP" init -q; git -C "$WRK" init -q
+SUP_TOP=$(git -C "$SUP" rev-parse --show-toplevel)
+
+# guard_case <label> <cwd> <want exit> <want first word> [args…]
+guard_case() {
+  local label="$1" cwd="$2" want_rc="$3" want_word="$4"; shift 4
+  local out rc=0
+  out=$(cd "$cwd" && "$GUARD" "$@" 2>&1) || rc=$?
+  [ "$rc" -eq "$want_rc" ] || fail "worker-toplevel guard [$label]: exit $rc, wanted $want_rc — $out"
+  case "$out" in
+    "$want_word"*) ;;
+    *) fail "worker-toplevel guard [$label]: expected a line starting '$want_word', got: $out" ;;
+  esac
+}
+# A matching toplevel — the shared-worktree hazard itself — must be a refusal.
+guard_case "the supervisor's own tree" "$SUP" 1 REFUSE "$SUP_TOP"
+guard_case "a subdirectory of the supervisor's tree" "$SUP/sub" 1 REFUSE "$SUP_TOP"
+# A differing toplevel — the normal isolated case — must proceed.
+guard_case "a tree of its own" "$WRK" 0 PROCEED "$SUP_TOP"
+# Not a git directory at all is a refusal, never a PROCEED and never a crash.
+guard_case "not a git work tree" "$BARE" 1 REFUSE "$SUP_TOP"
+# The same tree reached through a symlink is still the same tree.
+ln -s "$SUP" "$G_SCRATCH/supervisor-link"
+guard_case "the supervisor's tree through a symlink" "$SUP" 1 REFUSE "$G_SCRATCH/supervisor-link"
+# No supervisor toplevel is no verdict — and above all not exit 0.
+guard_case "no argument" "$WRK" 2 "worker-toplevel guard: no verdict"
+guard_case "an empty argument" "$WRK" 2 "worker-toplevel guard: no verdict" ""
 
 # --- #510 Task 2: the worker-side branch-held guard ---------------------------------------------
 #

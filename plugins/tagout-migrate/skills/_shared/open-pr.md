@@ -36,49 +36,18 @@ whether to resume onto it.
 **Then by issue, when `$ISSUE` is set** (empty → skip to §2: no issue, nothing to close). A branch
 name is only a guess at what a prior run called itself (#214), so ask GitHub about the *issue* too.
 
-`$ISSUE` must already be a validated non-empty digit string by this point — the pattern below
-concatenates it unescaped, and an empty value would degrade `…#\b` into "closes any issue", matching
-PRs unrelated to this one.
-
-Wide net first (a plain search can hit a PR that merely *mentions* the issue), then narrow to PRs
-whose body actually closes it via GitHub's closing-keyword set. `gh pr list --jq` cannot take
-`--arg`, so the fetch and the filter are two commands — the second one embeds the filter program
-directly, the same way `skills/merge-pr/references/merge-mechanics.md` embeds its own marked verdict
-program, so there is exactly one copy of it and `tests/pr-existence-guard/test.sh` extracts and runs
-the thing this section tells you to paste, not a paraphrase of it:
+Run the guard — a script, not a block to paste, so what `tests/pr-existence-guard/test.sh` proves
+green is what executes:
 
 ```bash
-case "$ISSUE" in
-  ''|*[!0-9]*) echo "REFUSED — \$ISSUE ('$ISSUE') is not a validated non-empty digit string"; exit 1 ;;
-esac
-
-# --limit above the default page size (30): an issue that has accumulated several stale/duplicate
-# PRs — the exact scenario this guard targets — could otherwise truncate the real closer off the
-# first page before the filter below ever sees it.
-gh pr list --search "$ISSUE in:body" --state open --limit 100 \
-  --json number,headRefName,body,url,isDraft > /tmp/issue-$ISSUE-mentions.json
-
-# A failed or rate-limited fetch leaves an empty file, and jq silently treats empty input as "no
-# rows" rather than an error — the "load-bearing, not decoration" lesson of implement-issue's plan
-# fetch applies here too: an unchecked empty fetch reads as "0 open PRs found" and lets a duplicate
-# PR through on a transient API failure, silently reproducing the bug this guard exists to close.
-[ -s /tmp/issue-$ISSUE-mentions.json ] || {
-  echo "REFUSED — the PR search returned nothing; retry rather than treat this as '0 found'"; exit 1; }
-
-jq --arg issue "$ISSUE" '
-  # >>> issue-scoped PR-existence guard
-  # $issue is the numeric issue id, bound above via --arg. `\b…#<n>\b` stops "214" from matching a
-  # #2140/#1214 substring. `:?\s*` accepts both "Closes #42" and "Closes: #42" — GitHub recognizes
-  # the colon form too — while still requiring the keyword to sit immediately before the number, not
-  # just somewhere in the same sentence. `.body // ""` guards a PR with no description: `gh` reports
-  # that as JSON `null`, and `test()` throws on `null` rather than treating it as non-matching (#259)
-  # — coercing to `""` makes it evaluate to "no match" like any other non-closing body.
-  [.[] | select((.body // "") | test("(?i)\\b(close[sd]?|fix(e[sd])?|resolve[sd]?):?\\s*#" + $issue + "\\b"))]
-  # <<< issue-scoped PR-existence guard
-' /tmp/issue-$ISSUE-mentions.json > /tmp/issue-$ISSUE-closers.json
-
-jq 'length' /tmp/issue-$ISSUE-closers.json
+<kit>/skills/_shared/scripts/pr-existence-guard.sh "$ISSUE"
 ```
+
+It casts a wide net (a plain search can hit a PR that merely *mentions* the issue), narrows to PRs
+whose body actually closes the issue via GitHub's closing-keyword set, and prints the count on its
+first line, then one row per closing PR — `RESUME` for the one to resume onto, `ALSO` for every
+other. Exit `2` with a `REFUSED — …` line is **no verdict** (the issue is not digits, the search
+came back empty, or a commit count could not be read): retry it, never read it as `0`.
 
 ⚠️ **Residual limitation, not fixable from this side:** `gh pr list --search` hits GitHub's Search
 API, which is *eventually consistent* — unlike the branch-name lookup's `gh pr list --head`, a live-ref
@@ -87,15 +56,13 @@ does not close it to zero; the branch-name lookup (checked first) is the fast pa
 a same-slug race this cannot.
 
 - `0` → nothing found; go on to §2.
-- `1` → an open PR already closes this issue: report it (`jq -r '.[0].headRefName'
-  /tmp/issue-$ISSUE-closers.json` is its branch) and **stop** — no second `gh pr create`. The caller
+- `1` → an open PR already closes this issue: report it (its `RESUME` row carries the PR number,
+  the branch and the URL) and **stop** — no second `gh pr create`. The caller
   decides whether to resume onto it.
 - `2`+ → a pre-existing duplicate pair already on GitHub (the exact #195 shape). The one to resume
-  onto is the one with the most commits (`gh pr view <n> --json commits --jq '.commits | length'` — an
-  untouched scaffold has exactly one); **on a tie** (e.g. both are still untouched scaffolds), the
-  **lowest PR number** — the one created first — so two independent runs of this same recipe converge
-  on the same choice instead of diverging further. Report it, name the others, and **stop**; don't
-  silently pick one and stay quiet about it.
+  onto is the `RESUME` row — the script picks it, by the rule in its header, so two independent runs
+  of this same recipe converge on the same choice instead of diverging further. Report it, name the
+  `ALSO` rows, and **stop**; don't silently pick one and stay quiet about it.
 
 A PR that once closed this issue but is now closed doesn't count — `--state open` already excludes it.
 

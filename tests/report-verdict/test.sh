@@ -158,6 +158,22 @@ grep -qF 'WORKTREE: cleaned up' "$KIT/commands/auto-dev-merge.md" \
   || fail "commands/auto-dev-merge.md no longer tells the worker the exact WORKTREE spelling the parser reads as clean"
 echo "  ok: the merge command spells the clean WORKTREE value the parser reads"
 
+# Every literal BASE: value the merge command hands its worker must be one the supervisor trusts:
+# the grammar `base-run-verdict.sh --report-line` prints and `fleet-counters.sh base` accepts. The
+# template used to offer `unverified: <why>`, which that grammar refuses — so every such line was
+# re-derived, and the worker had been told to write it.
+flat_merge=$(tr '\n' ' ' < "$KIT/commands/auto-dev-merge.md")
+literals=$(grep -oE 'BASE: (green|RED|unverified)[^|`<]*' <<<"$flat_merge" | sed -e 's/^BASE: //' -e 's/[[:space:]]*$//' | sort -u)
+[ -n "$literals" ] || fail "commands/auto-dev-merge.md spells no literal BASE: value — the extractor is broken"
+while IFS= read -r base; do
+  "$COUNTERS_SH" "$scratch/base-probe.md" base "$base" >/dev/null 2>&1 \
+    || fail "commands/auto-dev-merge.md tells the worker to write 'BASE: $base', which fleet-counters.sh refuses as untrusted"
+done <<<"$literals"
+if grep -qE 'unverified: ' <<<"$flat_merge"; then
+  fail "commands/auto-dev-merge.md still offers the 'unverified: <why>' spelling the grammar refuses"
+fi
+echo "  ok: every BASE: value the merge command spells out is in the trusted grammar"
+
 echo "== the owner invokes the decision and no longer restates its numbers =="
 PROSE="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 grep -qF 'decide.sh autodev.report' "$PROSE" || fail "auto-dev never invokes autodev.report"

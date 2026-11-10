@@ -5,11 +5,11 @@ is deterministic, so **run `scripts/survey.sh`** instead of re-deriving it (one 
 fewer turns = less cache re-read). It prints one bucketed, ordered row per issue:
 
 ```
-QUEUE  #N  effort  plan=true  qa=false  deps=-                 [labels]  title   ← eligible (smallest declared tier first), area-tag + dispatch
-QUEUE  #N  effort  plan=true  qa=false  deps=blocking=#20,#21  [labels]  title   ← eligible AND unblocks others: sorted first inside its tier
-HOLD   #N  effort  plan=true  qa=false  deps=blocked_by=#12    [labels]  title   ← a prerequisite is still open
-HOLD   #N  effort  plan=true  qa=false  deps=parent(3)         [labels]  title   ← a tracking issue: its body is a list of children, not a plan
-HOLD   #N  effort  plan=true  qa=false  deps=assigned          [labels]  title   ← a human took it (unassign to release it)
+QUEUE  #N  effort  plan=true  qa=false  deps=-                 model=mid    area=scripts  [labels]  title   ← eligible (smallest declared tier first): dispatch
+QUEUE  #N  effort  plan=true  qa=false  deps=blocking=#20,#21  model=small  area=docs     [labels]  title   ← eligible AND unblocks others: sorted first inside its tier
+HOLD   #N  effort  plan=true  qa=false  deps=blocked_by=#12    model=mid    area=-        [labels]  title   ← a prerequisite is still open
+HOLD   #N  effort  plan=true  qa=false  deps=parent(3)         model=mid    area=ci       [labels]  title   ← a tracking issue: its body is a list of children, not a plan
+HOLD   #N  effort  plan=true  qa=false  deps=assigned          model=mid    area=tests    [labels]  title   ← a human took it (unassign to release it)
 HOLD   #N  ...                                                                   ← past the 2nd declared tier, or unclassified (see Large issues)
 SKIP   #N  ...                                                                   ← no plan, or manual-QA only — note the reason in state
 SEED   <count>  waiting for a seed: #a #b                                        ← the unplanned tail; `SEED  0  -` when there is none
@@ -55,8 +55,13 @@ back to the kit's shipped `templates/repo-setup.yml`) — whatever `effort:` lab
 declares, in the order it declares them, not a hardcoded S/M/L/XL spelling (#213); **plan** present
 (`🛠️ Implementation plan` / a task-list — no plan ⇒ SKIP, or seed one via
 `create-issue` if the user insists); **manual-QA** dropped (a headless agent can't "visually QA…").
-The **one judgment left to you is area-tagging** the QUEUE rows (infer from title/labels: `compiler`,
-`php`, `website`, `studio-frontend`, `tests`, `ci/build`) — enough to tell "these two would fight."
+**Area** and **model tier** are columns as well, read off the labels: `area=` is the issue's `area:`
+label(s), `model=` the tier to dispatch it on — `small` for what the labels prove mechanical, `mid`
+otherwise. Take both as printed. The **judgment left to you is narrow**: area-tagging a row that
+reads `area=-` (its issue carries no `area:` label — infer one from the title, e.g. `compiler`,
+`website`, `tests`, `ci/build`, enough to tell "these two would fight"), and promoting to the top
+tier a row you know is cross-cutting. The survey never prints `model=top`: that tier is the one
+escalation `autodev.report` grants, or your own call.
 
 Persist a **state file** at the pinned, derivable path
 
@@ -82,7 +87,7 @@ contend for one path. Keep it small and current:
 ## Queue — SMALL (then MEDIUM), eligible & area-tagged
 <#n (area), ...>
 ## Completed
-- #<n> → PR #<pr> MERGED (<commit>) — base <green | RED #<bug> | unverified: <why>>
+- #<n> → PR #<pr> MERGED (<commit>) — base <the trusted BASE: line — green (…) | RED (…) | unverified (…)>[ · bug #<n>]
 ## Needs manual sweep
 - #<n> → PR #<pr> — WORKTREE: <text>
 ## Held on a prerequisite

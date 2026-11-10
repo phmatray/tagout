@@ -1231,6 +1231,47 @@ assert_bucket HOLD  41 "$O14"; assert_deps "blocked_by=#42" 41 "$O14"
 assert_bucket QUEUE 42 "$O14"; assert_deps "blocking=#41"   42 "$O14"
 echo "ok: limit-window — a body-line blocker past a bounded gh issue list window still resolves as open (#367, #452)"
 
+# ----------------------------------------- 12c2. the model tier and the area are columns, not a judgment
+#
+# Fields 7 and 8 of a row, between deps= and [labels]. The supervisor used to infer both from a
+# row's title and labels on every survey; a column is the same answer every time. Asserted on the
+# RENDERED row, like assert_deps. The fixture is written by hand because mkissues only knows the
+# effort label, and these two columns are about every OTHER label.
+F15="$WORK/model-area.json"
+O15="$WORK/model-area.out"
+row15() {   # row15 <number> <labels as a JSON array of names>
+  printf '{"number":%s,"title":"t%s","labels":%s,"body":"%s","comments":[]}' \
+    "$1" "$1" "$(printf '%s' "$2" | jq -c 'map({name: .})')" "$PLAN_BODY"
+}
+{
+  printf '['
+  row15 50 '["effort: small","documentation","area: docs"]';                       printf ','
+  row15 51 '["effort: small","priority: low","area: scripts"]';                    printf ','
+  row15 52 '["effort: small","priority: high","bug","area: scripts","area: tests"]'; printf ','
+  row15 53 '["effort: medium","priority: low","bug"]';                             printf ','
+  row15 54 '["effort: medium","Documentation","Area:  ci"]'
+  printf ']'
+} > "$F15"
+run_survey "$W1" "$F15" "$O15"
+assert_col() {   # assert_col <field number> <want> <issue> <what>
+  local line got
+  line=$(grep -F "$(printf '\t#%s\t' "$3")" "$O15" || true)
+  [ -n "$line" ] || { echo "FAIL: issue #$3 not found in output"; cat "$O15"; exit 1; }
+  got=$(printf '%s' "$line" | cut -f"$1")
+  [ "$got" = "$2" ] || { echo "FAIL: issue #$3 ($4) expected $2, got $got"; echo "$line"; exit 1; }
+}
+assert_col 7 "model=small" 50 "a documentation issue";             assert_col 8 "area=docs"          50 "one area label"
+assert_col 7 "model=small" 51 "lowest priority, smallest effort";  assert_col 8 "area=scripts"       51 "one area label"
+assert_col 7 "model=mid"   52 "a small bug that is not low";       assert_col 8 "area=scripts+tests" 52 "two area labels, in label order"
+assert_col 7 "model=mid"   53 "low priority past the first tier";  assert_col 8 "area=-"             53 "no area label"
+assert_col 7 "model=small" 54 "the label matched whatever its case"; assert_col 8 "area=ci"          54 "prefix matched whatever its case or spacing"
+if grep -q 'model=top' "$O15"; then
+  echo "FAIL: the survey predicted the top tier from labels — top is an escalation or the supervisor's call, never a column"; exit 1
+fi
+# The columns moved nothing a reader already relied on: deps= is still field 6.
+assert_deps - 50 "$O15"
+echo "ok: model-area — the model tier and the area are read off the labels, and top is never predicted"
+
 # ------------------------------------------------- 12d. SKILL.md documents the column it now prints
 #
 # The row format is a contract between survey.sh and the supervisor that reads it; a column nothing
@@ -1239,7 +1280,7 @@ echo "ok: limit-window — a body-line blocker past a bounded gh issue list wind
 # they would fill, idle.
 SKILL="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 [ -r "$SKILL" ] || { echo "FAIL: $SKILL missing"; exit 1; }
-for token in 'deps=' 'blocked_by=' 'parent(' 'blocking='; do
+for token in 'deps=' 'blocked_by=' 'parent(' 'blocking=' 'model=' 'area='; do
   grep -qF -- "$token" "$SKILL" || {
     echo "FAIL: skills/auto-dev/SKILL.md never mentions '$token' — the survey prints a column the supervisor is not told to read"
     exit 1; }
