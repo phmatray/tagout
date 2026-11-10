@@ -124,6 +124,8 @@ link, and a file that adds one without appearing below.
 - `skills/create-issue/references/steps/03-duplicates-and-root-causes.md` — Step 3 of create-issue, split out of its SKILL.md for progressive disclosure (#499)
 - `skills/create-issue/references/steps/02-capture-the-idea.md` — Step 2 of create-issue, split out of its SKILL.md for progressive disclosure (#499)
 - `skills/triage-backlog/SKILL.md` — open issue and PR bodies, read to fold, reopen and close
+- `skills/triage-backlog/references/steps/02-gather-the-backlog.md` — Step 2 of triage-backlog, split out of its SKILL.md for progressive disclosure: the bodies are read here
+- `skills/triage-backlog/references/steps/04-verify-state.md` — Step 4 of triage-backlog, split out the same way: a body's claim about its own state is checked, never believed
 - `skills/migrate-legacy/references/phase-1-assess.md` — a customer's source, READMEs and `.csproj`
 - `commands/auto-dev-worker.md` — the standing rules a dispatched worker reads in a fresh context
 - `skills/_shared/prior-rejections.md` — the issue titles and gists fed **into** the prior-rejection
