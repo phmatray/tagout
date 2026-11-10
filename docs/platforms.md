@@ -52,9 +52,10 @@ Three things are Claude Code's own, and the kit uses them without an abstraction
 - **Sub-agents.** `auto-dev` keeps a fleet of workers in fresh contexts and `deliver-issue` runs
   each phase in one. On a host without sub-agents, run `create-issue`, `implement-issue` and
   `merge-pr` yourself, one after the other.
-- **The Standards review.** `implement-issue` Step 7 runs the `code-review` skill. A host without it
-  falls back to the kit's own read-only reviewer
-  (`skills/implement-issue/references/standards-review-fallback.md`), at the same level.
+- **The Standards review.** `implement-issue` Step 7 and `merge-pr`'s draft flip run the
+  `code-review` skill. A host without it falls back to the kit's own read-only reviewer
+  (`skills/_shared/standards-review-fallback.md`), at the same level; its recap names what it
+  could not check.
 
 A new host is one row in `docs/_data/hosts.yml` and one adapter file, checked on every CI run by
 `scripts/host-adapters.py` — never a change to a skill.
