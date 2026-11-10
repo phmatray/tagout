@@ -48,23 +48,21 @@ Then, per slot:
 
 - **Reported MERGED** (GitHub agrees) → record it — `scripts/fleet-counters.sh "$STATE_FILE" merged <issue>`,
   with `--blocking` when its survey row carried `blocking=`, then `… filed <n>…` for any issue its
-  `FILED:` field names. Before refilling, read the worker's `WORKTREE` field from its
-  final report line. `merge-pr`'s own Step 7 is documented as tolerant of partial local cleanup (e.g.
-  `git worktree remove` needing `--force` on a dirty leftover, or a `git branch -D` racing something
-  else), so a worker can honestly report `STATUS: MERGED` alongside a `WORKTREE` value that isn't
-  fully cleaned up — and a **missing** `WORKTREE` field is treated the same way, as non-clean, never
-  as evidence of success. If it reads as fully cleaned up — worktree and branch gone, whether removed
-  by this run or already absent (`merge-pr` Step 7 treats "already gone" as success too) — proceed
-  exactly as before: **retire the slot** (a phase-2 agent that reported MERGED has returned — no
-  shutdown needed; stop it only if it is somehow still running) and **refill the slot** —
-  pick the next queued issue whose area isn't currently held, dispatch a fresh worker (Step 3). Keeps
-  the fleet at N. Otherwise, add a line to the state file's `## Needs manual sweep` section naming the
+  `FILED:` field names. The verdict is how you read the worker's `WORKTREE` field: `refill` when it
+  reads as fully cleaned up — worktree and branch gone, whether removed by this run or already
+  absent — and `refill-sweep` for anything else. `merge-pr`'s Step 7 tolerates partial local
+  cleanup, so a worker can honestly report `STATUS: MERGED` beside a leftover, and a
+  **missing** `WORKTREE` field is treated the same way, as non-clean, never as evidence of success.
+  On `refill`: **retire the slot** (a phase-2 agent that reported MERGED has returned; stop it only
+  if it is somehow still running) and **refill the slot** — the next queued issue whose area isn't
+  currently held, a fresh worker (Step 3). Keeps the fleet at N.
+  On `refill-sweep`: add a line to the state file's `## Needs manual sweep` section naming the
   issue, PR, and the `WORKTREE` text verbatim — then **still end the agent and refill the slot
-  regardless** (the same retirement as above — stop it only if it is still running): the PR is merged, only local cleanup is outstanding, and nothing about that blocks the
-  fleet. Either way, the issue still moves to `## Completed` right away — unlike the takeover bullet
-  below, nothing here re-dispatches a sub-agent to close the gap, so there is no future report to defer
-  that entry for; `## Needs manual sweep` tracks the outstanding local housekeeping separately, it
-  does not gate `## Completed`.
+  regardless**: the PR is merged, only local cleanup is outstanding, and nothing about that blocks
+  the fleet.
+  Either way, the issue still moves to `## Completed` right away: unlike the takeover bullet below,
+  nothing here re-dispatches a sub-agent to close the gap, and `## Needs manual sweep` tracks the
+  housekeeping separately — it does not gate `## Completed`.
 - **Idle, but PR is READY and unmerged** → it stalled at "ready" — unless the PR sits under `## Held for owner`, which is a one-way door, or a PR the profile reserves for the owner, held on purpose (Step 3): never re-drive that one. **First check whether CI was still pending when you dispatched it** — if so this is your dispatch-timing bug, not the worker's: run `scripts/wait-ci.sh <pr>`, then re-dispatch phase 2 with the finished check table inline (see *NEVER dispatch phase 2 while CI is pending* in Step 3). Re-dispatching into the same pending CI just loses another sub-agent. Otherwise, `SendMessage` the live agent — or, if it has returned, dispatch a fresh phase-2 sub-agent — to run `merge-pr <PR>` now and not idle until merged. `mergeable=UNKNOWN` is usually a transient recompute after `main` moved — its `merge-pr` will sync and resolve; nudge a main-sync if it persists. If a worker idles at "ready" **twice** with CI already final, take over: run the kit's
 `<kit>/skills/merge-pr/scripts/guarded-pr-merge.sh <PR> -- --squash --delete-branch` and decide the
 slot's fate from its exit code, never from a bare `gh pr merge`'s (this kit's normal layout — the
@@ -121,9 +119,8 @@ cap is the decision's, read from that count and not from yours: when it answers 
 issue is genuinely stuck rather than merely long, so surface and
 retire it on the BLOCKED path below instead of resuming again — but **skip that path's tier
 escalation**. A budget exhaustion is by construction a *length* failure, not a "the model wasn't
-strong enough" one; this run's own outlier was an `effort: medium` issue that succeeded on the mid
-tier and simply took 434 turns, so promoting it to the top model would put the fleet's most
-expensive issue on its most expensive tier for no reason.
+strong enough" one, so promoting it would put the fleet's most expensive issue on its most
+expensive tier for no reason.
 - **Reported BLOCKED with `DETAIL: pushed <sha>, CI restarted`** → not a block: the phase-2 worker had to push (conflict, re-sync, fix) and stopped instead of waiting (#478). Run `scripts/wait-ci.sh <pr>`, then re-dispatch phase 2 with the finished check table inline. Never tier-escalate it.
 - **Reported BLOCKED with `DETAIL: branch-held guard: …`** → not a block on the issue: the worker woke in a fresh tree while an earlier tree still held its PR branch, so this dispatch skipped (or raced) Step 3's release guard (#510). Run `scripts/release-branch.sh <pr-branch>` and act on its verdict exactly as that guard says: on `FREE`/`RELEASED`, re-dispatch the **same** phase at the **same** tier — never tier-escalate it (a stronger model meets the same held branch) and don't count it against the `PARTIAL ×3` cap (nothing was attempted); on `HELD`, record the line under `## Needs manual sweep` and retire the slot.
 - **Reported BLOCKED with a `BLOCKED_BY:` field naming an issue or `replan`** → write the verdict back as a native hold instead of guessing at a fix, so the next survey honours it rather than a re-dispatched worker re-finding the same block from scratch. **Never tier-escalate a `BLOCKED_BY` report of either shape** — a stronger model reading the same open prerequisite or the same disproven plan changes nothing.
