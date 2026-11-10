@@ -68,9 +68,9 @@ echo "  ok: unignored-home — exit 2, .gitignore byte-identical, no new commit,
 # The never-write invariant, in the refusal's own words (#280's Task 3): the operator must be able
 # to act on the message alone, without re-deriving what to add — so the exact line has to be in
 # it, verbatim, alongside the instruction that THEY add it, never this script.
-printf '%s\n' "$out" | grep -qF '.claude/worktrees/' \
+grep -qF '.claude/worktrees/' <<<"$out" \
   || { echo "FAIL [unignored-home]: refusal does not name the exact .gitignore line to add:"; echo "$out"; exit 1; }
-printf '%s\n' "$out" | grep -qF 'Add this line yourself' \
+grep -qF 'Add this line yourself' <<<"$out" \
   || { echo "FAIL [unignored-home]: refusal does not tell the operator to add the line themselves:"; echo "$out"; exit 1; }
 
 echo "  ok: unignored-home — the refusal names the exact line, and says to add it yourself"
@@ -102,9 +102,9 @@ rc=0
 out=$("$KIT/$HELPER" -C "$caseB" "$BRANCH_B") || rc=$?
 [ "$rc" -eq 0 ] || { echo "FAIL [incident-spelling]: expected exit 0, got $rc"; echo "$out"; exit 1; }
 
-printf '%s\n' "$out" | grep -q '^WORKTREE=' \
+grep -q '^WORKTREE=' <<<"$out" \
   || { echo "FAIL [incident-spelling]: no WORKTREE= line in output:"; echo "$out"; exit 1; }
-printf '%s\n' "$out" | grep -qF "BRANCH=$BRANCH_B" \
+grep -qF "BRANCH=$BRANCH_B" <<<"$out" \
   || { echo "FAIL [incident-spelling]: no BRANCH=$BRANCH_B line in output:"; echo "$out"; exit 1; }
 
 wt_path=$(printf '%s\n' "$out" | sed -n 's/^WORKTREE=//p')
@@ -159,7 +159,7 @@ BRANCH_D="feat/4-end-of-options"
 rc=0
 out=$("$KIT/$HELPER" -C "$caseD" -- "$BRANCH_D" 2>&1) || rc=$?
 [ "$rc" -eq 0 ] || { echo "FAIL [end-of-options]: expected exit 0, got $rc"; echo "$out"; exit 1; }
-printf '%s\n' "$out" | grep -qF "BRANCH=$BRANCH_D" \
+grep -qF "BRANCH=$BRANCH_D" <<<"$out" \
   || { echo "FAIL [end-of-options]: -- swallowed the branch instead of ending options:"; echo "$out"; exit 1; }
 
 echo "  ok: end-of-options — '--' before <branch> does not discard it"
@@ -204,15 +204,15 @@ SKILL="$(kit_skill_prose "$KIT" implement-issue)"   # router + references/steps/
 STEP4=$(sed -n '/^## Step 4 /,/^## Step 5 /p' "$SKILL")
 [ -n "$STEP4" ] || { echo "FAIL [skill-doc]: could not extract Step 4's section from $SKILL"; exit 1; }
 
-printf '%s\n' "$STEP4" | grep -qF 'make-worktree.sh' \
+grep -qF 'make-worktree.sh' <<<"$STEP4" \
   || { echo "FAIL [skill-doc]: Step 4 does not reference make-worktree.sh"; exit 1; }
-printf '%s\n' "$STEP4" | grep -q '⛔' \
+grep -q '⛔' <<<"$STEP4" \
   || { echo "FAIL [skill-doc]: Step 4 carries no ⛔ clause for this step's own hazard"; exit 1; }
-printf '%s\n' "$STEP4" | grep -qF 'git check-ignore' \
+grep -qF 'git check-ignore' <<<"$STEP4" \
   || { echo "FAIL [skill-doc]: Step 4's ⛔ clause does not name the hand-written 'git check-ignore' spelling"; exit 1; }
-printf '%s\n' "$STEP4" | grep -qF 'git commit' \
+grep -qF 'git commit' <<<"$STEP4" \
   || { echo "FAIL [skill-doc]: Step 4's ⛔ clause does not name 'git commit' in the main checkout"; exit 1; }
-printf '%s\n' "$STEP4" | grep -qF 'main checkout' \
+grep -qF 'main checkout' <<<"$STEP4" \
   || { echo "FAIL [skill-doc]: Step 4's ⛔ clause does not say WHERE the observed commit landed (the main checkout)"; exit 1; }
 
 echo "  ok: skill-doc — Step 4 names make-worktree.sh and pins the ⛔ clause naming both spellings"

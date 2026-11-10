@@ -24,7 +24,7 @@ refuses() {
   if [ "$rc" -ne 1 ]; then
     echo "FAIL [$name]: expected exit 1 (refusal), got exit $rc"; echo "$out"; exit 1
   fi
-  if ! printf '%s' "$out" | grep -qF -- "$want"; then
+  if ! grep -qF -- "$want" <<<"$out"; then
     echo "FAIL [$name]: refusal did not mention '$want':"; echo "$out"; exit 1
   fi
   echo "  ok: $name — refused, message names '$want'"
@@ -246,7 +246,7 @@ refuses release-title-extra-file "'chore'" \
 #     would reopen the hole from the other end, so it is exit 2, distinct from a refusal.
 rc=0; out=$("$GATE" "chore(skills): x" 2>&1) || rc=$?
 [ "$rc" -eq 2 ] || { echo "FAIL [no-paths]: expected exit 2, got $rc"; echo "$out"; exit 1; }
-printf '%s' "$out" | grep -qF 'plumbing failure' \
+grep -qF 'plumbing failure' <<<"$out" \
   || { echo "FAIL [no-paths]: message does not name the plumbing failure:"; echo "$out"; exit 1; }
 echo "  ok: no-paths — exit 2, named as a plumbing failure"
 
@@ -307,7 +307,7 @@ git -C "$FIX" mv skills/alpha/SKILL.md moved.md
 git -C "$FIX" commit -qm move
 FIX_MOVED=$(git -C "$FIX" rev-parse HEAD)
 paths=$( cd "$FIX" && bash "$KIT/$DIFF" "$FIX_BASE" "$FIX_MOVED" | tr '\0' '\n' )
-printf '%s\n' "$paths" | grep -qx 'skills/alpha/SKILL.md' \
+grep -qx 'skills/alpha/SKILL.md' <<<"$paths" \
   || { echo "FAIL [diff-rename]: the old skills/ path is absent:"; printf '%s\n' "$paths"; exit 1; }
 echo "  ok: diff-rename — a rename out of skills/** still reports the old path"
 
@@ -318,7 +318,7 @@ git -C "$FIX" add -A
 git -C "$FIX" commit -qm quoted
 FIX_QUOTED=$(git -C "$FIX" rev-parse HEAD)
 paths=$( cd "$FIX" && bash "$KIT/$DIFF" "$FIX_MOVED" "$FIX_QUOTED" | tr '\0' '\n' )
-printf '%s\n' "$paths" | grep -qx 'skills/alpha/we"ird name.md' \
+grep -qx 'skills/alpha/we"ird name.md' <<<"$paths" \
   || { echo "FAIL [diff-quoting]: the path came back escaped:"; printf '%s\n' "$paths"; exit 1; }
 echo "  ok: diff-quoting — a quote in the path survives verbatim, so the anchor still matches"
 
@@ -327,7 +327,7 @@ echo "  ok: diff-quoting — a quote in the path survives verbatim, so the ancho
 rc=0
 out=$( cd "$FIX" && bash "$KIT/$DIFF" 0000000000000000000000000000000000000000 "$FIX_QUOTED" 2>&1 ) || rc=$?
 [ "$rc" -ne 0 ] || { echo "FAIL [diff-unreachable]: exit 0 on a missing sha — the fail-open is back"; exit 1; }
-[ -z "$(printf '%s' "$out" | tr -d '\n' | tr -d ' ')" ] || printf '%s' "$out" | grep -q 'not present' \
+[ -z "$(printf '%s' "$out" | tr -d '\n' | tr -d ' ')" ] || grep -q 'not present' <<<"$out" \
   || { echo "FAIL [diff-unreachable]: message does not name the missing commit:"; echo "$out"; exit 1; }
 echo "  ok: diff-unreachable — non-zero, never a silent empty list"
 

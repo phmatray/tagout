@@ -11,10 +11,10 @@ reports a failure that did not happen. Measured on `tests/survey/test.sh` case 1
 
 #48 shipped the general doctrine (`tests/_lib.sh`'s `first_match`/`any_match`) and #123 widened one
 anti-recurrence guard (`tests/xunit-v3/test.sh` section 10) -- but only for the literal producer
-`find`, in three files. This gate generalises both: any external, streaming producer, anywhere
-under `tests/` and `scripts/`.
+`find`, in three files. This gate generalises both: any streaming producer -- external, or the
+shell's own `printf`/`echo` (see PRODUCERS) -- anywhere under `tests/` and `scripts/`.
 
-THE SHAPE IT FLAGS: a line piping an external producer into a `grep` call whose flags include `q`
+THE SHAPE IT FLAGS: a line piping a producer into a `grep` call whose flags include `q`
 (quiet -- exit on first match, the thing that races) -- including a producer wrapped in a `sudo`,
 an `env`, or one or more `VAR=val` prefixes, and including the same shape one level inside a
 `$(...)`/backtick substitution, recursively (#457). THE SHAPE IT DOES NOT FLAG: a `grep -q` that
@@ -45,8 +45,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+# `printf` and `echo` are on this list although they are shell builtins. The first version of this
+# gate exempted them ("one small write, cannot race"), and that was measured wrong: bash's `printf`
+# writes a multi-line argument in several writes, so `printf '%s\n' "$out" | grep -q first-line`
+# loses the same race -- 3 failures in 3000 on a loaded machine for a 40-line value, every time
+# once the value outgrows the pipe buffer -- and about 200 such assertions across 32 suites turned
+# a parallel run of the whole plan red about every other time. A builtin gets no exemption: the
+# remedy is the same herestring, and it costs nothing.
 PRODUCERS = frozenset(
-    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq".split()
+    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq printf echo".split()
 )
 
 QUIET_LONG = frozenset(("--quiet", "--silent"))

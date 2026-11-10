@@ -376,7 +376,7 @@ printf '{"delete_branch_on_merge":false}\n' > "$GH_SETTINGS_JSON"
 # the whole multi-line report matches ACROSS lines: "+ADD" from the first label and "area:" from
 # the placeholder three lines down satisfy that pattern with nothing wrong. Measured — it is what
 # made this very assertion fire against a correct report.
-has_line() { printf '%s\n' "$2" | grep -q "$1"; }
+has_line() { grep -q "$1" <<<"$2"; }
 
 # Shared reader for an issue form's `area` dropdown options, one per line, in file order (#198) —
 # used to compare a copied/generated form against the manifest without a bare grep, which would

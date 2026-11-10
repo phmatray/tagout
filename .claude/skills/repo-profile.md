@@ -41,12 +41,8 @@
   running anything.
   `--jobs auto` (or `--jobs N`) runs the plan's ~90 independent items in parallel and prints the
   **same report in the same order** — measured ~6 min serial against ~1 min at 8 jobs — so prefer
-  `./scripts/run-all-tests.sh --jobs auto` for the pre-ready full pass. ⚠️ **A failure seen only
-  under `--jobs` is re-run alone before it is believed**: some 200 assertions across the suites
-  still pipe a `printf`/`echo` into `grep -q`, which can lose a SIGPIPE race under load and report
-  a match as a miss (measured: about one spurious failure every other run at 8 jobs, each in a
-  suite that passes alone, each with the matched text visible in its own output). That is the
-  #391 idiom `scripts/sigpipe-idiom-check.py` does not yet flag for shell builtins.
+  `./scripts/run-all-tests.sh --jobs auto` for the pre-ready full pass; drop the flag only to
+  reproduce a failure in isolation.
 - **Single-suite filter (per-task, fast):** `./tests/<suite>/test.sh` — e.g. `./tests/preflight/test.sh`.
   This is the per-task command the lifecycle skills should lean on; suites are independent.
 - **Format/lint apply:** none — no formatter is configured for the shell/python/markdown sources.

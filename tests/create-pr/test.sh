@@ -37,7 +37,7 @@ check_step2_shape() {
     || { echo "FAIL: $f does not route leftover commits through guarded-commit.sh"; return 1; }
   while IFS=: read -r line _; do
     window=$(sed -n "$(( line > 5 ? line - 5 : 1 )),${line}p" "$f")
-    printf '%s\n' "$window" | grep -q 'git status --porcelain' \
+    grep -q 'git status --porcelain' <<<"$window" \
       || { echo "FAIL: $f calls guarded-commit.sh at line $line with no git status --porcelain gate above it"; return 1; }
   done < <(grep -n 'guarded-commit\.sh' "$f")
   return 0
@@ -51,7 +51,7 @@ check_rewind_gated() {
   line=$(grep -n 'rewind-default\.sh".*-C ' "$f" | head -1 | cut -d: -f1)
   [ -n "$line" ] || { echo "FAIL: $f does not invoke rewind-default.sh"; return 1; }
   window=$(sed -n "$(( line > 3 ? line - 3 : 1 )),${line}p" "$f")
-  printf '%s\n' "$window" | grep -q 'FROM_DEFAULT' \
+  grep -q 'FROM_DEFAULT' <<<"$window" \
     || { echo "FAIL: $f calls rewind-default.sh at line $line with no FROM_DEFAULT gate above it"; return 1; }
   return 0
 }

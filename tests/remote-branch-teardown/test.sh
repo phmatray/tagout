@@ -135,7 +135,7 @@ want_stdout() {
 
 want_contains() {
   local name="$1" needle="$2" what="$3"
-  if ! printf '%s' "$CASE_OUT" | grep -qF -- "$needle"; then
+  if ! grep -qF -- "$needle" <<<"$CASE_OUT"; then
     note_fail "$name — $what
       want output to contain: $needle
       got: $CASE_OUT"
@@ -284,7 +284,7 @@ fi
 out=$(PATH="$STUBS:$PATH" "$SCRIPT" 2>&1) && rc=0 || rc=$?
 if [ "$rc" != 2 ]; then
   note_fail "usage — missing arguments must exit 2, got $rc: $out"
-elif ! printf '%s' "$out" | grep -qF 'usage:'; then
+elif ! grep -qF 'usage:' <<<"$out"; then
   note_fail "usage — exit 2 but no usage line: $out"
 else
   echo "ok: usage — missing arguments exit 2 with a usage line"

@@ -45,7 +45,7 @@ verdict() {
   if [ "$rc" -ne "$want_rc" ]; then
     echo "FAIL [$name]: expected exit $want_rc, got $rc"; echo "$out"; exit 1
   fi
-  if ! printf '%s' "$out" | grep -qF -- "$want_msg"; then
+  if ! grep -qF -- "$want_msg" <<<"$out"; then
     echo "FAIL [$name]: output did not mention '$want_msg':"; echo "$out"; exit 1
   fi
   echo "  ok: $name"
@@ -130,7 +130,7 @@ rc=0; bash "$KIT/$GUARD" -C "$real" >/dev/null 2>&1 || rc=$?
 
 git -C "$real" add -A 2>/dev/null
 entry=$(git -C "$real" ls-files -s -- .claude/worktrees/feat)
-printf '%s' "$entry" | grep -q '^160000 ' \
+grep -q '^160000 ' <<<"$entry" \
   || { echo "FAIL [real-worktree]: expected a 160000 gitlink, got: $entry"; exit 1; }
 [ "$(git -C "$real" ls-files -- .claude/worktrees | wc -l | tr -d ' ')" -eq 1 ] \
   || { echo "FAIL [real-worktree]: expected exactly one index entry for the worktree"; exit 1; }

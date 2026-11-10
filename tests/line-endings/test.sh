@@ -166,7 +166,7 @@ if has_cr "$crlf_fixture" && ! has_cr "$lf_fixture"; then
   bash "$SWEEP" "$lf_fixture" >/dev/null 2>&1
   if [ $? -eq 0 ]; then
     out=$(bash "$SWEEP" "$crlf_fixture" 2>&1); rc=$?
-    if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q 'never terminated'; then
+    if [ "$rc" -ne 0 ] && grep -q 'never terminated' <<<"$out"; then
       ok "a CRLF working copy really does make parse-sweep refuse a file it passes as LF"
     else
       bad "the CRLF fixture was not refused (rc=$rc) — if parse-sweep learned CR tolerance, this"

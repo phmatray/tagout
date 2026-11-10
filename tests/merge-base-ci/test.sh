@@ -700,7 +700,7 @@ echo "  ok: fallback-no-run-yet — check-runs 404 + nothing for the sha yet pri
 
 # Every fallback line still matches #455's grammar.
 for line in "RED (base-run)" "green (base-run)" "unverified (no-run-yet)"; do
-  printf '%s\n' "$line" | grep -qE '^(green|RED|unverified) \([a-z-]+\)$' \
+  grep -qE '^(green|RED|unverified) \([a-z-]+\)$' <<<"$line" \
     || { echo "FAIL [fallback-grammar]: '$line' breaks the report-line grammar"; exit 1; }
 done
 echo "  ok: fallback-grammar — the three fallback tokens match ^(green|RED|unverified) \\([a-z-]+\\)$"

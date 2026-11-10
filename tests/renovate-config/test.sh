@@ -169,7 +169,7 @@ if [ -z "$validator_invocation" ]; then
 fi
 for flag in --no-global --strict; do
   # -F and the -- guard: the needle itself starts with dashes.
-  if ! printf '%s' "$validator_invocation" | grep -qF -- "$flag"; then
+  if ! grep -qF -- "$flag" <<<"$validator_invocation"; then
     echo "FAIL: ci.yml invokes the validator without $flag:"
     echo "        $validator_invocation"
     if [ "$flag" = "--no-global" ]; then

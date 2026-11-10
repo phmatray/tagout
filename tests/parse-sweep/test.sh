@@ -280,7 +280,7 @@ verdict() {
   if [ "$rc" -ne "$want_rc" ]; then
     echo "FAIL [$name]: expected exit $want_rc, got $rc"; echo "$out"; exit 1
   fi
-  if [ -n "$want_msg" ] && ! printf '%s' "$out" | grep -qF -- "$want_msg"; then
+  if [ -n "$want_msg" ] && ! grep -qF -- "$want_msg" <<<"$out"; then
     echo "FAIL [$name]: output did not mention '$want_msg':"; echo "$out"; exit 1
   fi
   echo "  ok: $name"
@@ -305,7 +305,7 @@ verdict fixed 0 '' "$FIX/fixed.sh"
 # 3. The static scan must name the OPENER, not the end of the file. bash's own message points at
 #    the last line, which is what makes this class of failure hard to locate.
 out=$(bash "$KIT/$GUARD" "$FIX/hazard.sh" 2>&1) || true
-printf '%s' "$out" | grep -qF -- "hazard.sh:2" \
+grep -qF -- "hazard.sh:2" <<<"$out" \
   || { echo "FAIL [opener-line]: the report does not point at line 2 (the $( … ) opener):"; echo "$out"; exit 1; }
 echo "  ok: opener-line — the report points at the heredoc opener, not at the end of the file"
 
@@ -393,7 +393,7 @@ verdict plain-syntax-error 1 'does not parse under' "$FIX/plain-syntax-error.sh"
 #     green — and that is also the regression test for the renovate-config fix itself.
 out=$(bash "$KIT/$GUARD" -C "$KIT" 2>&1) || {
   echo "FAIL [repo]: the shipped suites do not pass the sweep:"; echo "$out"; exit 1; }
-printf '%s' "$out" | grep -qF 'file(s) parse under this bash' \
+grep -qF 'file(s) parse under this bash' <<<"$out" \
   || { echo "FAIL [repo]: no summary line:"; echo "$out"; exit 1; }
 echo "  ok: repo — every tests/*/test.sh in this checkout passes the sweep"
 
@@ -401,18 +401,18 @@ echo "  ok: repo — every tests/*/test.sh in this checkout passes the sweep"
 
 # 12. The version is REPORTED. A green run says nothing about bash 3.2 unless the reader can see
 #     which parser produced it — the spec's "a colleague on stock macOS does not" edge.
-printf '%s' "$out" | grep -qF "$("$SWEEP_BASH" --version | head -1)" \
+grep -qF "$("$SWEEP_BASH" --version | head -1)" <<<"$out" \
   || { echo "FAIL [banner]: the sweep does not name the bash it ran under:"; echo "$out"; exit 1; }
 echo "  ok: banner — the running bash version is on the report"
 
 # 13. …and on a bash that cannot see the hazard, the sweep must SAY the `bash -n` half is a no-op,
 #     so a green CI run is not mistaken for coverage of bash 3.2.
 if [ "$SWEEP_MAJOR" -le 3 ]; then
-  printf '%s' "$out" | grep -qF 'this IS the bash #131 is about' \
+  grep -qF 'this IS the bash #131 is about' <<<"$out" \
     || { echo "FAIL [note]: bash 3.x did not get the meaningful-here note:"; echo "$out"; exit 1; }
   echo "  ok: note — bash 3.x is told the parse half is meaningful here"
 else
-  printf '%s' "$out" | grep -qF 'NOT proof about bash 3.2' \
+  grep -qF 'NOT proof about bash 3.2' <<<"$out" \
     || { echo "FAIL [note]: bash >= 4 did not get the no-op warning:"; echo "$out"; exit 1; }
   echo "  ok: note — bash >= 4 is told the parse half is a no-op for #131 here"
 fi
@@ -488,7 +488,7 @@ echo "  ok: foreign cwd — the verdict follows -C, not the ambient directory"
 #     forgot to latch `failed` would exit 0 having printed a refusal.
 out=$(bash "$KIT/$GUARD" "$FIX/fixed.sh" "$FIX/hazard.sh" "$FIX/top-level.sh" 2>&1) && {
   echo "FAIL [multi]: a batch containing a broken file exited 0"; echo "$out"; exit 1; }
-printf '%s' "$out" | grep -qF 'hazard.sh:2' \
+grep -qF 'hazard.sh:2' <<<"$out" \
   || { echo "FAIL [multi]: the broken file in the batch was not named:"; echo "$out"; exit 1; }
 echo "  ok: multi — one bad file among good ones is named, and the batch refuses"
 

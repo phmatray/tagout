@@ -60,13 +60,13 @@ echo "  ok: a/credit — the reference credits mattpocock/skills"
 
 phase1=$(section "$SKILL_DIR/SKILL.md" '^### Phase 1' '^### Phase 2')
 [ -n "$phase1" ] || { echo "FAIL [a/phase1]: no '### Phase 1' section in $SKILL_DIR/SKILL.md"; exit 1; }
-printf '%s\n' "$phase1" | grep -q 'feedback-loop\.md' || {
+grep -q 'feedback-loop\.md' <<<"$phase1" || {
   echo "FAIL [a/phase1]: Phase 1 does not link feedback-loop.md — the loop is the phase's own"
   echo "                 completion criterion, so the agent must find it from inside the phase"
   exit 1; }
 echo "  ok: a/phase1 — Phase 1 links feedback-loop.md"
 
-printf '%s\n' "$phase1" | grep -q 'already run' || {
+grep -q 'already run' <<<"$phase1" || {
   echo "FAIL [a/criterion]: Phase 1's completion criterion does not require a command ALREADY RUN."
   echo "                    'you can state what is failing' is a sentence; the criterion is a command."
   exit 1; }
@@ -74,9 +74,9 @@ echo "  ok: a/criterion — Phase 1 ends on a command already run"
 
 bundled=$(section "$SKILL_DIR/SKILL.md" '^## Bundled techniques' '^## ')
 [ -n "$bundled" ] || { echo "FAIL [a/bundled]: no '## Bundled techniques' section in $SKILL_DIR/SKILL.md"; exit 1; }
-printf '%s\n' "$bundled" | grep -q 'feedback-loop\.md' || {
+grep -q 'feedback-loop\.md' <<<"$bundled" || {
   echo "FAIL [a/bundled]: Bundled techniques does not list feedback-loop.md"; exit 1; }
-printf '%s\n' "$bundled" | grep -q 'hitl-loop\.template\.sh' || {
+grep -q 'hitl-loop\.template\.sh' <<<"$bundled" || {
   echo "FAIL [a/bundled]: Bundled techniques does not list scripts/hitl-loop.template.sh"; exit 1; }
 echo "  ok: a/bundled — Bundled techniques lists the reference and the HITL template"
 
@@ -135,7 +135,7 @@ fix_check=$(section "$(kit_skill_prose "$KIT" merge-pr)" '^[*][*]Fix a red CI ch
   echo "                   skills/merge-pr/SKILL.md — if it was renamed, re-point this assertion"
   echo "                   rather than dropping it."
   exit 1; }
-printf '%s\n' "$fix_check" | grep -q 'debug-issue' || {
+grep -q 'debug-issue' <<<"$fix_check" || {
   echo "FAIL [d/merge-pr]: the fix-check correction does not name debug-issue. A worker"
   echo "                   staring at a red check is exactly who needs the loop."
   exit 1; }

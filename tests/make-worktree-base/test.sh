@@ -55,7 +55,7 @@ BRANCH0="feat/0-no-local-main-at-all"
 git -C "$clone" show-ref --quiet refs/heads/main \
   && { echo "FAIL [dev-default]: setup bug — local main already exists before AC1 runs"; exit 1; }
 out0=$("$KIT/$HELPER" -C "$clone" "$BRANCH0")
-printf '%s\n' "$out0" | grep -qF 'BASE=origin/dev' \
+grep -qF 'BASE=origin/dev' <<<"$out0" \
   || { echo "FAIL [dev-default]: (AC1) no BASE=origin/dev line:"; echo "$out0"; exit 1; }
 wt0=$(printf '%s\n' "$out0" | sed -n 's/^WORKTREE=//p')
 head0=$(git -C "$wt0" rev-parse "$BRANCH0^{commit}")
@@ -79,9 +79,9 @@ remote_tip=$(git -C "$push_seed" rev-parse dev)
 BRANCH1="feat/1-dev-default"
 out=$("$KIT/$HELPER" -C "$clone" "$BRANCH1")
 
-printf '%s\n' "$out" | grep -q '^WORKTREE=' \
+grep -q '^WORKTREE=' <<<"$out" \
   || { echo "FAIL [dev-default]: no WORKTREE= line:"; echo "$out"; exit 1; }
-printf '%s\n' "$out" | grep -qF 'BASE=origin/dev' \
+grep -qF 'BASE=origin/dev' <<<"$out" \
   || { echo "FAIL [dev-default]: no BASE=origin/dev line:"; echo "$out"; exit 1; }
 
 wt1=$(printf '%s\n' "$out" | sed -n 's/^WORKTREE=//p')
@@ -104,7 +104,7 @@ fx_tip=$(git -C "$fx_clone" rev-parse feature/x)
 
 BRANCH4="feat/4-base-override"
 out=$("$KIT/$HELPER" -C "$clone" --base feature/x "$BRANCH4")
-printf '%s\n' "$out" | grep -qF 'BASE=origin/feature/x' \
+grep -qF 'BASE=origin/feature/x' <<<"$out" \
   || { echo "FAIL [base-override]: no BASE=origin/feature/x line:"; echo "$out"; exit 1; }
 wt4=$(printf '%s\n' "$out" | sed -n 's/^WORKTREE=//p')
 head4=$(git -C "$wt4" rev-parse "$BRANCH4^{commit}")
@@ -158,7 +158,7 @@ main_tip=$(git -C "$clone_main" rev-parse origin/main)
 
 BRANCH6="feat/6-main-default"
 out=$("$KIT/$HELPER" -C "$clone_main" "$BRANCH6")
-printf '%s\n' "$out" | grep -qF 'BASE=origin/main' \
+grep -qF 'BASE=origin/main' <<<"$out" \
   || { echo "FAIL [main-default]: no BASE=origin/main line:"; echo "$out"; exit 1; }
 wt6=$(printf '%s\n' "$out" | sed -n 's/^WORKTREE=//p')
 head6=$(git -C "$wt6" rev-parse "$BRANCH6^{commit}")
