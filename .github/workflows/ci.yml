@@ -314,7 +314,7 @@ jobs:
           # against a config the real Renovate accepts. An unpinned gate is red on correct input,
           # and its obvious "fix" would silently downgrade the config. Floor is major 40.
           # Bumped by the customManager in renovate.json; tests/renovate-config asserts both.
-          RENOVATE_VALIDATOR_VERSION: 44.190.1
+          RENOVATE_VALIDATOR_VERSION: 44.222.0
         run: |
           # Both flags are load-bearing and both were MEASURED against this pin in #79, not read
           # off the docs. Dropping either one re-opens a hole that leaves CI green.
@@ -682,6 +682,12 @@ jobs:
 
       - name: Decision-tally golden test (markdown tally over decide.sh's event log, #318)
         run: ./tests/decision-tally/test.sh
+
+      - name: Report-verdict golden test (autodev.report, from a worker's report line to its verdict)
+        run: ./tests/report-verdict/test.sh
+
+      - name: Fleet-counters golden test (the fleet's counts and autodev.cadence)
+        run: ./tests/fleet-counters/test.sh
 
       - name: Run-all-tests golden test (the three exits, and no drift from this file)
         run: ./tests/run-all-tests/test.sh

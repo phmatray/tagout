@@ -648,10 +648,11 @@ echo "  ok: merge-pr-skill-prose-followup — the timeout follow-up is gated beh
 
 # ---------------------------------------------------------------- 19. auto-dev grammar-checks
 # BASE: before trusting it (#455 Task 4, AC4)
-grep -qF '^(green|RED|unverified)' skills/auto-dev/SKILL.md || {
+AUTO_DEV_PROSE="$(kit_skill_prose "$KIT_ROOT" auto-dev)"   # router + references/steps/*.md
+grep -qF '^(green|RED|unverified)' "$AUTO_DEV_PROSE" || {
   echo "FAIL: skills/auto-dev/SKILL.md never states the BASE: field's fixed grammar"
   exit 1; }
-grep -qi 're-derive' skills/auto-dev/SKILL.md || {
+grep -qi 're-derive' "$AUTO_DEV_PROSE" || {
   echo "FAIL: skills/auto-dev/SKILL.md never says a non-matching BASE: value is re-derived"
   exit 1; }
 echo "  ok: auto-dev-skill-prose — the BASE: field states its grammar and the re-derive backstop"

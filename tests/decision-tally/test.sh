@@ -136,7 +136,7 @@ echo "  ok: --help prints both flag names and their thresholds"
 # Prose pins, not behavior: SKILL.md Step 6 must actually SAY the block is mandatory, name the
 # script that fills its table, and name the one accepted empty form — a step that merely alludes to
 # "lessons learned" without these three anchors is exactly the free-prose outcome the issue rejects.
-SKILL="skills/auto-dev/SKILL.md"
+SKILL="$(kit_skill_prose "$KIT_ROOT" auto-dev)"   # router + references/steps/*.md
 [ -f "$SKILL" ] || { echo "FAIL [lessons]: $SKILL missing"; exit 1; }
 for needle in 'lessons:' 'decision-tally\.sh' 'lessons: none'; do
   grep -qE -- "$needle" "$SKILL" || {

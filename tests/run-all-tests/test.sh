@@ -194,4 +194,78 @@ if grep -qF -- '--for' "$stub4/args.log"; then
 fi
 echo "  ok: --for — a full run asks preflight.sh for run-all-tests' own prerequisites, --quick does not"
 
+# ---------------------------------------------------------------- 5. --jobs: the same report, in parallel
+#
+# The plan is hand-written and has no override hook, so these cases drive its FIRST THREE items —
+# `./scripts/worktrees-ignored.sh`, `python3 scripts/ci-wiring-check.py`, `./scripts/parse-sweep.sh`
+# — as stubs in a tree that holds nothing else. Three is enough to race: what --jobs must not change
+# is which line comes out first and which failure is named, and both are decided by the head of the
+# plan. If the plan's opening ever changes, case 5a's own "ok ./scripts/worktrees-ignored.sh"
+# assertion fails first and says so, rather than these cases quietly testing nothing.
+stub5=$(kit_scratch)
+mkdir -p "$stub5/scripts"
+cp "$KIT/scripts/run-all-tests.sh" "$stub5/scripts/run-all-tests.sh"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$stub5/scripts/preflight.sh"
+# Item 1 is SLOW and passes; item 2 is instant and passes; item 3 is instant and FAILS. Under
+# --jobs the failure is therefore on disk well before item 1 has finished — the race a
+# first-to-finish reporter loses.
+printf '#!/usr/bin/env bash\nsleep 1\necho "item one output"\nexit 0\n' > "$stub5/scripts/worktrees-ignored.sh"
+printf 'import sys\nsys.exit(0)\n' > "$stub5/scripts/ci-wiring-check.py"
+printf '#!/usr/bin/env bash\necho "item three says why it failed"\nexit 1\n' > "$stub5/scripts/parse-sweep.sh"
+chmod +x "$stub5/scripts/"*.sh
+
+rc=0
+serial_out=$(bash "$stub5/scripts/run-all-tests.sh" --quick 2>/dev/null) || rc=$?
+[ "$rc" -eq 1 ] || { echo "FAIL [jobs/serial]: expected exit 1, got $rc"; echo "$serial_out"; exit 1; }
+rc=0
+parallel_out=$(bash "$stub5/scripts/run-all-tests.sh" --quick --jobs 4 2>/dev/null) || rc=$?
+[ "$rc" -eq 1 ] || { echo "FAIL [jobs/parallel]: expected exit 1, got $rc"; echo "$parallel_out"; exit 1; }
+[ "$serial_out" = "$parallel_out" ] || {
+  echo "FAIL [jobs/same-report]: --jobs 4 printed a different report than the serial run."
+  echo "--- serial";   echo "$serial_out"
+  echo "--- --jobs 4"; echo "$parallel_out"; exit 1; }
+expected_report='ok   ./scripts/worktrees-ignored.sh
+ok   python3 scripts/ci-wiring-check.py
+FAIL ./scripts/parse-sweep.sh
+item three says why it failed'
+[ "$parallel_out" = "$expected_report" ] || {
+  echo "FAIL [jobs/plan-order]: expected the slow first item reported first and the first failure in"
+  echo "     PLAN order named, with its output and nothing after it. Got:"; echo "$parallel_out"; exit 1; }
+echo "  ok: --jobs — a failure that finishes first is still reported in plan order, byte-identical to the serial report"
+
+# 5b. It really is concurrent. Item 1 now WAITS for a marker only item 2 writes: a serial run can
+# never produce it in time, so item 1 fails there; with two jobs item 2 runs alongside and item 1
+# passes. Without this case, a --jobs that parsed its flag and then ran serially would pass 5a.
+printf '#!/usr/bin/env bash\nn=0\nwhile [ ! -f jobs-marker ]; do n=$((n + 1)); [ "$n" -le 30 ] || { echo "no marker"; exit 1; }; sleep 0.1; done\nexit 0\n' \
+  > "$stub5/scripts/worktrees-ignored.sh"
+printf 'import pathlib\npathlib.Path("jobs-marker").write_text("x")\n' > "$stub5/scripts/ci-wiring-check.py"
+rm -f "$stub5/jobs-marker"
+serial_out=$(bash "$stub5/scripts/run-all-tests.sh" --quick 2>/dev/null) || true
+grep -qxF 'FAIL ./scripts/worktrees-ignored.sh' <<<"$serial_out" || {
+  echo "FAIL [jobs/concurrent]: the serial control did not fail on item 1 — the fixture proves nothing:"
+  echo "$serial_out"; exit 1; }
+rm -f "$stub5/jobs-marker"
+parallel_out=$(bash "$stub5/scripts/run-all-tests.sh" --quick --jobs=2 2>/dev/null) || true
+grep -qxF 'ok   ./scripts/worktrees-ignored.sh' <<<"$parallel_out" || {
+  echo "FAIL [jobs/concurrent]: with --jobs=2 item 1 never saw item 2's marker — the items did not overlap:"
+  echo "$parallel_out"; exit 1; }
+echo "  ok: --jobs — items really overlap (item 1 passes only because item 2 ran beside it)"
+
+# 5c. A value that is not a positive integer or `auto` is refused before anything runs.
+for bad in 0 x -1 ''; do
+  rc=0
+  bad_out=$(bash "$stub5/scripts/run-all-tests.sh" --quick --jobs "$bad" 2>&1) || rc=$?
+  [ "$rc" -eq 1 ] || { echo "FAIL [jobs/refusal]: --jobs '$bad' exited $rc, expected 1"; echo "$bad_out"; exit 1; }
+  grep -qF 'positive integer or `auto`' <<<"$bad_out" || {
+    echo "FAIL [jobs/refusal]: --jobs '$bad' did not say what it accepts:"; echo "$bad_out"; exit 1; }
+  if grep -qE '^(ok|FAIL) ' <<<"$bad_out"; then
+    echo "FAIL [jobs/refusal]: --jobs '$bad' ran a plan item before refusing:"; echo "$bad_out"; exit 1
+  fi
+done
+rc=0
+bash "$stub5/scripts/run-all-tests.sh" --jobs >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 1 ] || { echo "FAIL [jobs/refusal]: a bare --jobs exited $rc, expected 1"; exit 1; }
+"$RUNNER" --jobs auto --list >/dev/null 2>&1 || { echo "FAIL [jobs/auto]: --jobs auto --list did not exit 0"; exit 1; }
+echo "  ok: --jobs — 0, a word, a negative, an empty value and a missing value are refused; auto is accepted"
+
 echo "run-all-tests golden test OK"

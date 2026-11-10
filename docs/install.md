@@ -60,10 +60,17 @@ to its MCP settings — most take this shape:
 {
   "mcpServers": {
     "roseline": { "command": "dnx", "args": ["RoselineMCP", "--yes"] },
-    "adr": { "command": "dnx", "args": ["AdrMcp", "--yes"] }
+    "adr": {
+      "command": "dnx", "args": ["AdrMcp", "--yes"],
+      "env": { "DOTNET_hostBuilder__reloadConfigOnChange": "false" }
+    }
   }
 }
 ```
+
+The `env` line matters on Linux: AdrMcp runs on the .NET Generic Host, which by default watches its
+whole working directory recursively to reload `appsettings.json`. Started from a home directory,
+that is one inotify watch per folder, enough to exhaust `fs.inotify.max_user_watches`.
 
 Without RoselineMCP, `/migrate` stops at its phase-0 preflight and says why; the issue → pull
 request skills need neither server.

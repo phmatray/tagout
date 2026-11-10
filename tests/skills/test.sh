@@ -306,6 +306,16 @@ run_desc_case "B2 body-size total line appears                 " 0 \
   '  total: [0-9]+' 'import sys'
 run_body_delta_case "B3 appending 100 bytes moves the reported number by exactly 100" \
   init 100
+# The ceiling #473 was waiting for. `init`'s body is ~6 KB, so +15000 lands between the two
+# ceilings and +30000 lands past the wall; both stay true until init's own body grows by ~9 KB.
+run_desc_case "B4 a body over the soft ceiling warns, exit unchanged" 0 \
+  'WARN init: SKILL.md body is [0-9]+ bytes — over the 20000-byte soft ceiling' \
+  "$(append_body_bytes_mutator 15000)"
+run_desc_case "B5 a body over the hard ceiling is refused, naming the remedy" 1 \
+  'init: SKILL.md body is [0-9]+ bytes \(kit limit: 32000\).*skills/init/references/steps/' \
+  "$(append_body_bytes_mutator 30000)"
+run_desc_case "B6 the kit's own bodies all sit under the hard ceiling" 0 \
+  '!SKILL.md body is [0-9]+ bytes \(kit limit' 'import sys'
 
 # ---------------------------------------------------------------------------------------------
 # The trigger contract has one home now: evals/<skill>-trigger-eval.json (#331). check-frontmatter.py
@@ -2004,13 +2014,13 @@ echo "ok   Step 5b guards the unknown-sha sentinel, folds on the breakage, and s
 # orchestrator's state board, from a clean merge. Both halves are pinned — the field on the report
 # line the worker emits, and the place the board puts it — because either one alone re-hides it.
 echo "== a red base after a worker's merge is fleet-visible (#355) =="
-for f in "skills/auto-dev/SKILL.md" "commands/auto-dev-merge.md"; do
-  path="$KIT_ROOT/$f"
+_autodev_prose="$(kit_skill_prose "$KIT_ROOT" auto-dev)"   # router + references/steps/*.md
+for path in "$_autodev_prose" "$KIT_ROOT/commands/auto-dev-merge.md"; do
   [ -f "$path" ] || { echo "FAIL: $path missing"; exit 1; }
   grep -q -F -- 'BASE:' "$path" \
     || { echo "FAIL: $path's phase-2 report line carries no BASE: field"; exit 1; }
 done
-grep -q -F -- 'MERGED (<commit>) — base' "$KIT_ROOT/skills/auto-dev/SKILL.md" \
+grep -q -F -- 'MERGED (<commit>) — base' "$_autodev_prose" \
   || { echo "FAIL: the auto-dev state board's Completed row does not carry the base verdict"; exit 1; }
 echo "ok   auto-dev carries the base verdict on the report line and the state board"
 
@@ -2243,7 +2253,7 @@ import pathlib, sys
 kit, mode = pathlib.Path(sys.argv[1]), sys.argv[2]
 GUARD = "skills/merge-pr/scripts/guarded-pr-merge.sh"
 SITES = ("skills/merge-pr/SKILL.md", "skills/merge-pr/references/steps/05-merge.md",
-         "skills/auto-dev/SKILL.md")
+         "skills/auto-dev/references/steps/04-supervise.md")
 FALLBACK = "skills/_shared/guard-invocation.md"
 def lines(rel):
     return enumerate((kit / rel).read_text(encoding="utf-8").splitlines(), 1)
@@ -2285,7 +2295,7 @@ pm_case "PM2 guard-invocation.md's Never fall back names gh pr merge" "$KIT_ROOT
 # The red half: the same four files with the prefix and the gh clause stripped must be refused, BY
 # LINE — a check no case can drive red stays green after it stops matching.
 for rel in skills/merge-pr/SKILL.md skills/merge-pr/references/steps/05-merge.md \
-           skills/auto-dev/SKILL.md skills/_shared/guard-invocation.md; do
+           skills/auto-dev/references/steps/04-supervise.md skills/_shared/guard-invocation.md; do
   mkdir -p "$_pscratch/drift/$(dirname "$rel")"
   sed -e 's#<kit>/skills/merge-pr/scripts/guarded-pr-merge#skills/merge-pr/scripts/guarded-pr-merge#g' \
       -e 's# or a raw `gh pr merge`##' "$KIT_ROOT/$rel" > "$_pscratch/drift/$rel"
@@ -2531,11 +2541,10 @@ else
   echo "ok   [bare ready-flip] no bare gh pr ready under skills/ or commands/"
 fi
 MP=skills/merge-pr/references/steps
-# One producer, read to EOF. This used to be `grep '^| `ready`' FILE | grep -o … FILE | head -3`: the
-# second grep was handed the file too, so it never read the first one's output, and whenever it
-# finished first the writer died of SIGPIPE — under `set -euo pipefail` that ended the suite right
-# here with no FAIL line (measured: 4 of 10 runs of the whole plan at 8 jobs). `sed -n '1,3p'`
-# rather than `head -3` for the same reason: it reads its input to the end and hangs up on nobody.
+# No `head`, and no stage feeding a reader that never reads (#391): the first three matches are cut
+# by `sed -n 1,3p`, which drains its input, so no stage can die of SIGPIPE under `pipefail`. The old
+# line led with a `grep` whose output the next `grep` (given the file by name) ignored, and ended
+# in `head -3` — two ways to exit 141, measured once in a parallel run of the whole plan.
 order=$(grep -o 'code-review medium\|post-review-check.sh\|guarded-ready.sh' $MP/04-corrections-loop.md | sed -n '1,3p' | tr '\n' ' ')
 if grep -q 'guarded-ready.sh' $MP/01-preconditions.md \
     && [ "$order" = "code-review medium post-review-check.sh guarded-ready.sh " ] \

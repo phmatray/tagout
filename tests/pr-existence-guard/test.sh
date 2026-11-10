@@ -9,15 +9,19 @@
 # run called itself, but "does this issue already have a closing PR" doesn't depend on guessing
 # right.
 #
-# The program under test is NOT copied here. It is EXTRACTED from the marked block inside
-# skills/_shared/open-pr.md — the one home of the PR-open recipe (#635) — and run verbatim via
-# `jq -f`, so the thing this suite proves green is the thing an agent pastes — same discipline as
-# tests/merge-gate/test.sh (#91), which this suite is modeled on.
+# The filter under test is NOT copied here. It is EXTRACTED from the marked block inside
+# skills/_shared/scripts/pr-existence-guard.sh and run verbatim via `jq -f` — same discipline as
+# tests/merge-gate/test.sh (#91), which this suite is modeled on. That block used to live in
+# skills/_shared/open-pr.md, for every caller to paste; it is a script now, so section 6 below also
+# RUNS the script against a stub `gh`: the validation, the empty-fetch refusal and the choice of
+# which PR to resume onto are no longer steps a model performs by hand.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 RECIPE="./skills/_shared/open-pr.md"
-[ -r "$RECIPE" ] || { echo "FAIL: $RECIPE missing — nothing to extract the guard from"; exit 1; }
+[ -r "$RECIPE" ] || { echo "FAIL: $RECIPE missing — the PR-open recipe that calls the guard"; exit 1; }
+GUARD_SH="./skills/_shared/scripts/pr-existence-guard.sh"
+[ -x "$GUARD_SH" ] || { echo "FAIL: $GUARD_SH missing or not executable — nothing to extract the guard from"; exit 1; }
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 . "$KIT_ROOT/tests/_lib.sh" || {
@@ -41,10 +45,10 @@ note_fail() { echo "FAIL: $1"; FAILED=1; }
 BEGIN_MARK='# >>> issue-scoped PR-existence guard'
 END_MARK='# <<< issue-scoped PR-existence guard'
 
-n_begin=$(grep -c -F -- "$BEGIN_MARK" "$RECIPE" || true)
-n_end=$(grep -c -F -- "$END_MARK" "$RECIPE" || true)
+n_begin=$(grep -c -F -- "$BEGIN_MARK" "$GUARD_SH" || true)
+n_end=$(grep -c -F -- "$END_MARK" "$GUARD_SH" || true)
 if [ "$n_begin" != "1" ] || [ "$n_end" != "1" ]; then
-  echo "FAIL: $RECIPE must carry EXACTLY ONE marked guard program"
+  echo "FAIL: $GUARD_SH must carry EXACTLY ONE marked guard program"
   echo "      found $n_begin '$BEGIN_MARK' and $n_end '$END_MARK'"
   echo "      Two blocks means two homes for the guard, and a guard with two homes drifts."
   exit 1
@@ -55,9 +59,9 @@ awk -v b="$BEGIN_MARK" -v e="$END_MARK" '
   index($0, b) { inside = 1 }
   inside       { print }
   inside && index($0, e) { exit }
-' "$RECIPE" > "$PROG"
+' "$GUARD_SH" > "$PROG"
 
-[ -s "$PROG" ] || { echo "FAIL: extracted an empty program from $RECIPE"; exit 1; }
+[ -s "$PROG" ] || { echo "FAIL: extracted an empty program from $GUARD_SH"; exit 1; }
 
 # jq compiles the whole program before it reads any input; --arg issue "" makes this a pure parse
 # check without needing a real fixture (the program references $issue, so parsing it without a
@@ -221,6 +225,88 @@ NO_CLOSES="$WORK/05-no-closes.md"
 sed 's/Closes #%s\.//' "$STEP_05" > "$NO_CLOSES"
 check_body_builder "$NO_CLOSES" -
 check_body_builder "$STEP_05" 1
+
+# ------------------------------------------------------------- 6. the script itself, against a stub gh
+#
+# The recipe, the auto-dev dispatch guard and implement-issue Step 4 all RUN the script now. A stub
+# `gh` on PATH serves a fixture for `pr list` and a per-PR commit count for `pr view`, so the whole
+# program — not only its filter — is what these cases judge.
+grep -qF 'skills/_shared/scripts/pr-existence-guard.sh "$ISSUE"' "$RECIPE" \
+  || note_fail "$RECIPE §1 no longer invokes pr-existence-guard.sh — the recipe and the script have come apart"
+if grep -qF "$BEGIN_MARK" "$RECIPE"; then
+  note_fail "$RECIPE still carries the marked filter — the script is its one home now"
+fi
+
+STUB="$WORK/bin"; mkdir -p "$STUB"
+cat > "$STUB/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "pr list") [ -n "${GH_LIST_FIXTURE:-}" ] && cat "$GH_LIST_FIXTURE"; exit "${GH_LIST_RC:-0}" ;;
+  "pr view")
+    for pair in ${GH_COMMITS:-}; do
+      [ "${pair%%=*}" = "$3" ] && { echo "${pair#*=}"; exit 0; }
+    done
+    exit 1 ;;
+esac
+exit 1
+EOF
+chmod +x "$STUB/gh"
+
+# guard_run <fixture or ""> <issue> — sets G_RC and G_OUT (stdout only)
+guard_run() {
+  local fixture="$1" issue="$2"; G_RC=0
+  G_OUT=$(env PATH="$STUB:$PATH" GH_LIST_FIXTURE="${fixture:+$FIXTURES/$fixture}" "$GUARD_SH" "$issue" 2>/dev/null) || G_RC=$?
+}
+guard_is() {   # guard_is <label> <want rc> <want stdout>
+  if [ "$G_RC" != "$2" ] || [ "$G_OUT" != "$3" ]; then
+    note_fail "$1 — exit $G_RC, stdout: $(printf '%s' "$G_OUT" | tr '\n' '|') (wanted exit $2, stdout: $(printf '%s' "$3" | tr '\n' '|'))"
+  else
+    echo "  ok: $1"
+  fi
+}
+TAB=$(printf '\t')
+
+guard_run no-open-prs.json 42
+guard_is "no open PR mentions the issue: 0, and no rows" 0 "0"
+guard_run mentions-not-closes.json 42
+guard_is "a PR that only mentions the issue: 0" 0 "0"
+guard_run null-body.json 42
+guard_is "one closer: 1 and its RESUME row" 0 "1
+RESUME${TAB}#81${TAB}fix/42-real-closer${TAB}ready${TAB}https://github.com/phmatray/tagout/pull/81"
+
+# Two closers: the one with the most commits is RESUME, whatever its number.
+export GH_COMMITS="70=1 71=6"
+guard_run colon-and-tight-spacing.json 42
+guard_is "two closers: the most-implemented one is RESUME" 0 "2
+RESUME${TAB}#71${TAB}fix/42-tight${TAB}ready${TAB}https://github.com/phmatray/tagout/pull/71
+ALSO${TAB}#70${TAB}fix/42-colon${TAB}ready${TAB}https://github.com/phmatray/tagout/pull/70"
+# A tie (two untouched scaffolds): the lowest PR number, so two runs converge on the same choice.
+export GH_COMMITS="70=1 71=1"
+guard_run colon-and-tight-spacing.json 42
+guard_is "two closers on a tie: the lowest PR number is RESUME" 0 "2
+RESUME${TAB}#70${TAB}fix/42-colon${TAB}ready${TAB}https://github.com/phmatray/tagout/pull/70
+ALSO${TAB}#71${TAB}fix/42-tight${TAB}ready${TAB}https://github.com/phmatray/tagout/pull/71"
+# A commit count that cannot be read is a refusal, never a pick made blind.
+export GH_COMMITS="70=1"
+guard_run colon-and-tight-spacing.json 42
+[ "$G_RC" = 2 ] && case "$G_OUT" in "REFUSED — could not read the commit count of PR #71"*) true ;; *) false ;; esac \
+  && echo "  ok: an unreadable commit count refuses (exit 2) instead of picking" \
+  || note_fail "an unreadable commit count did not refuse — exit $G_RC, stdout: $G_OUT"
+unset GH_COMMITS
+
+# The refusals that used to be lines of a pasted block a caller could skip.
+guard_run "" 42
+[ "$G_RC" = 2 ] && case "$G_OUT" in "REFUSED — the PR search returned nothing"*) true ;; *) false ;; esac \
+  && echo "  ok: an empty fetch refuses (exit 2) — never read as 0" \
+  || note_fail "an empty fetch did not refuse — exit $G_RC, stdout: $G_OUT"
+for bad in "" "#42" "42a" "4 2"; do
+  guard_run no-open-prs.json "$bad"
+  [ "$G_RC" = 2 ] && case "$G_OUT" in "REFUSED — "*) true ;; *) false ;; esac \
+    || note_fail "issue '$bad' did not refuse — exit $G_RC, stdout: $G_OUT"
+done
+echo "  ok: an issue that is not a digit string refuses (exit 2) before any search"
+G_RC=0; G_OUT=$(env PATH="$STUB:$PATH" "$GUARD_SH" 2>/dev/null) || G_RC=$?
+[ "$G_RC" = 2 ] || note_fail "no argument did not refuse — exit $G_RC"
 
 # ---------------------------------------------------------------------------------------- verdict
 if [ "$FAILED" -ne 0 ]; then

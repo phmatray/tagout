@@ -23,9 +23,13 @@ touch a path outside it — that is what keeps this worker's area disjoint from 
 and a stray write outside it is exactly the failure `isolation: "worktree"` exists to prevent (#412).
 
 **Your first act, before you touch anything else: verify it actually worked.** Run
-`git rev-parse --show-toplevel` and compare it to the `SUPERVISOR_TOPLEVEL` value in this prompt,
-with the `worker-toplevel guard` block in `skills/auto-dev/SKILL.md` Step 3 (`WORKER_TOPLEVEL` =
-your value, `SUPERVISOR_TOPLEVEL` = the prompt's). PROCEED → carry on normally, nothing else to do.
+the worker-toplevel guard, from the directory you woke up in, with the `SUPERVISOR_TOPLEVEL` value
+in this prompt as its one argument:
+`<KIT>/skills/auto-dev/scripts/worker-toplevel-guard.sh "<SUPERVISOR_TOPLEVEL>"`, `<KIT>` being the
+`KIT` value in this prompt (the kit root). It compares your own `git rev-parse --show-toplevel` to
+that value — run the script, do not compare the two by eye. Only if no `KIT` reached you and the
+script cannot be found: run `git rev-parse --show-toplevel` yourself, treat an equal value or a
+failure as REFUSE, and say in `DETAIL:` that the guard script was unreachable. PROCEED → carry on normally, nothing else to do.
 REFUSE (they match, or `git rev-parse` itself fails because this isn't a git directory at all) →
 **stop before editing or creating any file** and your final message is: `PHASE1 | ISSUE: $1 | PR:
 none | STATUS: BLOCKED | DETAIL: worker-toplevel guard: shares the supervisor's tree — dispatch
@@ -129,7 +133,7 @@ Once you are past it:
 The supervisor then dispatches a **fresh** sub-agent onto the same branch and PR — `implement-issue`'s
 Step 4 resume contract expects exactly that — and it restarts at ~30K context instead of continuing
 from ~300K. One superlinear session becomes two linear ones: the same split that lever 1 of
-`skills/auto-dev/SKILL.md` § Token economics measured as this fleet's one A/B-verified win, cut at a
+`skills/auto-dev/references/steps/00-run-the-fleet-cheap.md` (Token economics) measured as this fleet's one A/B-verified win, cut at a
 *length* seam instead of a *phase* seam. **`PARTIAL` is a hand-off, not a failure**, and it is not `BLOCKED`: nothing is wrong, the
 budget simply ran out.
 

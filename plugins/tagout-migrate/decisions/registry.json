@@ -35,6 +35,28 @@
       "stdin": true,
       "verdict": { "source": "stdout-json",
                    "vocabulary": ["capable","missing","unsupported"] }
+    },
+    {
+      "id": "autodev.report",
+      "issue": 756,
+      "program": { "kind": "exec", "path": "skills/auto-dev/scripts/report-verdict.sh" },
+      "shape":   null,
+      "owner":   "skills/auto-dev/references/steps/04-supervise.md",
+      "suites":  ["tests/report-verdict/test.sh", "tests/decisions/test.sh"],
+      "stdin": true,
+      "verdict": { "source": "stdout-json",
+                   "vocabulary": ["reconcile","redispatch","release-branch","wait-ci","refill","refill-sweep","resume","hold-prereq","hold-replan","escalate","retire"] }
+    },
+    {
+      "id": "autodev.cadence",
+      "issue": 756,
+      "program": { "kind": "exec", "path": "skills/auto-dev/scripts/cadence-verdict.sh" },
+      "shape":   null,
+      "owner":   "skills/auto-dev/references/steps/04-supervise.md",
+      "suites":  ["tests/fleet-counters/test.sh", "tests/decisions/test.sh"],
+      "stdin": true,
+      "verdict": { "source": "stdout-json",
+                   "vocabulary": ["resurvey","steady"] }
     }
   ],
   "not_decisions": {
@@ -68,6 +90,8 @@
     "scripts/worktrees-ignored.sh": "a structural guard (worktree homes are ignored), not a control-flow choice with a verdict vocabulary",
     "skills/_shared/scripts/_gh-host.sh": "sourced by the kit's gh-calling scripts, never executed on its own — resolves which host gh talks to, not a decision",
     "skills/auto-dev/scripts/analyze_cache.py": "an offline token-usage analysis report, not a control-flow choice",
+    "skills/auto-dev/scripts/fleet-counters.sh": "the one writer of the fleet's tallies (merges, PARTIAL resumes, the unverified-base streak, issues filed) — it counts and prints report lines; the two control-flow choices that read its numbers are the registered decisions autodev.report and autodev.cadence, each with a program of its own",
+    "skills/auto-dev/scripts/report-state.sh": "the gathering half of autodev.report: it parses a worker's report line into a JSON state and adds the fleet's counts for that issue; report-verdict.sh decides on that state, this script emits no verdict",
     "skills/auto-dev/scripts/decision-tally.sh": "a read-only tally over decide.sh's own event log (counts, ratios and two printed threshold flags); it reports on decisions already made, it does not make one of its own",
     "skills/auto-dev/scripts/measure_phase2.py": "an offline cost-measurement report, not a control-flow choice",
     "skills/auto-dev/scripts/reconcile.sh": "a deterministic GitHub ground-truth query for the supervisor loop; it reports state, the supervisor decides",
@@ -75,10 +99,12 @@
     "skills/auto-dev/scripts/survey.sh": "a deterministic issue-queue query; it orders and reports, the supervisor decides",
     "skills/auto-dev/scripts/usage_report.py": "an offline cost-accounting report, not a control-flow choice",
     "skills/auto-dev/scripts/wait-ci.sh": "blocks until CI is final and prints the result table; it reports state, the caller decides what to do with it",
+    "skills/auto-dev/scripts/worker-toplevel-guard.sh": "a first-act guard a worker runs on itself (#412): it compares the worker's own git toplevel with the supervisor's and answers PROCEED or REFUSE by exit code, the same class as the guarded-*.sh scripts — a refusal, not a verdict decide.sh dispatches",
     "skills/create-issue/scripts/wire-edges.sh": "a guarded GitHub write helper (sub-issue and blocked_by edges, 404 = text fallback); it prints ok/fallback/FAILED per edge, the calling skill decides what a fallback means for its report",
     "skills/create-pr/scripts/rewind-default.sh": "a guarded ref-move wrapper, same shape as guarded-commit.sh — it moves the local default branch back to origin/<default> once the pushed branch provably carries it, or refuses; not a control-flow choice with a verdict vocabulary of its own (#636)",
     "skills/debug-issue/find-polluter.sh": "a bisection utility a developer runs by hand to find which test creates unwanted state \u2014 it reports the polluter it bisected to, the debugger decides what to do about it; not a control-flow choice the methodology makes",
     "skills/debug-issue/scripts/hitl-loop.template.sh": "a TEMPLATE a debugger copies and edits \u2014 it prompts a human and prints their answers as KEY=VALUE; it has no verdict of its own to register",
+    "skills/_shared/scripts/pr-existence-guard.sh": "a query with a refusal path (#214): it counts the open PRs whose body closes an issue and names the one to resume onto; it reports rows and distinguishes 'found none' from 'could not look' (exit 2), the calling skill decides whether to dispatch or resume",
     "skills/implement-issue/scripts/_assert-branch.sh": "sourced by the guards, never executed on its own — a shared assertion helper, not an independent decision",
     "skills/implement-issue/scripts/guarded-commit.sh": "a guarded git-write wrapper; it enforces an invariant (HEAD is the named branch), not a registered verdict vocabulary",
     "skills/implement-issue/scripts/guarded-ready.sh": "a guarded gh wrapper, same shape as guarded-merge.sh \u2014 refuses the ready-flip unless post-review-check.sh recorded a review; the record is the only input",

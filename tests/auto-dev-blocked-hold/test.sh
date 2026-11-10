@@ -20,7 +20,7 @@ kit_init "$KIT"
 fail() { echo "FAIL: $1"; exit 1; }
 
 WORKER_MD="$KIT/commands/auto-dev-worker.md"
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 PLAN_MD="$KIT/skills/implement-issue/references/steps/02-read-the-plan.md"
 [ -f "$WORKER_MD" ] || fail "missing $WORKER_MD"
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
@@ -90,8 +90,10 @@ grep -qF '## Held on a prerequisite' "$SKILL_MD" \
 
 STEP6=$(grep -n '^## Step 6' "$SKILL_MD" | head -1 | cut -d: -f1) || true
 [ -n "$STEP6" ] || fail "SKILL.md is missing a '## Step 6' heading"
-step6_onward=$(tail -n "+$STEP6" "$SKILL_MD")
-if ! grep -qF '## Held on a prerequisite' <<<"$step6_onward"; then
+# A here-string, not a pipe (#391): `grep -q` exits on its first match, and a `tail` still writing
+# then dies of SIGPIPE, which `pipefail` reports as this assertion failing — measured once in a
+# parallel run of the whole plan, on a suite that passes alone.
+if ! grep -qF '## Held on a prerequisite' <<<"$(tail -n "+$STEP6" "$SKILL_MD")"; then
   fail "AC6: Step 6's final summary does not mention '## Held on a prerequisite'"
 fi
 

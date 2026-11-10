@@ -88,7 +88,7 @@ done < <(grep -rn '^GUARDS=' skills/)
 # it (these three are edited in nearly every auto-dev PR), silently narrowing or missing the window.
 # A fifth call site in a file this scan doesn't know about is a gap this test accepts (see the
 # issue's Out of scope / approach C).
-PR_MERGE_FILES="skills/merge-pr/SKILL.md skills/merge-pr/references/steps/05-merge.md skills/auto-dev/SKILL.md"
+PR_MERGE_FILES="skills/merge-pr/SKILL.md skills/merge-pr/references/steps/05-merge.md skills/auto-dev/references/steps/04-supervise.md"
 for file in $PR_MERGE_FILES; do
   [ -f "$file" ] || { note_fail "$file (a guarded-pr-merge.sh call site) does not exist"; continue; }
   found=0

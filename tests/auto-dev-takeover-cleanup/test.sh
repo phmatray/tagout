@@ -30,7 +30,7 @@ kit_init "$KIT"
 
 fail() { echo "FAIL: $1"; exit 1; }
 
-SKILL_MD="$KIT/skills/auto-dev/SKILL.md"
+SKILL_MD="$(kit_skill_prose "$KIT" auto-dev)"   # router + references/steps/*.md
 [ -f "$SKILL_MD" ] || fail "missing $SKILL_MD"
 
 # 1. The MERGED clause dispatches a cleanup sub-agent via the SAME phase-2 spawn form Step 3 uses

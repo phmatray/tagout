@@ -123,10 +123,12 @@ evidence than a `0 hits` from semantic search, and the recap has to let the owne
 ## Consumers
 
 - `skills/auto-dev/SKILL.md` — a worker's off-scope capture, and the retro's recorded-not-filed candidates, both face the bar before anything is filed
+- `skills/auto-dev/references/steps/06-stop-and-recap.md` — Step 6 of auto-dev, split out of its SKILL.md for progressive disclosure: the retro's `lessons:` candidates are recorded, not filed
 - `skills/create-issue/SKILL.md` — an idea discovered rather than handed in faces the bar before it becomes an issue
 - `skills/merge-pr/SKILL.md` — Step 6c puts each cluster of follow-ups to the bar before routing it
 - `skills/review-sessions/SKILL.md` — Step 6 applies the bar to every still-present cluster before filing
 - `skills/triage-backlog/SKILL.md` — Step 6 applies the bar to items already in the queue before deciding their disposition
+- `skills/triage-backlog/references/steps/06-propose-dispositions.md` — Step 6 of triage-backlog, split out of its SKILL.md for progressive disclosure
 - `ARCHITECTURE.md` — the *Skill call graph* section's cycle paragraph cites the bar as what closes the "three inlets, no outlet" loop
 - `README.md` — the "Why these skills exist" table cites the bar as the standard shared by every inlet
 - `skills/create-issue/references/steps/03-duplicates-and-root-causes.md` — Step 3 of create-issue, split out of its SKILL.md for progressive disclosure (#499)
