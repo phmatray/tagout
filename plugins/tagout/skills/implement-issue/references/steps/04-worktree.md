@@ -22,8 +22,10 @@ does not exist), then:
 ```bash
 # Exact match on the branch column. A bare `grep -F "$BRANCH"` matches substrings and the path
 # column too, so `feat/26-guard` would "resume" into feat/26-guarded-git-writes' worktree —
-# the wrong-checkout failure this step exists to prevent.
-git worktree list --porcelain | grep -Fxq "branch refs/heads/$BRANCH"
+# the wrong-checkout failure this step exists to prevent. A herestring, not a pipe: `grep -q`
+# exits on its first match, and a producer still writing would die of SIGPIPE and report this
+# issue's own worktree as absent (#391).
+grep -Fxq "branch refs/heads/$BRANCH" <<<"$(git worktree list --porcelain)"
 ```
 
 **Before you either reuse what that finds or create one, prove the worktree's home is ignored** — the

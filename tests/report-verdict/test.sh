@@ -131,7 +131,7 @@ refused() {
   local out rc=0
   out=$("$@" 2>&1) || rc=$?
   [ "$rc" -eq 2 ] || fail "[$label] expected exit 2, got $rc: $out"
-  printf '%s' "$out" | grep -qF -- "$needle" || fail "[$label] the refusal does not say '$needle': $out"
+  grep -qF -- "$needle" <<<"$out" || fail "[$label] the refusal does not say '$needle': $out"
   echo "  ok: $label — refused, exit 2"
 }
 refused "no --tier" "--tier" "$STATE_SH" "$STATE_FILE" "$PARTIAL_LINE" x y

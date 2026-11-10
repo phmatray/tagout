@@ -420,7 +420,7 @@ case "$VERB" in
     [ -n "$n" ] || { echo "gitlab: issue-blocked-by-count needs an issue number" >&2; exit 2; }
     if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
       printf '%s' "$out" | jq -c '[.[] | select(.link_type == "is_blocked_by" and .state == "opened")] | length'
-    elif printf '%s' "$out" | grep -qE '\(HTTP 403\)|^glab: HTTP 403$'; then
+    elif grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
       printf 'n/a\n'
     else
       echo "gitlab: issue-blocked-by-count: $out" >&2; exit 1

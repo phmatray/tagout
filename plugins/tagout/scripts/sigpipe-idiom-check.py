@@ -11,10 +11,11 @@ reports a failure that did not happen. Measured on `tests/survey/test.sh` case 1
 
 #48 shipped the general doctrine (`tests/_lib.sh`'s `first_match`/`any_match`) and #123 widened one
 anti-recurrence guard (`tests/xunit-v3/test.sh` section 10) -- but only for the literal producer
-`find`, in three files. This gate generalises both: any external, streaming producer, anywhere
-under `tests/` and `scripts/`.
+`find`, in three files. This gate generalises both: any streaming producer -- external, or the
+shell's own `printf`/`echo` (see PRODUCERS) -- anywhere under `tests/`, `scripts/`, `skills/` and
+`hooks/` (SCAN_ROOTS), fenced recipes in their markdown included.
 
-THE SHAPE IT FLAGS: a line piping an external producer into a `grep` call whose flags include `q`
+THE SHAPE IT FLAGS: a line piping a producer into a `grep` call whose flags include `q`
 (quiet -- exit on first match, the thing that races) -- including a producer wrapped in a `sudo`,
 an `env`, or one or more `VAR=val` prefixes, and including the same shape one level inside a
 `$(...)`/backtick substitution, recursively (#457). THE SHAPE IT DOES NOT FLAG: a `grep -q` that
@@ -45,11 +46,24 @@ import subprocess
 import sys
 from pathlib import Path
 
+# `printf` and `echo` are on this list although they are shell builtins. The first version of this
+# gate exempted them ("one small write, cannot race"), and that was measured wrong: bash's `printf`
+# writes a multi-line argument in several writes, so `printf '%s\n' "$out" | grep -q first-line`
+# loses the same race -- 3 failures in 3000 on a loaded machine for a 40-line value, every time
+# once the value outgrows the pipe buffer -- and about 200 such assertions across 32 suites turned
+# a parallel run of the whole plan red about every other time. A builtin gets no exemption: the
+# remedy is the same herestring, and it costs nothing.
 PRODUCERS = frozenset(
-    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq".split()
+    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq printf echo".split()
 )
 
 QUIET_LONG = frozenset(("--quiet", "--silent"))
+
+# Where the shape is looked for. `skills/` and `hooks/` joined `tests/` and `scripts/` once the
+# builtin exemption fell: a recipe an agent pastes from a skill reference races exactly like a
+# suite does, and three did -- one of them the lookup that decides whether an issue already has a
+# worktree, where a lost race reads as "no" and a second worktree gets created.
+SCAN_ROOTS = ("tests", "scripts", "skills", "hooks")
 
 SELF_PATH = "scripts/sigpipe-idiom-check.py"
 FIXTURE_PREFIX = "tests/sigpipe-idiom/"
@@ -363,7 +377,7 @@ def tracked_files(repo):
     gitbin = "git"
     try:
         out = subprocess.run(
-            [gitbin, "-C", str(repo), "ls-files", "-z", "--", "tests", "scripts"],
+            [gitbin, "-C", str(repo), "ls-files", "-z", "--", *SCAN_ROOTS],
             capture_output=True, check=True,
         ).stdout
         names = [n for n in out.decode("utf-8", "replace").split("\0") if n]
@@ -373,7 +387,7 @@ def tracked_files(repo):
         pass
 
     names = []
-    for sub in ("tests", "scripts"):
+    for sub in SCAN_ROOTS:
         base = repo / sub
         if not base.is_dir():
             continue

@@ -62,7 +62,7 @@ verdict() {
   local name="$1" want_rc="$2" payload="$3" state_dir="$4" sw=""
   if [ "$#" -ge 5 ]; then sw="$5"; shift 5; else shift 4; fi
   local out rc=0
-  out=$(printf '%s' "$payload" | env AUTODEV_STATE_DIR="$state_dir" AUTODEV_GATE="$sw" bash "$GATE" 2>&1 1>/dev/null) || rc=$?
+  out=$(env AUTODEV_STATE_DIR="$state_dir" AUTODEV_GATE="$sw" bash "$GATE" 2>&1 1>/dev/null <<<"$payload") || rc=$?
   if [ "$rc" != "$want_rc" ]; then
     echo "FAIL [$name]: expected exit $want_rc, got $rc"; echo "$out"; exit 1
   fi
@@ -140,7 +140,7 @@ verdict "AC3 one in-flight slot refuses" 2 "$(pay "$REPO" false)" "$SDIR" "" \
 # issue number and the PR number on the SAME line. in_flight_count must count slot LINES, not `#`
 # tokens, or this one slot reports as two.
 write_state "- Slot A → #123 (auto-dev) — PR #456 ready→merging" ""
-out=$(printf '%s' "$(pay "$REPO" false)" | env AUTODEV_STATE_DIR="$SDIR" AUTODEV_GATE="" bash "$GATE" 2>&1 1>/dev/null) || true
+out=$(env AUTODEV_STATE_DIR="$SDIR" AUTODEV_GATE="" bash "$GATE" 2>&1 1>/dev/null <<<"$(pay "$REPO" false)") || true
 grep -qF '1 in-flight slot(s)' <<<"$out" \
   || { echo "FAIL [two-# slot line]: expected '1 in-flight slot(s)', got: $out"; exit 1; }
 grep -qF '2 in-flight slot(s)' <<<"$out" \

@@ -122,7 +122,7 @@ fi
 # matched any 422/404 regardless of text, which would also swallow a real failure that happens to
 # share a status (a malformed "$REPO" hitting a nonexistent repo 404s for a wholly different
 # reason). Anything without this exact phrase is a real failure.
-if printf '%s' "$ERR" | grep -qF 'Reference does not exist'; then
+if grep -qF 'Reference does not exist' <<<"$ERR"; then
   echo "already-gone"
   exit 0
 fi

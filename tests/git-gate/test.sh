@@ -105,9 +105,9 @@ verdict() {
   envv=(PATH="$gate_path")
   if [ -n "$sw" ]; then envv+=(GIT_GATE="$sw"); fi
   if [ -n "$root" ]; then
-    out=$(printf '%s' "$payload" | env "${envv[@]}" CLAUDE_PLUGIN_ROOT="$root" bash "$GATE" 2>/dev/null) || rc=$?
+    out=$(env "${envv[@]}" CLAUDE_PLUGIN_ROOT="$root" bash "$GATE" 2>/dev/null <<<"$payload") || rc=$?
   else
-    out=$(printf '%s' "$payload" | env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>/dev/null) || rc=$?
+    out=$(env -u CLAUDE_PLUGIN_ROOT "${envv[@]}" bash "$GATE" 2>/dev/null <<<"$payload") || rc=$?
   fi
   # Exit status is half the PreToolUse contract — a non-zero exit blocks the tool regardless of
   # stdout, so a regression that turned a fail-open path into `exit 2` would be scored "pass" here
@@ -196,9 +196,9 @@ verdict "K6  no root keeps the kit-relative spelling" \
 # ...and the absence half, which verdict() cannot express: neither reason names an absolute path.
 reason_for() { # $1 payload  $2 CLAUDE_PLUGIN_ROOT ("" = unset)
   if [ -n "$2" ]; then
-    printf '%s' "$1" | env CLAUDE_PLUGIN_ROOT="$2" bash "$GATE" 2>/dev/null
+    env CLAUDE_PLUGIN_ROOT="$2" bash "$GATE" 2>/dev/null <<<"$1"
   else
-    printf '%s' "$1" | env -u CLAUDE_PLUGIN_ROOT bash "$GATE" 2>/dev/null
+    env -u CLAUDE_PLUGIN_ROOT bash "$GATE" 2>/dev/null <<<"$1"
   fi | jq -r '.hookSpecificOutput.permissionDecisionReason // ""'
 }
 for c in 'git commit -m x' 'git push' 'git push --force origin main' 'git merge feature' \
@@ -777,7 +777,7 @@ grep -qF 'case "$cmd" in *'"'"'<<'"'"'*) exit 0 ;; esac' "$REVERTED_GATE" \
 # back as an *allow* on the reverted one — the exact regression this suite exists to catch.
 revert_allows() { # $1 name  $2 payload
   local name="$1" payload="$2" out
-  out=$(printf '%s' "$payload" | bash "$REVERTED_GATE" 2>/dev/null) || {
+  out=$(bash "$REVERTED_GATE" 2>/dev/null <<<"$payload") || {
     echo "FAIL [$name]: reverted gate exited non-zero; expected the old fail-open pass"; exit 1; }
   [ -z "$out" ] || { echo "FAIL [$name]: reverted gate did not fail open — got: $out"; exit 1; }
   echo "ok: $name -> pass (on the reverted gate, as the pre-#440 defect predicts)"
@@ -838,7 +838,7 @@ PY
 # off, so the manifest has to name this gate too, not just the roseline one.
 REQ="$KIT/requirements.json"
 hint=$(jq -r '.tools[] | select(.name | test("jq")) | .hint' "$REQ")
-printf '%s' "$hint" | grep -qF 'git-write-gate.sh' \
+grep -qF 'git-write-gate.sh' <<<"$hint" \
   || { echo "FAIL: requirements.json's jq hint does not mention hooks/git-write-gate.sh: '$hint'"; exit 1; }
 echo "ok: requirements.json's jq hint names both gates"
 

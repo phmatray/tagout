@@ -1754,9 +1754,9 @@ last_fn=$(printf '%s\n' "$helper_fns" | tail -1)
 for g in "$COMMIT" "$PUSH" "$MERGE"; do
   bootstrap=$(guard_code "$g" | grep 'command -v' || true)
   [ -n "$bootstrap" ] || fail helper-fn-order "$(basename "$g") has no 'command -v' bootstrap probe at all"
-  printf '%s' "$bootstrap" | grep -q 'assert_branch' \
+  grep -q 'assert_branch' <<<"$bootstrap" \
     || fail helper-fn-order "$(basename "$g")'s bootstrap probe does not name assert_branch"
-  printf '%s' "$bootstrap" | grep -q 'refuse' \
+  grep -q 'refuse' <<<"$bootstrap" \
     || fail helper-fn-order "$(basename "$g")'s bootstrap probe does not name refuse"
 done
 echo "  ok: helper-fn-order — _assert-branch.sh's function order (refuse first, assert_branch last) is asserted, and every guard's bootstrap probes both names"

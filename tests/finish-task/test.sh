@@ -95,8 +95,8 @@ echo "== 2. re-run is idempotent: nothing recommitted, nothing re-ticked, exit 0
 before=$(git -C "$WT" rev-parse HEAD)
 out=$("$FINISH" --repo o/r --issue 42 --task 1 --pr 7 --worktree "$WT" --branch fix/42 2>&1) || fail idem "expected exit 0, got $? — $out"
 [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ] || fail idem-commit "a second run created a commit"
-printf '%s' "$out" | grep -q 'already committed' || fail idem-say "should say already committed: $out"
-printf '%s' "$out" | grep -q 'already ticked'    || fail idem-tick "should say already ticked: $out"
+grep -q 'already committed' <<<"$out" || fail idem-say "should say already committed: $out"
+grep -q 'already ticked' <<<"$out"    || fail idem-tick "should say already ticked: $out"
 echo "  ok: already committed, already ticked, no second write"
 
 echo "== 3. a task the plan does not have: exit 65, nothing written anywhere =="
@@ -113,7 +113,7 @@ git -C "$WT" checkout -q -b elsewhere
 : > "$GH_LOG"
 rc=0; out=$("$FINISH" --repo o/r --issue 42 --task 2 --worktree "$WT" --branch fix/42 2>&1) || rc=$?
 [ "$rc" -eq 2 ] || fail branch "expected guarded-commit's exit 2, got $rc — $out"
-printf '%s' "$out" | grep -q '^finish-task: commit:' || fail branch-name "the failing stage must be named: $out"
+grep -q '^finish-task: commit:' <<<"$out" || fail branch-name "the failing stage must be named: $out"
 grep -q 'PATCH' "$GH_LOG" && fail branch-order "the tick ran although the commit was refused"
 grep -q '^- \[ \] \*\*Step 2:\*\* Commit: `feat(x): second slice`' "$GH_ISSUE" || fail branch-tick "Task 2 was ticked without a commit"
 echo "  ok: commit refused, stage named, tick never ran"
@@ -122,7 +122,7 @@ echo "== 5. --dry-run writes nothing and names every stage =="
 git -C "$WT" checkout -q fix/42
 : > "$GH_LOG"
 out=$("$FINISH" --repo o/r --issue 42 --task 2 --pr 7 --worktree "$WT" --branch fix/42 --dry-run 2>&1) || fail dry "expected exit 0, got $? — $out"
-printf '%s' "$out" | grep -q 'would commit' && printf '%s' "$out" | grep -q 'would flip 2 box' && printf '%s' "$out" | grep -q 'would push' \
+grep -q 'would commit' <<<"$out" && grep -q 'would flip 2 box' <<<"$out" && grep -q 'would push' <<<"$out" \
   || fail dry-say "dry-run must name the three stages: $out"
 grep -q 'PATCH\|pr edit' "$GH_LOG" && fail dry-write "dry-run wrote to GitHub"
 porcelain=$(git -C "$WT" status --porcelain)
@@ -203,7 +203,7 @@ committed=$(git -C "$WT" show --name-only --format= HEAD)
 grep -qx 'new.sh' <<<"$committed" || fail files-create "new.sh (declared create) missing from the commit: $committed"
 grep -qx 'README.md' <<<"$committed" || fail files-modify "README.md (tracked edit) missing from the commit: $committed"
 grep -qx 'stray.md' <<<"$committed" && fail files-stray "stray.md (undeclared) must not be in the commit: $committed"
-printf '%s' "$out" | grep -qF 'finish-task: commit: left untracked: stray.md' || fail files-say "stderr must name stray.md: $out"
+grep -qF 'finish-task: commit: left untracked: stray.md' <<<"$out" || fail files-say "stderr must name stray.md: $out"
 [ -e "$WT/stray.md" ] || fail files-left "stray.md should remain on disk, merely uncommitted"
 echo "  ok: new.sh and README.md committed, stray.md left untracked and named on stderr"
 
@@ -212,7 +212,7 @@ before=$(git -C "$WT" rev-parse HEAD)
 out=$("$FINISH" --repo o/r --issue 42 --task 4 --worktree "$WT" --branch fix/42 -c user.email=t@t -c user.name=t 2>&1) \
   || fail files-idem "expected exit 0, got $? — $out"
 [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ] || fail files-idem-commit "a re-run with a stray present created a commit"
-printf '%s' "$out" | grep -qF 'already committed' || fail files-idem-say "should say already committed: $out"
+grep -qF 'already committed' <<<"$out" || fail files-idem-say "should say already committed: $out"
 echo "  ok: re-run with stray.md still on disk stays a no-op, no hard failure"
 
 echo "== 12. a (new) marker on a non-create verb is read the same as create (#536) =="
@@ -223,7 +223,7 @@ out=$("$FINISH" --repo o/r --issue 42 --task 5 --worktree "$WT" --branch fix/42 
   || fail newmark "expected exit 0, got $? — $out"
 committed=$(git -C "$WT" show --name-only --format= HEAD)
 grep -qx 'new_test.sh' <<<"$committed" || fail newmark-create "new_test.sh (marked (new)) missing from the commit: $committed"
-printf '%s' "$out" | grep -qF 'left untracked: new_test.sh' && fail newmark-say "new_test.sh should not be reported as a stray: $out"
+grep -qF 'left untracked: new_test.sh' <<<"$out" && fail newmark-say "new_test.sh should not be reported as a stray: $out"
 echo "  ok: a (new)-marked path on a non-create verb is staged like a declared create"
 
 echo "== 13. an undeclared untracked file with no tracked edits: named on stderr, tick still lands, no hard failure (#536) =="
@@ -234,8 +234,8 @@ before=$(git -C "$WT" rev-parse HEAD)
 out=$("$FINISH" --repo o/r --issue 42 --task 6 --worktree "$WT" --branch fix/42 -c user.email=t@t -c user.name=t 2>&1) \
   || fail undeclared "expected exit 0, got $? — $out"
 [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ] || fail undeclared-commit "an undeclared file must not be committed as a task's own work"
-printf '%s' "$out" | grep -qF 'left untracked: undeclared.txt' || fail undeclared-say "stderr must name undeclared.txt: $out"
-printf '%s' "$out" | grep -qF 'already committed' || fail undeclared-idem "no tracked/declared work: should say already committed: $out"
+grep -qF 'left untracked: undeclared.txt' <<<"$out" || fail undeclared-say "stderr must name undeclared.txt: $out"
+grep -qF 'already committed' <<<"$out" || fail undeclared-idem "no tracked/declared work: should say already committed: $out"
 grep -q '^- \[x\] \*\*Step 1:\*\* Commit: `feat(x): sixth slice`' "$GH_ISSUE" || fail undeclared-tick "Task 6 should still be ticked even with nothing to commit"
 [ -e "$WT/undeclared.txt" ] || fail undeclared-left "undeclared.txt should remain on disk"
 echo "  ok: undeclared file left untracked and named, task still ticked, no hard failure"

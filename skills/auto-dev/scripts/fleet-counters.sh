@@ -110,7 +110,7 @@ case "$CMD" in
     ;;
   base)
     line="${1:-}"
-    printf '%s\n' "$line" | grep -Eq '^(green|RED|unverified) \([a-z-]+\)$' \
+    grep -Eq '^(green|RED|unverified) \([a-z-]+\)$' <<<"$line" \
       || die "'$line' is not a base verdict line — re-derive it with base-run-verdict.sh --report-line, then record that"
     word="${line%% *}"
     reason="${line#*\(}"; reason="${reason%\)}"

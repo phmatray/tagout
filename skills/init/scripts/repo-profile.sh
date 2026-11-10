@@ -295,7 +295,7 @@ case "$CMD" in
       else
         adr_mcp="$(claude mcp list 2>/dev/null || true)"
       fi
-      if printf '%s\n' "$adr_mcp" | grep -iqE '(^|[^a-z])adr(mcp)?([^a-z]|$)'; then
+      if grep -iqE '(^|[^a-z])adr(mcp)?([^a-z]|$)' <<<"$adr_mcp"; then
         echo "  server: via AdrMcp (claude mcp list names 'adr') — on this machine only, not a fact about the repo"
       else
         echo "  server: files only (no 'adr' MCP server in \`claude mcp list\`)"

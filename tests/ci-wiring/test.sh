@@ -154,7 +154,7 @@ else bad "this repo should pass but did not:"; printf '%s\n' "$out" | sed 's/^/ 
 R="$WORK/uninvoked"; scaffold "$R" alpha beta
 mkdir -p "$R/tests/orphan"; touch "$R/tests/orphan/test.sh"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/orphan/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/orphan/test.sh' <<<"$out"; then
   ok "a suite nothing invokes is refused, and named"
 else bad "expected refusal naming tests/orphan/test.sh; got rc=$rc: $out"; fi
 
@@ -167,7 +167,7 @@ sed -i.bak 's|^      - name: beta golden test|#      - name: beta golden test|; 
 grep -q '^#        run: ./tests/beta/test.sh' "$R/.github/workflows/ci.yml" \
   || bad "fixture bug: the beta step was not commented out"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/beta/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/beta/test.sh' <<<"$out"; then
   ok "a commented-out step does not count as wired"
 else bad "expected refusal for the commented-out beta step; got rc=$rc: $out"; fi
 
@@ -178,7 +178,7 @@ sed -i.bak 's|^        run: ./tests/beta/test.sh|        continue-on-error: true
 assert_parsed "$R/.github/workflows/ci.yml" \
   "d['jobs']['kit']['steps'][1].get('continue-on-error') is True" "continue-on-error"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'cannot fail the build'; then
+if [ $rc -eq 1 ] && grep -q 'cannot fail the build' <<<"$out"; then
   ok "continue-on-error: true does not count as wired"
 else bad "expected refusal for continue-on-error; got rc=$rc: $out"; fi
 
@@ -189,7 +189,7 @@ sed -i.bak 's|^        run: ./tests/beta/test.sh|        if: false\n        run:
 assert_parsed "$R/.github/workflows/ci.yml" \
   "d['jobs']['kit']['steps'][1].get('if') is False" "if: false"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'cannot fail the build'; then
+if [ $rc -eq 1 ] && grep -q 'cannot fail the build' <<<"$out"; then
   ok "if: false does not count as wired"
 else bad "expected refusal for if: false; got rc=$rc: $out"; fi
 
@@ -200,7 +200,7 @@ sed -i.bak 's|^        run: ./tests/beta/test.sh|        run: ./tests/beta/test.
 assert_parsed "$R/.github/workflows/ci.yml" \
   "d['jobs']['kit']['steps'][1]['run'].strip().endswith('|| true')" "|| true"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/beta/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/beta/test.sh' <<<"$out"; then
   ok "a discarded exit status (|| true) does not count as wired"
 else bad "expected refusal for '|| true'; got rc=$rc: $out"; fi
 
@@ -210,7 +210,7 @@ R="$WORK/manual"; TRIGGERS=$'on:\n  workflow_dispatch:'; scaffold "$R" alpha
 assert_parsed "$R/.github/workflows/ci.yml" \
   "list(d.get('on', d.get(True))) == ['workflow_dispatch']" "workflow_dispatch-only trigger"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'no automatic trigger'; then
+if [ $rc -eq 1 ] && grep -q 'no automatic trigger' <<<"$out"; then
   ok "a workflow_dispatch-only workflow is not CI"
 else bad "expected refusal for a manual-only workflow; got rc=$rc: $out"; fi
 
@@ -227,8 +227,8 @@ R="$WORK/pronly"; TRIGGERS=$'on:\n  pull_request:'; scaffold "$R" alpha
 assert_parsed "$R/.github/workflows/ci.yml" \
   "list(d.get('on', d.get(True))) == ['pull_request']" "pull_request-only trigger"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/alpha/test.sh' \
-   && printf '%s' "$out" | grep -q 'never on a push to main'; then
+if [ $rc -eq 1 ] && grep -q 'tests/alpha/test.sh' <<<"$out" \
+   && grep -q 'never on a push to main' <<<"$out"; then
   ok "a pull_request-only workflow does not count as enforcing a suite"
 else bad "expected refusal naming tests/alpha/test.sh and the PR-only reason; got rc=$rc: $out"; fi
 
@@ -275,7 +275,7 @@ trigger_case() {
   if [ "$rc" -ne "$want" ]; then
     bad "$label: expected exit $want, got $rc: $out"; return
   fi
-  if [ -n "$expect" ] && ! printf '%s' "$out" | grep -q "$expect"; then
+  if [ -n "$expect" ] && ! grep -q "$expect" <<<"$out"; then
     bad "$label: exit $want as expected, but the reason never said '$expect': $out"; return
   fi
   ok "$label"
@@ -325,7 +325,7 @@ trigger_case scheduleonly $'on:\n  schedule:\n    - cron: "0 3 * * *"' 1 \
 R="$WORK/empty"; scaffold "$R" alpha
 rm -rf "$R/tests"; mkdir -p "$R/tests"
 out=$(run_check "$R"); rc=$?
-if [ $rc -ne 0 ] && printf '%s' "$out" | grep -q 'refusing to report'; then
+if [ $rc -ne 0 ] && grep -q 'refusing to report' <<<"$out"; then
   ok "an empty tests/ refuses instead of passing vacuously"
 else bad "expected refusal on an empty tests/; got rc=$rc: $out"; fi
 
@@ -354,9 +354,9 @@ fi
 R="$WORK/badmode"; scaffold "$R" alpha beta
 stage_at_mode "$R" tests/beta/test.sh 100644 "wired but committed 100644"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/beta/test.sh' \
-   && printf '%s' "$out" | grep -q '100644' \
-   && printf '%s' "$out" | grep -q 'git update-index --chmod=+x tests/beta/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/beta/test.sh' <<<"$out" \
+   && grep -q '100644' <<<"$out" \
+   && grep -q 'git update-index --chmod=+x tests/beta/test.sh' <<<"$out"; then
   ok "a suite committed 100644 is refused, naming the mode and the remedy"
 else bad "expected refusal naming tests/beta/test.sh, its mode and the remedy; got rc=$rc: $out"; fi
 
@@ -378,7 +378,7 @@ else bad "expected acceptance for a normally-staged fixture; got rc=$rc: $out"; 
 R="$WORK/notarepo"; scaffold "$R" alpha
 rm -rf "$R/.git"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -qi 'index'; then
+if [ $rc -eq 1 ] && grep -qi 'index' <<<"$out"; then
   ok "a directory that is not a git repository refuses rather than reporting every suite fine"
 else bad "expected refusal naming the unreadable index; got rc=$rc: $out"; fi
 
@@ -396,9 +396,9 @@ else bad "expected refusal naming the unreadable index; got rc=$rc: $out"; fi
 R="$WORK/symlink"; scaffold "$R" alpha
 stage_at_mode "$R" tests/alpha/test.sh 120000 "wired but committed as a symlink"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/alpha/test.sh' \
-   && printf '%s' "$out" | grep -q '120000' \
-   && ! printf '%s' "$out" | grep -q -- '--chmod=+x tests/alpha/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/alpha/test.sh' <<<"$out" \
+   && grep -q '120000' <<<"$out" \
+   && ! grep -q -- '--chmod=+x tests/alpha/test.sh' <<<"$out"; then
   ok "a suite committed as a symlink (120000) is refused, without the fatal --chmod=+x remedy"
 else bad "expected refusal naming tests/alpha/test.sh and mode 120000, without --chmod=+x; got rc=$rc: $out"; fi
 
@@ -412,7 +412,7 @@ else bad "expected refusal naming tests/alpha/test.sh and mode 120000, without -
 R="$WORK/quoted"; scaffold "$R" café
 stage_at_mode "$R" tests/café/test.sh 100644 "quoted path, wired but committed 100644"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q '100644'; then
+if [ $rc -eq 1 ] && grep -q '100644' <<<"$out"; then
   ok "a suite whose name git quotes (non-ASCII) is still caught at the wrong mode"
 else bad "expected refusal for tests/café/test.sh at 100644; got rc=$rc: $out"; fi
 
@@ -426,8 +426,8 @@ R="$WORK/bothdefects"; scaffold "$R" alpha
 mkdir -p "$R/tests/orphan"; touch "$R/tests/orphan/test.sh"; chmod +x "$R/tests/orphan/test.sh"
 rm -rf "$R/.git"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/orphan/test.sh' \
-   && printf '%s' "$out" | grep -qi 'index'; then
+if [ $rc -eq 1 ] && grep -q 'tests/orphan/test.sh' <<<"$out" \
+   && grep -qi 'index' <<<"$out"; then
   ok "an unreadable index still names a genuinely unwired suite in the same run"
 else bad "expected both tests/orphan/test.sh AND the index problem named; got rc=$rc: $out"; fi
 
@@ -448,9 +448,9 @@ assert_parsed "$R/.github/workflows/ci.yml" \
 [ -z "$(git -C "$R" ls-files -- tests/ghost/test.sh)" ] \
   || bad "fixture bug: tests/ghost/test.sh was staged — the whole point is that it is not"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/ghost/test.sh' \
-   && printf '%s' "$out" | grep -q 'not staged in the index at all' \
-   && printf '%s' "$out" | grep -q 'git add tests/ghost/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/ghost/test.sh' <<<"$out" \
+   && grep -q 'not staged in the index at all' <<<"$out" \
+   && grep -q 'git add tests/ghost/test.sh' <<<"$out"; then
   ok "a suite wired but never git-added refuses, naming it and the git add remedy"
 else bad "expected refusal naming tests/ghost/test.sh and the git add remedy; got rc=$rc: $out"; fi
 
@@ -463,9 +463,9 @@ else bad "expected refusal naming tests/ghost/test.sh and the git add remedy; go
 R="$WORK/ghostorphan"; scaffold "$R" alpha
 mkdir -p "$R/tests/orphan2"; touch "$R/tests/orphan2/test.sh"; chmod +x "$R/tests/orphan2/test.sh"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'no step invokes it' \
-   && printf '%s' "$out" | grep -q 'no step invokes it either' \
-   && ! printf '%s' "$out" | grep -q 'CI invokes it as ./tests/orphan2/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'no step invokes it' <<<"$out" \
+   && grep -q 'no step invokes it either' <<<"$out" \
+   && ! grep -q 'CI invokes it as ./tests/orphan2/test.sh' <<<"$out"; then
   ok "a suite that is both untracked and unwired names both reasons without contradicting itself"
 else bad "expected both reasons named, without the 'CI invokes it' claim; got rc=$rc: $out"; fi
 
@@ -485,9 +485,9 @@ git -C "$R" rm --cached -q -- tests/beta/test.sh
 [ -z "$(git -C "$R" ls-files -- tests/beta/test.sh)" ] \
   || bad "fixture bug: tests/beta/test.sh was staged — the whole point is that it is not"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'cannot fail the build' \
-   && ! printf '%s' "$out" | grep -q 'no step invokes it either' \
-   && printf '%s' "$out" | grep -q 'CI invokes it as ./tests/beta/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'cannot fail the build' <<<"$out" \
+   && ! grep -q 'no step invokes it either' <<<"$out" \
+   && grep -q 'CI invokes it as ./tests/beta/test.sh' <<<"$out"; then
   ok "an untracked suite invoked by a continue-on-error step does not claim no step invokes it"
 else bad "expected refusal without the false 'no step invokes it either' claim; got rc=$rc: $out"; fi
 
@@ -502,9 +502,9 @@ git -C "$R" rm --cached -q -- tests/ghost2/test.sh
 [ -z "$(git -C "$R" ls-files -- tests/ghost2/test.sh)" ] \
   || bad "fixture bug: tests/ghost2/test.sh was staged — the whole point is that it is not"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'never on a push to main' \
-   && ! printf '%s' "$out" | grep -q 'no step invokes it either' \
-   && printf '%s' "$out" | grep -q 'CI invokes it as ./tests/ghost2/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'never on a push to main' <<<"$out" \
+   && ! grep -q 'no step invokes it either' <<<"$out" \
+   && grep -q 'CI invokes it as ./tests/ghost2/test.sh' <<<"$out"; then
   ok "an untracked suite invoked only on a pull_request-only workflow does not claim no step invokes it"
 else bad "expected refusal without the false 'no step invokes it either' claim; got rc=$rc: $out"; fi
 
@@ -518,9 +518,9 @@ R="$WORK/badmodeorphan"; scaffold "$R" alpha
 mkdir -p "$R/tests/orphan3"; touch "$R/tests/orphan3/test.sh"
 stage_at_mode "$R" tests/orphan3/test.sh 100644 "wrong mode, nothing invokes it"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 1 ] && printf '%s' "$out" | grep -q 'tests/orphan3/test.sh' \
-   && printf '%s' "$out" | grep -q 'but no step invokes it either' \
-   && ! printf '%s' "$out" | grep -q 'CI invokes it as ./tests/orphan3/test.sh'; then
+if [ $rc -eq 1 ] && grep -q 'tests/orphan3/test.sh' <<<"$out" \
+   && grep -q 'but no step invokes it either' <<<"$out" \
+   && ! grep -q 'CI invokes it as ./tests/orphan3/test.sh' <<<"$out"; then
   ok "a suite committed at the wrong mode that nothing invokes does not claim CI invokes it"
 else bad "expected refusal without the false 'CI invokes it' claim; got rc=$rc: $out"; fi
 
@@ -618,7 +618,7 @@ else
           python3 "$CHECK" --repo "$R" 2>&1); rc=$?
     if [ $rc -eq 0 ]; then
       ok "no read in the checker leaves its encoding to the locale (EncodingWarning as error)"
-    elif printf '%s' "$out" | grep -qF 'EncodingWarning'; then
+    elif grep -qF 'EncodingWarning' <<<"$out"; then
       bad "a read has no explicit encoding= (rc=$rc): $(printf '%s' "$out" | grep -F 'ci-wiring-check.py' | tail -1)"
     else
       bad "the EncodingWarning probe failed for an unrelated reason (rc=$rc), so it proves nothing"

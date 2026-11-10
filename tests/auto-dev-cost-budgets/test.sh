@@ -178,11 +178,11 @@ grep -q 'Reported PARTIAL' "$SKILL_MD" \
 # pins ("cap consecutive resumes") straddles a line break and a line-oriented grep would report it
 # missing while it is plainly there — a false red that teaches the next reader to loosen the check.
 partial_block=$(sed -n '/Reported PARTIAL/,/Reported BLOCKED/p' "$SKILL_MD" | tr '\n' ' ')
-printf '%s' "$partial_block" | grep -qi 'fresh' \
+grep -qi 'fresh' <<<"$partial_block" \
   || fail "SKILL.md's 'Reported PARTIAL' handling does not prescribe a FRESH sub-agent dispatch"
-printf '%s' "$partial_block" | grep -qi 'SendMessage' \
+grep -qi 'SendMessage' <<<"$partial_block" \
   || fail "SKILL.md's 'Reported PARTIAL' handling does not rule out a SendMessage resume (which keeps the context the budget discards)"
-printf '%s' "$partial_block" | grep -qiE 'cap consecutive resumes|consecutive resumes at' \
+grep -qiE 'cap consecutive resumes|consecutive resumes at' <<<"$partial_block" \
   || fail "SKILL.md's 'Reported PARTIAL' handling has no cap on consecutive resumes, so a stuck issue can loop"
 
 # The dispatch-time guard must carve PARTIAL out, exactly as it already carves out a tier escalation
@@ -203,10 +203,10 @@ grep -qi 'lastCompacted' "$SKILL_MD" \
 step1_block=$(sed -n '/^## Step 1 — Preconditions & profile/,/^## Step 2/p' "$SKILL_MD")
 [ -n "$step1_block" ] || fail "could not locate '## Step 1 — Preconditions & profile' in $SKILL_MD"
 for tok in 'CLAUDE_AUTOCOMPACT_PCT_OVERRIDE' 'autoCompactWindow' '.claude/settings.local.json' '.claude/settings.json' '~/.claude/settings.json'; do
-  printf '%s' "$step1_block" | grep -qF "$tok" \
+  grep -qF "$tok" <<<"$step1_block" \
     || fail "SKILL.md's Step 1 does not name '$tok' when reading the effective context bound"
 done
-printf '%s' "$step1_block" | grep -qi 'without stopping' \
+grep -qi 'without stopping' <<<"$step1_block" \
   || fail "SKILL.md's Step 1 does not say a missing context bound goes in the recap without stopping"
 
 # ------------------------------------------------ 6. Step 6 reports the share it kept missing
@@ -215,13 +215,13 @@ printf '%s' "$step1_block" | grep -qi 'without stopping' \
 # `worktree` appears 16 times in a skill whose subject is worktrees, so the check pinned nothing.
 cost_block=$(sed -n '/\*\*Cost accounting\.\*\*/,/\*\*Lessons — mandatory\.\*\*/p' "$SKILL_MD" | tr '\n' ' ')
 [ -n "$cost_block" ] || fail "could not locate Step 6's Cost accounting block in $SKILL_MD"
-printf '%s' "$cost_block" | grep -qi 'orchestrator share' \
+grep -qi 'orchestrator share' <<<"$cost_block" \
   || fail "skills/auto-dev/SKILL.md Step 6 does not report orchestrator share of total as a named metric"
-printf '%s' "$cost_block" | grep -qiE 'worktree' \
+grep -qiE 'worktree' <<<"$cost_block" \
   || fail "skills/auto-dev/SKILL.md Step 6's cost accounting has no worktree-transcript caveat"
 # `[*_ ]*` between the words: the sentence carries markdown emphasis (*different*), and a pattern
 # that assumed a plain space matched nothing while the caveat was plainly there.
-printf '%s' "$cost_block" | grep -qiE 'different[*_ ]+(project|transcript)[*_ ]+(transcript[*_ ]+)?director' \
+grep -qiE 'different[*_ ]+(project|transcript)[*_ ]+(transcript[*_ ]+)?director' <<<"$cost_block" \
   || fail "skills/auto-dev/SKILL.md Step 6 does not say a worktree-run supervisor writes to a DIFFERENT project transcript directory — the whole reason usage_report.py must be pointed at both"
 
 echo "PASS: auto-dev-cost-budgets (context bound=autoCompactWindow $BOUND, budget=$BUDGET turns, both declared once)"

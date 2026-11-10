@@ -75,7 +75,7 @@ fi
 CALL=$(grep -F -- 'gh api' "$RECIPE" | grep -F -- 'check-runs' || true)
 if [ -z "$CALL" ]; then
   note_fail "$RECIPE has no \`gh api\` line fetching check-runs — the gate has lost its input."
-elif ! printf '%s' "$CALL" | grep -q -F -- '--paginate --slurp'; then
+elif ! grep -q -F -- '--paginate --slurp' <<<"$CALL"; then
   note_fail "the check-runs call in $RECIPE no longer carries \`--paginate --slurp\`, so the gate
       would judge one page of a multi-page SHA:
       $CALL"

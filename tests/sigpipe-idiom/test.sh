@@ -68,13 +68,28 @@ else
   printf '%s\n' "$out" | sed 's/^/        /'
 fi
 
-# --------------------------------------------------------------- b. printf producer -> accept
+# --------------------------------------------------------------- b. printf producer -> REFUSE
 scaffold
 printf '%s\n' 'printf '"'"'%s'"'"' "$x" | grep -q y' > "$WORK/repo/tests/fixture/b.sh"
 out=$(run_check "$WORK/repo"); rc=$?
+# A builtin is NOT exempt. This case used to assert the opposite ("one small write, printf cannot
+# race"); measured, bash's printf writes a multi-line value in several writes and loses the race
+# like any external producer. The same line through a herestring is the accepted form.
+[ "$rc" -eq 1 ] && grep -qF 'tests/fixture/b.sh:1' <<<"$out" \
+  && ok "b. printf (a builtin) into grep -q -- refused, a multi-line printf races too" \
+  || { bad "b. expected rc=1 naming tests/fixture/b.sh:1, got rc=$rc: $out"; }
+scaffold
+printf '%s\n' 'echo "$x" | grep -q y' > "$WORK/repo/tests/fixture/b2.sh"
+out=$(run_check "$WORK/repo"); rc=$?
+[ "$rc" -eq 1 ] && grep -qF 'tests/fixture/b2.sh:1' <<<"$out" \
+  && ok "b2. echo into grep -q -- refused on the same terms" \
+  || { bad "b2. expected rc=1 naming tests/fixture/b2.sh:1, got rc=$rc: $out"; }
+scaffold
+printf '%s\n' 'grep -q y <<<"$x"' > "$WORK/repo/tests/fixture/b3.sh"
+out=$(run_check "$WORK/repo"); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] \
-  && ok "b. printf (builtin, one small write) into grep -q -- accept, printf cannot race" \
-  || { bad "b. expected rc=0, silent, got rc=$rc: $out"; }
+  && ok "b3. the herestring form of the same assertion -- accept" \
+  || { bad "b3. expected rc=0, silent, got rc=$rc: $out"; }
 
 # --------------------------------------------------------- c. bang-negated find -> accept
 scaffold
@@ -124,6 +139,22 @@ out=$(run_check "$WORK/repo"); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] \
   && ok "h. || true / || : -- accept, the pipeline's status is discarded outright" \
   || { bad "h. expected rc=0, silent, got rc=$rc: $out"; }
+
+# ------------------------------------ i0. a recipe in a skill reference, and a hook -> REFUSED
+#
+# skills/ and hooks/ are scan roots too: a fenced recipe an agent pastes races like a suite does.
+scaffold
+mkdir -p "$WORK/repo/skills/x/references" "$WORK/repo/hooks"
+printf '%s\n' '```bash' 'git worktree list --porcelain | grep -Fxq "branch refs/heads/$BRANCH"' '```' \
+  > "$WORK/repo/skills/x/references/recipe.md"
+printf '%s\n' 'git status --porcelain | grep -q .' > "$WORK/repo/hooks/gate.sh"
+out=$(run_check "$WORK/repo"); rc=$?
+if [ "$rc" -eq 1 ] && grep -qF 'skills/x/references/recipe.md:2' <<<"$out" \
+   && grep -qF 'hooks/gate.sh:1' <<<"$out"; then
+  ok "i0. the shape in a skill's markdown recipe and in a hook -- REFUSED under skills/ and hooks/"
+else
+  bad "i0. expected rc=1 naming skills/x/references/recipe.md:2 and hooks/gate.sh:1, got rc=$rc: $out"
+fi
 
 # --------------------------------------------- i. find piped into grep -q, both scan roots
 scaffold

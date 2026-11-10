@@ -149,7 +149,7 @@ for i in $(seq 1 "$MAX_POLLS"); do
 
     transient=0
     if [ "$gh_rc" -ne 0 ]; then
-      if printf '%s' "$gh_err" | grep -qi 'no checks reported'; then
+      if grep -qi 'no checks reported' <<<"$gh_err"; then
         json='[]'   # genuine zero checks — see the header
       else
         transient=1

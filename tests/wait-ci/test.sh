@@ -106,7 +106,7 @@ reset_case() {
   echo "$((idx - 1))" > "$GH_RESPONSES/max"
 }
 
-has_poll() { printf '%s' "$1" | grep -q "] poll $2:"; }
+has_poll() { grep -q "] poll $2:" <<<"$1"; }
 
 # ---------------------------------------------------------------- 0. usage: no PR args refuses
 
@@ -163,7 +163,7 @@ reset_case zero-forever '[]'
 rc=0
 out=$(POLL_SECONDS=0 MAX_POLLS=5 "$WAIT" 5 2>&1) || rc=$?
 [ "$rc" -eq 2 ] || { echo "FAIL [zero-forever]: expected exit 2, got $rc"; echo "$out"; exit 1; }
-printf '%s' "$out" | grep -qi 'no checks found for PR 5' || {
+grep -qi 'no checks found for PR 5' <<<"$out" || {
   echo "FAIL [zero-forever]: no clear message naming the PR with no checks"; echo "$out"; exit 1; }
 has_poll "$out" 3 && { echo "FAIL [zero-forever]: should have failed fast, well before MAX_POLLS=5"; echo "$out"; exit 1; }
 echo "  ok: zero-forever — fails fast (exit 2) instead of polling silently to MAX_POLLS"

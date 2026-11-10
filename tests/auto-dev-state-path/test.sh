@@ -46,24 +46,24 @@ grep -qF 'auto-dev-<owner>-<repo>.md' "$SKILL_MD" \
 # Still outside the repo, never tracked — the ONE requirement #417 must not loosen.
 state_block=$(sed -n '/Persist a \*\*state file\*\* at the pinned/,/^```markdown/p' "$SKILL_MD")
 [ -n "$state_block" ] || fail "could not locate the Step 2 state-file paragraph in $SKILL_MD"
-printf '%s' "$state_block" | grep -qi 'outside the repo' \
+grep -qi 'outside the repo' <<<"$state_block" \
   || fail "Step 2's state-file paragraph dropped the 'outside the repo' requirement"
-printf '%s' "$state_block" | grep -qi 'never a tracked path\|not a tracked path' \
+grep -qi 'never a tracked path\|not a tracked path' <<<"$state_block" \
   || fail "Step 2's state-file paragraph dropped the 'never a tracked path' requirement"
 
 # --------------------------------------------------------------------- 2. Step 6 removes it on drain
 step6=$(sed -n '/^## Step 6 — Stop & recap/,$p' "$SKILL_MD")
 [ -n "$step6" ] || fail "could not locate '## Step 6 — Stop & recap' in $SKILL_MD"
-printf '%s' "$step6" | grep -qi 'remove the state file' \
+grep -qi 'remove the state file' <<<"$step6" \
   || fail "Step 6 does not explicitly remove the state file on drain"
-printf '%s' "$step6" | grep -qF 'rm -f' \
+grep -qF 'rm -f' <<<"$step6" \
   || fail "Step 6's removal instruction has no concrete rm command"
-printf '%s' "$step6" | grep -qF "$PINNED" \
+grep -qF "$PINNED" <<<"$step6" \
   || fail "Step 6's removal instruction does not target the same pinned path Step 2 declares"
 
 # Removal must be gated on the drain actually completing, not on every stop — a supervisor asked to
 # stop mid-fleet must NOT delete evidence of the work still in flight.
-printf '%s' "$step6" | grep -qi "mid-run stop\|only once the drain" \
+grep -qi "mid-run stop\|only once the drain" <<<"$step6" \
   || fail "Step 6 does not say the removal is skipped on a mid-run stop"
 
 # --------------------------------------------------------------------- 3. #417 is credited
