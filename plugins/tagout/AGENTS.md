@@ -15,6 +15,11 @@ plugin's install directory, or a clone at `~/.tagout`. Full guide:
 profile/labels → `init` (typed `/tagout:init`); a legacy .NET app → `/migrate-assess` then `/migrate`; a missing
 skill → write it with `skill-creator`, then register it (*Adding a skill* in `<kit>/.claude/CLAUDE.md`).
 
+A new request with no issue: if it passes every test in `<kit>/skills/_shared/sizing.md`, it is
+**bounded** — branch → `create-pr --draft` → `merge-pr`. A question to answer, with no change to
+keep, is a **spike**. Anything else, or any doubt → `create-issue`. A request for an issue always
+files one.
+
 ## Loading a skill
 
 Each skill is a folder under `<kit>/skills/` whose `SKILL.md` says when it applies and what to do.
