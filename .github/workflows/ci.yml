@@ -587,6 +587,9 @@ jobs:
       - name: Routing-context golden test (SessionStart hook, extracts AGENTS.md's routing table, #416, #525)
         run: ./tests/routing-context/test.sh
 
+      - name: Sizing golden test (a request is sized before the lifecycle starts, and the rule fails towards the full cycle, #737)
+        run: ./tests/sizing/test.sh
+
       - name: Host-adapters golden test (AGENTS.md's rule copies for six hosts, generated and checked for drift, #525)
         run: ./tests/host-adapters/test.sh
 

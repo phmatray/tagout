@@ -134,3 +134,4 @@ stop, not a retry. Hand `number` and `url` back to the caller.
 - `skills/create-pr/SKILL.md` — Steps 2 and 3 name this recipe in the step index
 - `skills/create-pr/references/steps/02-locate-the-work.md` — Step 2 runs §1 before any push
 - `skills/create-pr/references/steps/03-open.md` — Step 3 opens the PR for a finished feature branch through §2
+- `skills/_shared/sizing.md` — the bounded road opens its PR with no issue, which this recipe already handles
