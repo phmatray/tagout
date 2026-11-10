@@ -23,8 +23,8 @@ retired worker's tree, kept on disk for the housekeeping sweep and still holding
 Do not `-C` into it, and do not use `--ignore-other-worktrees`, `--force`, or a detached push to get
 around it. Stop before touching anything and your final message is: `ISSUE: <the issue #$1 closes> |
 PR: $1 | STATUS: BLOCKED | DETAIL: branch-held guard: <branch> is checked out in <path> — dispatch
-defect, release-branch.sh then re-dispatch | FILED: none | WORKTREE: untouched | BASE: unverified:
-never reached`. It names a dispatch defect, not a block on the PR, so the supervisor never
+defect, release-branch.sh then re-dispatch | FILED: none | WORKTREE: untouched | BASE: unverified
+(never-reached)`. It names a dispatch defect, not a block on the PR, so the supervisor never
 tier-escalates over it.
 
 **Any review sub-agent you dispatch is read-only and isolated — `subagent_type: Explore`,
@@ -34,14 +34,17 @@ editing one worker's tree at once and one pushed to the PR branch (#477). Never 
 sub-agent: one writer per worktree, and that writer is you.
 
 **Your first act, before you touch anything else: verify it actually worked.** Run
-`git rev-parse --show-toplevel` and compare it to the `SUPERVISOR_TOPLEVEL` value in this prompt,
-with the `worker-toplevel guard` block of auto-dev's Step 3 — the marked lines in
-`skills/auto-dev/references/steps/03-dispatch-the-workers.md`; read that block, not the file (`WORKER_TOPLEVEL` =
-your value, `SUPERVISOR_TOPLEVEL` = the prompt's). PROCEED → carry on normally. REFUSE (they match,
+the worker-toplevel guard, from the directory you woke up in, with the `SUPERVISOR_TOPLEVEL` value
+in this prompt as its one argument:
+`<KIT>/skills/auto-dev/scripts/worker-toplevel-guard.sh "<SUPERVISOR_TOPLEVEL>"`, `<KIT>` being the
+`KIT` value in this prompt (the kit root). It compares your own `git rev-parse --show-toplevel` to
+that value — run the script, do not compare the two by eye. Only if no `KIT` reached you and the
+script cannot be found: run `git rev-parse --show-toplevel` yourself, treat an equal value or a
+failure as REFUSE, and say in `DETAIL:` that the guard script was unreachable. PROCEED → carry on normally. REFUSE (they match,
 or `git rev-parse` itself fails because this isn't a git directory at all) → **stop before touching
 anything** and your final message is: `ISSUE: <the issue #$1 closes> | PR: $1 | STATUS: BLOCKED |
 DETAIL: worker-toplevel guard: shares the supervisor's tree — dispatch defect, re-dispatch with
-isolation fixed | FILED: none | WORKTREE: untouched | BASE: unverified: never reached`. This is not a
+isolation fixed | FILED: none | WORKTREE: untouched | BASE: unverified (never-reached)`. This is not a
 real
 block on the PR — it says so by name, so the supervisor never tier-escalates over it.
 
@@ -85,7 +88,8 @@ Repo specifics (default branch, merge mode, CI state, commit identity) come from
 which `merge-pr` loads.
 
 `merge-pr` Step 5b reads the CI run YOUR merge triggered on the default branch and reports one of
-three outcomes for it. Carry that answer into the `BASE:` field verbatim — a red default branch after
+three outcomes for it. Carry that answer into the `BASE:` field verbatim — the helper's own line, never your sentence about
+it: the supervisor accepts only that grammar and re-derives anything else. A red default branch after
 your own merge is YOUR finding, not the next worker's, and `unverified` (the run was cancelled by the
 next merge in the train, most often) is an answer to report, not a blank to omit.
 
@@ -93,4 +97,4 @@ Your FINAL message must be this single line and nothing else. A program reads it
 write `WORKTREE: cleaned up` — those two words and nothing after them — only when the worktree and
 the branch are both gone, and say what remains otherwise; any other text is filed for a manual sweep.
 
-ISSUE: <number of the issue this PR closes, digits only> | PR: $1 | STATUS: MERGED|BLOCKED|FAILED | DETAIL: <1–2 sentences> | FILED: <issues you opened, or none> | WORKTREE: <cleaned up / what remains> | BASE: <green | RED #<bug> | unverified: <why>>
+ISSUE: <number of the issue this PR closes, digits only> | PR: $1 | STATUS: MERGED|BLOCKED|FAILED | DETAIL: <1–2 sentences> | FILED: <issues you opened, or none> | WORKTREE: <cleaned up / what remains> | BASE: <the one line merge-pr Step 5b's base-run-verdict.sh --report-line printed, copied character for character: green (…), RED (…) or unverified (…)>

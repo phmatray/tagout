@@ -6,12 +6,13 @@
 # otherwise re-reasons from natural language every few merges. One `gh issue list` that
 # fetches bodies, then jq does plan-detection + effort/eligibility classification — so the
 # supervisor reads a ready-made, ordered queue instead of re-deriving it (fewer turns =
-# less per-turn cache re-read, the dominant cost). The ONE judgment left to the model is
-# area-tagging for conflict-avoidance, which is fuzzy — do that on the QUEUE rows below.
+# less per-turn cache re-read, the dominant cost). The model tier and the area are columns too,
+# read off the labels; the ONE judgment left to the model is area-tagging a row whose issue
+# carries no `area:` label (`area=-`), and promoting a row it knows is cross-cutting to the top tier.
 #
 # Output, one row per issue, already ordered (smallest effort tier first, then the issues that
 # unblock others, then by number):
-#   QUEUE  #N  effort  plan=true  qa=false  deps=-  [labels]  title   ← eligible, area-tag + dispatch
+#   QUEUE  #N  effort  plan=true  qa=false  deps=-  model=mid  area=scripts  [labels]  title   ← eligible: dispatch
 #   HOLD   #N  ...                                                    ← tier past the second, unclassified, or held by a dependency edge
 #   SKIP   #N  ...                                                    ← no plan, or manual-QA only
 #
@@ -345,10 +346,28 @@ printf '%s\n' "$ISSUES_JSON" \
       (eff | sub("^effort:\\s*"; "") | ascii_downcase) as $tok
       | ($vocab | index($tok)) as $idx
       | if $idx == null then 999 else $idx + 1 end;
+    # The model tier and the area, read off the labels so neither is re-derived by the supervisor
+    # on every row. `model=` is the PREDICTED tier only — `small` or `mid`. `top` is never
+    # predicted from labels: it is the reactive escalation `autodev.report` grants once, or the
+    # supervisor'"'"'s own call for work it knows is cross-cutting. `small` is what the labels can
+    # prove mechanical: a `documentation` issue, or the lowest priority at the smallest effort.
+    def labelnames: (.labels | map(.name));
+    def modeltier:
+      (labelnames | map(ascii_downcase)) as $l
+      | if   ($l | index("documentation")) != null                          then "small"
+        elif (tier == 1) and (($l | index("priority: low")) != null)        then "small"
+        else                                                                      "mid"
+        end;
+    # `area=` is every `area:` label, `+`-joined in label order, or `-` when the issue carries
+    # none — the one case where the supervisor still infers an area from the title.
+    def areatag:
+      (labelnames | map(select(test("^area:"; "i")) | sub("^area:\\s*"; ""; "i"))) as $a
+      | if ($a | length) == 0 then "-" else ($a | join("+")) end;
     # Every edge is resolved against this call'"'"'s own open set, or the state the connection carries.
     (map(.number)) as $open
     | map({n:.number, title:.title, e:eff, plan:haveplan, qa:manualqa,
            labels:(.labels|map(.name)|join(",")), t:tier, cc:commentscap,
+           model:modeltier, area:areatag,
            # Native edges resolve by their own `state`; body-line refs are bare numbers with no
            # state to read, so those can only be filtered by membership in the open set.
            blockers: ((((.blockedBy // []) | openedges($open))
@@ -394,7 +413,7 @@ printf '%s\n' "$ISSUES_JSON" \
            elif (.plan and (.qa | not))       then "QUEUE"
            else                                    "SKIP "
            end) as $bucket
-        | "\($bucket)\t#\(.n)\t\(.e)\tplan=\(.plan)\tqa=\(.qa)\tdeps=\(.deps)\t[\(.labels)]\t\(.title)"
+        | "\($bucket)\t#\(.n)\t\(.e)\tplan=\(.plan)\tqa=\(.qa)\tdeps=\(.deps)\tmodel=\(.model)\tarea=\(.area)\t[\(.labels)]\t\(.title)"
       ),
       # The unplanned tail, printed LAST so it reads as a summary of the rows above (and so this
       # addition stays append-only against the other in-flight changes to this program). Listed by

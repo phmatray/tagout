@@ -30,18 +30,21 @@ they close — so a re-derived queue and a fresh reconcile both stay blind to an
 started supervisor sessions share the same blind spot, since nothing pins the state file to one
 contended path.
 
-So before spawning issue `#$ISSUE`'s worker — first batch or refill — run the **exact** issue-scoped
-PR-existence guard from `skills/_shared/open-pr.md` §1 against `$ISSUE`:
-its `case "$ISSUE" in ''|*[!0-9]*)` validation, the `gh pr list --search … > /tmp/issue-$ISSUE-mentions.json`
-fetch, its `[ -s … ] || { … REFUSED …; exit 1; }` empty-fetch check, then the marked `jq` filter
-(`>>> issue-scoped PR-existence guard`). Paste that block verbatim, not a paraphrase — one home for
-it, `tests/pr-existence-guard/test.sh` pins the marked copy there as the only one, and a second copy
-here would drift the way `docs/decisions.md`'s "Why (#208)" describes happening already.
+So before spawning issue `#$ISSUE`'s worker — first batch or refill — run the issue-scoped
+PR-existence guard of `skills/_shared/open-pr.md` §1 against `$ISSUE`:
 
-Read its verdict the same way that section does: `0` → clear to dispatch. `1`+ → an open PR already
+```bash
+<kit>/skills/_shared/scripts/pr-existence-guard.sh "$ISSUE"
+```
+
+It is a script, not a block to paste: the validation, the fetch, the empty-fetch refusal and the
+closing-keyword filter all run as one program, `tests/pr-existence-guard/test.sh` drives that
+program, and there is no copy here to drift the way `docs/decisions.md`'s "Why (#208)" describes.
+
+Read its first line the same way that section does: `0` → clear to dispatch. `1`+ → an open PR already
 closes this issue (another worker's, or a leftover the state file forgot) — skip it, drop it from the
 queue with a one-line note in the state file, and dispatch the next eligible issue instead. `REFUSED`
-(empty fetch, or a non-digit `$ISSUE`) → a transient failure, not a verdict — retry the check, never
+(exit `2`: an empty fetch, or a non-digit `$ISSUE`) → a transient failure, not a verdict — retry the check, never
 read it as "0 found" and never drop the issue from the queue on it. §1's own `⚠️ Residual limitation`
 note applies here unchanged (the Search API is eventually consistent — a PR opened seconds ago by a
 racing session can still search as absent), so this narrows the #195-shaped race, it does not close it
@@ -61,9 +64,9 @@ assumed — but the supervisor cannot inspect a live background sub-agent's file
 **worker** runs the check on itself, as its documented first act, before it edits anything
 (`commands/auto-dev-worker.md` / `commands/auto-dev-merge.md` both carry this instruction). It
 compares its own `git rev-parse --show-toplevel` against `SUPERVISOR_TOPLEVEL` — captured once at
-Step 1 and handed to it as a per-dispatch fact in Step 3's prompt — with the marked decision below,
-run verbatim rather than paraphrased — one home for it, `tests/auto-dev-dispatch/test.sh` extracts
-and runs this exact block:
+Step 1 and handed to it as a per-dispatch fact in Step 3's prompt — by running the guard script
+below, not by comparing two strings in its head — one home for the comparison,
+`tests/auto-dev-dispatch/test.sh` drives this exact script:
 
 **That first-act check is one-shot.** It answers *was this worker dispatched into isolation at all?*
 and nothing about the rest of the run. A worktree destroyed mid-run is covered elsewhere, by the
@@ -74,21 +77,16 @@ branch, which re-records it instead (#644) — so a relocated worker is stopped 
 name.
 
 ```bash
-# >>> worker-toplevel guard
-# WORKER_TOPLEVEL — the worker's own first-act `git rev-parse --show-toplevel`.
-# SUPERVISOR_TOPLEVEL — handed to the worker in its dispatch prompt (Step 1 captures it, Step 3 passes it).
-if [ "$WORKER_TOPLEVEL" = "$SUPERVISOR_TOPLEVEL" ]; then
-  echo "REFUSE — the worker's toplevel equals the supervisor's; it inherited the shared tree instead of its own"
-  exit 1
-fi
-echo "PROCEED — the worker's toplevel differs from the supervisor's"
-exit 0
-# <<< worker-toplevel guard
+# Run by the WORKER, from its own working directory, as its first act — the worker-toplevel guard.
+# SUPERVISOR_TOPLEVEL is handed to it in its dispatch prompt (Step 1 captures it, Step 3 passes it).
+<kit>/skills/auto-dev/scripts/worker-toplevel-guard.sh "$SUPERVISOR_TOPLEVEL"
 ```
 
 If `git rev-parse --show-toplevel` itself fails (not a git directory at all — `isolation: "worktree"`
-had nothing to create there), the worker reports that plainly as its first-act finding rather than
-either crashing or silently treating the failure as PROCEED.
+had nothing to create there), the script answers REFUSE for that too, so the worker reports it
+plainly as its first-act finding rather than either crashing or silently treating the failure as
+PROCEED. Exit `2` (the supervisor's toplevel never reached the worker) is no verdict, and is
+reported the same way.
 
 `0` (PROCEED) → the worker continues normally. `1` (REFUSE) → it shares the supervisor's tree — the
 worker **stops before touching any file** and reports `STATUS: BLOCKED` with a `DETAIL:` naming the
@@ -111,7 +109,8 @@ does not: a kept tree still has the PR branch checked out, so before any dispatc
 the supervisor releases it with `release-branch.sh` (the guard below).
 
 **Pick each worker's model from its labels** (see Token economics): small/mechanical → cheap, typical
-single-area bug → mid, cross-cutting/hard → top. Pass it explicitly on spawn as the Agent tool's
+single-area bug → mid, cross-cutting/hard → top. The survey row's `model=` column has already made
+the first two calls; only the promotion to top is yours. Pass it explicitly on spawn as the Agent tool's
 `model` parameter — the command files set no tier of their own. Record the chosen tier
 next to the issue in the state file so a `loop` re-fire redispatches at the same tier and
 `usage_report.py`'s by-model rollup stays interpretable.
@@ -170,13 +169,13 @@ context *is* the saving:
 # phase 1 — implement up to a ready PR (long-lived sub-agent; context grows to ~250K+)
 Agent(subagent_type: general-purpose, model: <tier>, run in background, isolation: "worktree",
       prompt: "Invoke `auto-dev-worker` with args `<N>`. SUPERVISOR_TOPLEVEL=<supervisor's own
-              `git rev-parse --show-toplevel`>. Write ONLY the PR number to <state-dir>/pr-<N>.")
+              `git rev-parse --show-toplevel`>. KIT=<the kit root, absolute>. Write ONLY the PR number to <state-dir>/pr-<N>.")
 # …the agent's final line arrives as its report: PHASE1 | ISSUE: <N> | PR: <n> | STATUS: … — then:
 scripts/wait-ci.sh <n>                                  # supervisor-side, backgrounded
 # phase 2 — land it in a FRESH sub-agent (never SendMessage into phase 1)
 Agent(subagent_type: general-purpose, model: <small tier>, run in background, isolation: "worktree",
       prompt: "Invoke `auto-dev-merge` with args `<n>`. SUPERVISOR_TOPLEVEL=<supervisor's own
-              `git rev-parse --show-toplevel`>. CI IS ALREADY GREEN — VERIFIED: <check table>. You are the retry.")
+              `git rev-parse --show-toplevel`>. KIT=<the kit root, absolute>. CI IS ALREADY GREEN — VERIFIED: <check table>. You are the retry.")
 ```
 
 `isolation: "worktree"` on **both** spawns, always: a background sub-agent inherits the supervisor's
