@@ -899,10 +899,10 @@ PLAN_NOTE=$(grep -m1 '^> \*\*For agentic workers:\*\*' "$KIT_ROOT/skills/_shared
 if [ -z "$PLAN_NOTE" ]; then
   echo "FAIL: [DR4 plan-shape.md states the header note] no '> **For agentic workers:**' line"
   fails=$((fails + 1))
-elif printf '%s' "$PLAN_NOTE" | grep -q 'superpowers\|SUB-SKILL'; then
+elif grep -q 'superpowers\|SUB-SKILL' <<<"$PLAN_NOTE"; then
   echo "FAIL: [DR4 plan-shape.md states the header note] the note still prescribes the plugin: $PLAN_NOTE"
   fails=$((fails + 1))
-elif ! printf '%s' "$PLAN_NOTE" | grep -qF 'implement-issue'; then
+elif ! grep -qF 'implement-issue' <<<"$PLAN_NOTE"; then
   echo "FAIL: [DR4 plan-shape.md states the header note] the note does not name implement-issue as the executor: $PLAN_NOTE"
   fails=$((fails + 1))
 elif ! grep -qFx -- "$PLAN_NOTE" "$KIT_ROOT/tests/skills/fixtures/plan-new-header-note.md"; then
@@ -1163,7 +1163,7 @@ PLAN_ANCHOR=$(grep -o "$RECIPE_LINE_RE" "$MECH" | head -1 | sed "s/^grep -q '\(.
 if [ -z "$PLAN_ANCHOR" ]; then
   echo "FAIL: [SP2 the §2 locator anchor is readable          ] no \"grep -q '…' <plan file>\" line in $MECH"
   fails=$((fails + 1))
-elif printf '%s' "$PLAN_ANCHOR" | grep -qi 'superpowers\|SUB-SKILL\|agentic workers'; then
+elif grep -qi 'superpowers\|SUB-SKILL\|agentic workers' <<<"$PLAN_ANCHOR"; then
   echo "FAIL: [SP2 the §2 locator anchor is readable          ] anchors on the header note ('$PLAN_ANCHOR'), not the heading"
   fails=$((fails + 1))
 else
@@ -2199,7 +2199,7 @@ set +e
 c_red=$(python3 "$_cscratch/carve-out-check.py" "$_cscratch/drift" 2>&1)
 c_red_rc=$?
 set -e
-if [ "$c_red_rc" -ne 0 ] && printf '%s' "$c_red" | grep -q 'auto-dev-worker.md'; then
+if [ "$c_red_rc" -ne 0 ] && grep -q 'auto-dev-worker.md' <<<"$c_red"; then
   echo "ok   [C2 a drifted worker copy is refused, naming both files]"
 else
   echo "FAIL: [C2 a drifted worker copy is refused, naming both files] rc=$c_red_rc $c_red"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""sigpipe-idiom-check.py -- refuse a positive-match `grep -q` fed by a streaming producer (#391).
+"""sigpipe-idiom-check.py -- refuse a positive-match `grep -q` fed through a pipe (#391).
 
 Why this exists. `awk '/a/,/b/' f | grep -qF x` under `set -o pipefail`: `grep -q` exits the
 instant it matches and closes the read end of the pipe; a producer with a RANGE or a full-file
@@ -11,21 +11,36 @@ reports a failure that did not happen. Measured on `tests/survey/test.sh` case 1
 
 #48 shipped the general doctrine (`tests/_lib.sh`'s `first_match`/`any_match`) and #123 widened one
 anti-recurrence guard (`tests/xunit-v3/test.sh` section 10) -- but only for the literal producer
-`find`, in three files. This gate generalises both: any external, streaming producer, anywhere
-under `tests/` and `scripts/`.
+`find`, in three files. This gate generalises both: ANY producer, anywhere under `tests/` and
+`scripts/`.
 
-THE SHAPE IT FLAGS: a line piping an external producer into a `grep` call whose flags include `q`
-(quiet -- exit on first match, the thing that races) -- including a producer wrapped in a `sudo`,
-an `env`, or one or more `VAR=val` prefixes, and including the same shape one level inside a
+NO PRODUCER IS EXEMPT, the shell's own builtins included. This gate first shipped with a list of
+external streaming commands (awk, find, tail, ...) and waved `printf`/`echo` through on the theory
+that a builtin makes one small write and cannot race. Measured otherwise: bash writes a multi-line
+`printf '%s\n' "$var"` in several writes, `grep -q` closes the pipe after the first matching one,
+and the next write dies of SIGPIPE exactly as awk's would. Running the whole plan of
+`scripts/run-all-tests.sh` eight items at a time produced about one spurious failure every other
+run from some 200 such assertions -- each in a suite that passes alone, each with the matched
+text visible in its own failure output. A script piped the same way (`bash guard.sh --help |
+grep -q 'Exit codes:'`) lost the same race. So the producer's name is no longer consulted at all:
+whatever sits on the writing end of the pipe, a wrapper (`sudo`, `env`, `VAR=val`) or a function
+call included, is something `grep -q` can hang up on.
+
+THE SHAPE IT FLAGS: a line piping anything into a `grep` call whose flags include `q` (quiet --
+exit on first match, the thing that races), including the same shape one level inside a
 `$(...)`/backtick substitution, recursively (#457). THE SHAPE IT DOES NOT FLAG: a `grep -q` that
-is negated (`if !`, a leading `!`, `|| true`, `|| :` -- its non-match is the outcome nothing acts
-on being wrong), a `grep -q` fed by a command SUBSTITUTION whose own interior has no such pipeline
+is negated (`if !`, a leading `!` on the line or on its own `&&`/`||` clause, `|| true`, `|| :`
+-- its non-match is the outcome nothing acts on being wrong), a `grep -q` fed by a HERESTRING
+(`grep -q x <<<"$var"` -- no pipe, no writer to kill), a `grep -q` fed by a command SUBSTITUTION
+whose own interior has no such pipeline
 (the substitution completes before `grep` starts, so there is nothing to race), a comment, or a
 line tagged `sigpipe-repro`. The remedy is never `set +o pipefail`: `pipefail` is load-bearing everywhere else
 in these suites, and suspending it per-site would reintroduce the swallowed-failure class #48
 exists to stop. The remedy is the herestring idiom already used at `tests/lib/test.sh:425` --
 capture the pipeline into a variable, then read the variable: `var=$(producer ...); grep -q ...
 <<<"$var"`. A variable assignment has nothing to close early, so there is nothing left to race.
+A producer that already IS a variable needs no capture: `printf '%s\n' "$var" | grep -q x` becomes
+`grep -q x <<<"$var"`.
 
 Ported alongside `scripts/pinned-literals-check.py` and its three structural siblings -- same
 shape: `python3 scripts/sigpipe-idiom-check.py [dir]` exits 0 and prints nothing on a clean tree,
@@ -45,10 +60,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-PRODUCERS = frozenset(
-    "awk sed grep tail head sort uniq tr cat jq find git python3 xargs yq".split()
-)
-
 QUIET_LONG = frozenset(("--quiet", "--silent"))
 
 SELF_PATH = "scripts/sigpipe-idiom-check.py"
@@ -57,11 +68,7 @@ FIXTURE_PREFIX = "tests/sigpipe-idiom/"
 NEGATED_RE = re.compile(r"^\s*(if\s+)?!\s")
 DISCARDED_RE = re.compile(r"\|\|\s*(true|:)\s*;?\s*$")
 LEADING_KEYWORD_RE = re.compile(r"^\s*(if|elif|while|until)\s+")
-ASSIGNMENT_TOKEN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-
-# sudo(8) short options that take a following argument -- so producer_word() knows to skip the
-# value too, not just the flag (`sudo -u user ...`, #457 review).
-SUDO_FLAGS_WITH_ARG = frozenset(("-u", "-g", "-p", "-r", "-t", "-h", "-C", "-D", "-R", "-T", "-U"))
+CLAUSE_NEGATED_RE = re.compile(r"^!\s")
 
 _MARK = "\x00"
 
@@ -162,36 +169,12 @@ def grep_dash_q(segment):
     return False
 
 
-def producer_word(segment, is_clause_head):
-    """The command word a pipeline clause actually runs -- skipping a leading `sudo`, a leading
-    `env`, any run of `VAR=val` assignment tokens (in any order, repeated), and any flags on a
-    `sudo`/`env` invocation itself (`sudo -u user env -i VAR=val cmd`) -- since none of those are
-    the producer itself (#457)."""
-    if is_clause_head:
-        segment = LEADING_KEYWORD_RE.sub("", segment, count=1)
-    tokens = segment.strip().split()
-    i, n = 0, len(tokens)
-    allow_flags = False
-    while i < n:
-        tok = tokens[i]
-        if tok in ("sudo", "env"):
-            i += 1
-            allow_flags = True
-            continue
-        if ASSIGNMENT_TOKEN_RE.match(tok):
-            i += 1
-            allow_flags = False
-            continue
-        if allow_flags and tok.startswith("-") and tok != "-":
-            i += 1
-            if tok in SUDO_FLAGS_WITH_ARG and i < n:
-                i += 1  # the flag's own value, e.g. the "user" in "-u user"
-            continue
-        break
-    if i >= n:
-        return ""
-    first = tokens[i].strip("'\"`")
-    return os.path.basename(first)
+def clause_negated(head_segment):
+    """True when a pipeline clause is itself `!`-negated -- `a && ! b | grep -q x`, where the
+    line does not START with the bang (NEGATED_RE's case) but this clause does. A leading
+    `if`/`elif`/`while`/`until` is not part of the pipeline and is looked past."""
+    head = LEADING_KEYWORD_RE.sub("", head_segment, count=1)
+    return bool(CLAUSE_NEGATED_RE.match(head.lstrip()))
 
 
 def _scan_paren_span(line, start):
@@ -302,9 +285,12 @@ def offending_line(line):
             continue
         if not grep_dash_q(clause[-1]):
             continue
-        for idx, segment in enumerate(clause[:-1]):
-            if producer_word(segment, is_clause_head=(idx == 0)) in PRODUCERS:
-                return True
+        if clause_negated(clause[0]):
+            continue
+        # Whatever feeds the reader -- an external command, a builtin, a function, a script --
+        # is a writer `grep -q` can hang up on. The producer's name is deliberately not read.
+        if clause[-2].strip():
+            return True
 
     # A `$(...)`/backtick substitution is opaque to split_pipeline_clauses (its paren-depth
     # tracking exists to stop `$(a | b)` being mis-read as a top-level pipe) -- but the offending
@@ -415,7 +401,9 @@ def main():
         print(
             "  remedy: capture the pipeline into a variable first, then read the variable via a "
             "herestring -- var=$(producer ...); grep -q ... <<<\"$var\" (tests/lib/test.sh:425). "
-            "A variable assignment has nothing to close early, so there is nothing left to race."
+            "A variable assignment has nothing to close early, so there is nothing left to race. "
+            "A producer that is already a variable (printf '%s\\n' \"$var\" | grep -q ...) needs "
+            "no capture: grep -q ... <<<\"$var\"."
         )
     return 1
 

@@ -113,7 +113,7 @@ done
 rc=0
 out=$(PATH="$STUB" "$TALLY" "$FIXTURE" 2>&1) || rc=$?
 [ "$rc" -eq 2 ] || { echo "FAIL [no-jq]: expected exit 2, got $rc"; echo "$out"; exit 1; }
-printf '%s\n' "$out" | grep -qi 'jq' || { echo "FAIL [no-jq]: jq not named in the refusal: $out"; exit 1; }
+grep -qi 'jq' <<<"$out" || { echo "FAIL [no-jq]: jq not named in the refusal: $out"; exit 1; }
 echo "  ok: jq missing from PATH -> exit 2, naming jq"
 
 # ------------------------------------------------------------------------- 6. usage error
@@ -125,7 +125,7 @@ echo "  ok: two positional arguments -> exit 2 (usage error)"
 # --------------------------------------------------------------------- 7. --help / thresholds
 help_out=$("$TALLY" --help)
 for needle in "repeat-poll" "systematic" "events / 5" "events \* 0.8"; do
-  printf '%s\n' "$help_out" | grep -qE -- "$needle" || {
+  grep -qE -- "$needle" <<<"$help_out" || {
     echo "FAIL [help]: --help does not print the threshold text matching /$needle/"; exit 1
   }
 done
@@ -192,13 +192,13 @@ out=$("$NT_KIT/skills/auto-dev/scripts/decision-tally.sh" "$NT_LOG")
 retry_row=$(printf '%s\n' "$out" | grep -E '^\| x\.y +\| retry ' || true)
 grep -q 'systematic' <<<"$retry_row" \
   || { echo "FAIL [registry-nonterminal]: a registry-declared non-terminal word ('retry') did not trip systematic:"; echo "$out"; exit 1; }
-printf '%s\n' "$out" | grep -qF 'non-terminal: retry (registry)' \
+grep -qF 'non-terminal: retry (registry)' <<<"$out" \
   || { echo "FAIL [registry-nonterminal]: the footer does not name the registry's set:"; echo "$out"; exit 1; }
 echo "  ok: registry-nonterminal — a new nonTerminal word in the registry trips systematic with no script change"
 
 rm -f "$NT_KIT/decisions/registry.json"
 out=$("$NT_KIT/skills/auto-dev/scripts/decision-tally.sh" "$NT_LOG")
-printf '%s\n' "$out" | grep -qF '(fallback' \
+grep -qF '(fallback' <<<"$out" \
   || { echo "FAIL [registry-unreadable]: an unreadable registry is not named as a fallback in the footer:"; echo "$out"; exit 1; }
 retry_row=$(printf '%s\n' "$out" | grep -E '^\| x\.y +\| retry ' || true)
 grep -q 'systematic' <<<"$retry_row" \

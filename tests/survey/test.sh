@@ -97,7 +97,7 @@ if OUT0=$(PATH="$WORK/bin:$PATH" gh issue list --state open --paginate --json nu
   echo "FAIL: the gh stub accepted --paginate — gh issue list does not support that flag"
   echo "$OUT0"; exit 1
 fi
-echo "$OUT0" | grep -qF -- '--paginate' || {
+grep -qF -- '--paginate' <<<"$OUT0" || {
   echo "FAIL: the stub's rejection did not name the offending flag"; echo "$OUT0"; exit 1; }
 echo "ok: gh-stub-rejects-unknown-flag — --paginate is rejected the way real gh rejects it (#452)"
 

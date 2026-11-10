@@ -33,9 +33,9 @@ stub_out=$(bash "$stub/scripts/run-all-tests.sh" 2>"$stub/stderr.log") || rc=$?
 stub_err=$(cat "$stub/stderr.log")
 [ "$rc" -eq 2 ] || {
   echo "FAIL [exit-2]: expected exit 2, got $rc"; echo "$stub_out"; echo "$stub_err"; exit 1; }
-printf '%s' "$stub_err" | grep -qF 'PREREQUISITE' || {
+grep -qF 'PREREQUISITE' <<<"$stub_err" || {
   echo "FAIL [exit-2]: stderr did not mention PREREQUISITE:"; echo "$stub_err"; exit 1; }
-if printf '%s' "$stub_out" | grep -q '^suite '; then
+if grep -q '^suite ' <<<"$stub_out"; then
   echo "FAIL [exit-2]: suite output was printed despite the missing prerequisite:"; echo "$stub_out"
   exit 1
 fi
@@ -73,7 +73,7 @@ git -C "$fixture" -c user.email=t@example.com -c user.name="Golden Test" commit 
 rc=0
 fixture_out=$(cd "$fixture" && ./scripts/run-all-tests.sh --quick 2>&1) || rc=$?
 [ "$rc" -eq 1 ] || { echo "FAIL [exit-1]: expected exit 1, got $rc"; echo "$fixture_out"; exit 1; }
-printf '%s' "$fixture_out" | grep -qF 'FAIL tests/lib/test.sh' || {
+grep -qF 'FAIL tests/lib/test.sh' <<<"$fixture_out" || {
   echo "FAIL [exit-1]: the failing suite was not named:"; echo "$fixture_out"; exit 1; }
 echo "  ok: exit-1 — a failing suite stops the run (fail-fast) and is named"
 
@@ -177,7 +177,7 @@ grep -qF 'PREREQUISITE' "$stub4/stderr.log" || {
   echo "FAIL [for-forward/full]: stderr did not mention PREREQUISITE:"; cat "$stub4/stderr.log"; exit 1; }
 grep -qF -- '--for run-all-tests' "$stub4/args.log" || {
   echo "FAIL [for-forward/full]: preflight.sh was not called with --for run-all-tests:"; cat "$stub4/args.log"; exit 1; }
-if printf '%s' "$full_out" | grep -qE '^(ok|FAIL) '; then
+if grep -qE '^(ok|FAIL) ' <<<"$full_out"; then
   echo "FAIL [for-forward/full]: a gate/suite line was printed despite the missing prerequisite:"
   echo "$full_out"; exit 1
 fi

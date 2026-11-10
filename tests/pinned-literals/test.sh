@@ -197,8 +197,8 @@ mkdir -p "$R/docs"
 printf 'Our CI pins xunit.v3 %s, measured last spring.\n' "$FAKE" > "$R/docs/notes.md"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'docs/notes.md:1' \
-   && printf '%s' "$out" | grep -q 'neither marked nor recorded'; then
+   && grep -q 'docs/notes.md:1' <<<"$out" \
+   && grep -q 'neither marked nor recorded' <<<"$out"; then
   ok "an unmarked, unrecorded copy is refused, naming file:line"
 else
   bad "expected a refusal naming docs/notes.md:1; got rc=$rc: $out"
@@ -213,9 +213,9 @@ R="$WORK/stale"; scaffold "$R"
 rewrite "$R/skills/migrate-legacy/references/xunit-v3-migration.md" "s/\`xunit.v3\`\*\* $FAKE/\`xunit.v3\`** 1.2.3/"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'xunit-v3-migration.md:5' \
-   && printf '%s' "$out" | grep -q 'states xunit.v3 1.2.3' \
-   && printf '%s' "$out" | grep -q 'Do NOT simply edit the number'; then
+   && grep -q 'xunit-v3-migration.md:5' <<<"$out" \
+   && grep -q 'states xunit.v3 1.2.3' <<<"$out" \
+   && grep -q 'Do NOT simply edit the number' <<<"$out"; then
   ok "a marked line stating a stale version is refused, and told to re-measure"
 else
   bad "expected a stale-marked refusal naming the row; got rc=$rc: $out"
@@ -229,8 +229,8 @@ R="$WORK/anchor"; scaffold "$R"
 rewrite "$R/tests/xunit-v3/test.sh" 's/a version-keyed map would invert/a map keyed that way would flip/'
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'tests/xunit-v3/test.sh:5' \
-   && printf '%s' "$out" | grep -q 'neither marked nor recorded'; then
+   && grep -q 'tests/xunit-v3/test.sh:5' <<<"$out" \
+   && grep -q 'neither marked nor recorded' <<<"$out"; then
   ok "a historical line is accepted only because its entry matched it"
 else
   bad "expected the un-anchored historical line to be refused; got rc=$rc: $out"
@@ -242,7 +242,7 @@ fi
 R="$WORK/stalentry"; scaffold "$R"
 rewrite "$R/tests/xunit-v3/apply-transform.py" '/are STABLE releases/d'
 out=$(run_check "$R"); rc=$?
-if [ $rc -ne 0 ] && printf '%s' "$out" | grep -q 'matches nothing any more'; then
+if [ $rc -ne 0 ] && grep -q 'matches nothing any more' <<<"$out"; then
   ok "a HISTORICAL entry whose line is gone is refused, not silently carried"
 else
   bad "expected a stale-entry refusal; got rc=$rc: $out"
@@ -262,9 +262,9 @@ rewrite "$R/tests/xunit-v3/apply-transform.py" \
   "s/mtp-v2\` $FAKE are STABLE releases/mtp-v2\` 1.2.3 are STABLE releases/"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'still finds its line' \
-   && printf '%s' "$out" | grep -q 're-measure' \
-   && ! printf '%s' "$out" | grep -qi "are STABLE releases.*matches nothing any more"; then
+   && grep -q 'still finds its line' <<<"$out" \
+   && grep -q 're-measure' <<<"$out" \
+   && ! grep -qi "are STABLE releases.*matches nothing any more" <<<"$out"; then
   ok "a HISTORICAL entry whose anchor still matches but states a stale version is told to re-measure"
 else
   bad "expected a re-measure refusal (not 'matches nothing any more') for the STABLE-releases entry; got rc=$rc: $out"
@@ -284,7 +284,7 @@ dup_line=$(grep 'are STABLE releases' "$R/tests/xunit-v3/apply-transform.py")
 [ -n "$dup_line" ] || bad "section 5 fixture: the line to duplicate was not found in the scaffold"
 printf '%s\n' "$dup_line" >> "$R/tests/xunit-v3/apply-transform.py"
 out=$(run_check "$R"); rc=$?
-if [ $rc -ne 0 ] && printf '%s' "$out" | grep -q 'covers 2 lines'; then
+if [ $rc -ne 0 ] && grep -q 'covers 2 lines' <<<"$out"; then
   ok "a HISTORICAL entry that covers two occurrences is refused as too broad"
 else
   bad "expected an over-broad-anchor refusal; got rc=$rc: $out"
@@ -298,8 +298,8 @@ mkdir -p "$R/docs"
 printf 'A note with no package id at all.  # pinned:xunit-v3\n' > "$R/docs/marked.md"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'docs/marked.md:1' \
-   && printf '%s' "$out" | grep -q 'states no `xunit.v3 <version>` claim'; then
+   && grep -q 'docs/marked.md:1' <<<"$out" \
+   && grep -q 'states no `xunit.v3 <version>` claim' <<<"$out"; then
   ok "a marker on a line carrying no claim is refused"
 else
   bad "expected a no-claim refusal; got rc=$rc: $out"
@@ -314,8 +314,8 @@ mkdir -p "$R/tests/pinned-literals"
 printf 'A fixture note that leaks the real pin %s.\n' "$FAKE" > "$R/tests/pinned-literals/notes.md"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'tests/pinned-literals/notes.md:1' \
-   && printf '%s' "$out" | grep -q 'EXCLUDED from the scan'; then
+   && grep -q 'tests/pinned-literals/notes.md:1' <<<"$out" \
+   && grep -q 'EXCLUDED from the scan' <<<"$out"; then
   ok "an excluded path that spells the pin is refused, so the exclusion hides nothing"
 else
   bad "expected an excluded-path refusal; got rc=$rc: $out"
@@ -338,7 +338,7 @@ out=$(run_check "$R"); rc=$?
 # the three AGREED pins ALSO go vacuous over this same bare fixture, each printing its own "verified
 # NOTHING" — a bare 'verified NOTHING' grep would pass even with xunit-v3's OWN guard blinded, which
 # is exactly what M3 below exists to catch.
-if [ $rc -ne 0 ] && printf '%s' "$out" | grep -q '`pinned:xunit-v3` marker.*verified NOTHING'; then
+if [ $rc -ne 0 ] && grep -q '`pinned:xunit-v3` marker.*verified NOTHING' <<<"$out"; then
   ok "a repo where nothing carries the marker refuses instead of passing vacuously"
 else
   bad "expected a vacuity refusal naming the pinned:xunit-v3 marker; got rc=$rc: $out"
@@ -349,7 +349,7 @@ fi
 # reached. Exit 2 says that; exit 0 would claim a pass, and exit 1 would blame the repo.
 R="$WORK/empty"; rm -rf "$R"; mkdir -p "$R"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 2 ] && printf '%s' "$out" | grep -q 'refusing to report'; then
+if [ $rc -eq 2 ] && grep -q 'refusing to report' <<<"$out"; then
   ok "an empty directory yields no verdict (exit 2), never a pass"
 else
   bad "expected exit 2 on an empty directory; got rc=$rc: $out"
@@ -362,7 +362,7 @@ fi
 R="$WORK/twopins"; scaffold "$R"
 printf 'XUNIT_V3_VERSION = "1.2.3"\n' >> "$R/tests/xunit-v3/apply-transform.py"
 out=$(run_check "$R"); rc=$?
-if [ $rc -eq 2 ] && printf '%s' "$out" | grep -q 'defined more than once'; then
+if [ $rc -eq 2 ] && grep -q 'defined more than once' <<<"$out"; then
   ok "two definitions of the constant yield no verdict (exit 2), never a guess"
 else
   bad "expected exit 2 on a doubly-defined constant; got rc=$rc: $out"
@@ -390,9 +390,9 @@ mkdir -p "$R/docs"
 printf 'Our CI pins xunit.v3\n%s, measured last spring.\n' "$FAKE" > "$R/docs/wrapped.md"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'docs/wrapped.md:1' \
-   && ! printf '%s' "$out" | grep -q 'docs/wrapped.md:2' \
-   && printf '%s' "$out" | grep -q 'neither marked nor recorded'; then
+   && grep -q 'docs/wrapped.md:1' <<<"$out" \
+   && ! grep -q 'docs/wrapped.md:2' <<<"$out" \
+   && grep -q 'neither marked nor recorded' <<<"$out"; then
   ok "a claim wrapped across two lines is refused, naming the FIRST line, never the second"
 else
   bad "expected a refusal naming docs/wrapped.md:1 only (not :2); got rc=$rc: $out"
@@ -411,10 +411,10 @@ printf 'A pinned line with no package id at all.  # pinned:xunit-v3\nUnrelated: 
   "$FAKE" > "$R/docs/nolaunder.md"
 out=$(run_check "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'docs/nolaunder.md:1' \
-   && printf '%s' "$out" | grep -q 'states no `xunit.v3 <version>` claim' \
-   && printf '%s' "$out" | grep -q 'docs/nolaunder.md:2' \
-   && printf '%s' "$out" | grep -q 'neither marked nor recorded'; then
+   && grep -q 'docs/nolaunder.md:1' <<<"$out" \
+   && grep -q 'states no `xunit.v3 <version>` claim' <<<"$out" \
+   && grep -q 'docs/nolaunder.md:2' <<<"$out" \
+   && grep -q 'neither marked nor recorded' <<<"$out"; then
   ok "a marker on line N does not launder an unrelated claim on line N+1 — both refused independently"
 else
   bad "expected independent refusals for docs/nolaunder.md:1 AND :2; got rc=$rc: $out"
@@ -485,9 +485,9 @@ printf 'The vendor pins widget 1.2.3 in its own doc.  # agreed:test-pin\n' > "$R
 printf 'Vendor doc: widget 9.9.0, restated here too.  # agreed:test-pin\n' > "$R/docs/widget-b.md"
 out=$(run_with "$AGREED" "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'occurrences that disagree' \
-   && printf '%s' "$out" | grep -q 'docs/widget-a.md:1 states 1.2.3' \
-   && printf '%s' "$out" | grep -q 'docs/widget-b.md:1 states 9.9.0'; then
+   && grep -q 'occurrences that disagree' <<<"$out" \
+   && grep -q 'docs/widget-a.md:1 states 1.2.3' <<<"$out" \
+   && grep -q 'docs/widget-b.md:1 states 9.9.0' <<<"$out"; then
   ok "an AGREED pin with disagreeing occurrences is refused, naming every value seen"
 else
   bad "expected a disagreement refusal naming both files and both values; got rc=$rc: $out"
@@ -499,8 +499,8 @@ mkdir -p "$R/docs"
 printf 'The vendor pins widget 1.2.3 in its own doc.  # agreed:test-pin\n' > "$R/docs/widget-a.md"
 out=$(run_with "$AGREED" "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'exactly ONE marked occurrence' \
-   && printf '%s' "$out" | grep -q 'docs/widget-a.md:1 states'; then
+   && grep -q 'exactly ONE marked occurrence' <<<"$out" \
+   && grep -q 'docs/widget-a.md:1 states' <<<"$out"; then
   ok "an AGREED pin with exactly one occurrence is refused as vacuous"
 else
   bad "expected a vacuous-single-occurrence refusal; got rc=$rc: $out"
@@ -518,9 +518,9 @@ printf 'widget 1.2.3 vs widget 9.9.9 -- one line, two claims.  # agreed:test-pin
 printf 'The vendor pins widget 1.2.3 in its own doc.  # agreed:test-pin\n' > "$R/docs/two.md"
 out=$(run_with "$AGREED" "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'docs/one.md:1 carries the `agreed:test-pin` marker and states 2 different values' \
-   && printf '%s' "$out" | grep -q '1.2.3, 9.9.9' \
-   && ! printf '%s' "$out" | grep -q 'occurrences that disagree'; then
+   && grep -q 'docs/one.md:1 carries the `agreed:test-pin` marker and states 2 different values' <<<"$out" \
+   && grep -q '1.2.3, 9.9.9' <<<"$out" \
+   && ! grep -q 'occurrences that disagree' <<<"$out"; then
   ok "one marked line stating two different values is refused on its own, not folded into a disagreement across two occurrences"
 else
   bad "expected a single-line two-values refusal, and no separate disagreement message; got rc=$rc: $out"
@@ -570,8 +570,8 @@ printf 'The vendor pins widget 1.2.3 in its own doc.  # agreed:witness-test-pin\
 printf 'widget 9.9.9\n' > "$R/frozen/widget.txt"
 out=$(run_with "$AGREED_W" "$R"); rc=$?
 if [ $rc -ne 0 ] \
-   && printf '%s' "$out" | grep -q 'occurrences that disagree' \
-   && printf '%s' "$out" | grep -q 'frozen/widget.txt:1 states 9.9.9'; then
+   && grep -q 'occurrences that disagree' <<<"$out" \
+   && grep -q 'frozen/widget.txt:1 states 9.9.9' <<<"$out"; then
   ok "an AGREED pin's witness disagreeing with a marked occurrence is refused, naming the witness"
 else
   bad "expected a disagreement refusal naming the witness path; got rc=$rc: $out"
@@ -626,7 +626,7 @@ if cmp -s "$AGREED" "$AGREED_BLIND"; then
   bad "mutation 'blind-to-disagreement' changed nothing — its sed no longer matches the check"
 else
   out=$(run_with "$AGREED_BLIND" "$WORK/agreed-disagree")
-  if printf '%s' "$out" | grep -q 'occurrences that disagree'; then
+  if grep -q 'occurrences that disagree' <<<"$out"; then
     bad "section 15 is not load-bearing: the blinded check still refused the disagreement"
   else
     ok "mutation 'blind-to-disagreement' silences section 15 — that assertion is load-bearing"
@@ -636,7 +636,7 @@ fi
 # M1 — stop classifying unmarked lines at all. Section 1's copy must go unnamed.
 if mutate blind-to-copies 's/^            if not direct_hit and not wrap_hit:$/            if True:/'; then
   out=$(run_with "$MUTANT" "$WORK/newcopy")
-  if printf '%s' "$out" | grep -q 'docs/notes.md:1'; then
+  if grep -q 'docs/notes.md:1' <<<"$out"; then
     bad "section 1 is not load-bearing: the blinded check still named docs/notes.md:1"
   else
     ok "mutation 'blind-to-copies' silences section 1 — that assertion is load-bearing"
@@ -646,7 +646,7 @@ fi
 # M2 — stop comparing a marked line's claim to the constant. Section 2 must lose its refusal.
 if mutate accept-stale-marks 's/^                stale = sorted(.*)$/                stale = []/'; then
   out=$(run_with "$MUTANT" "$WORK/stale")
-  if printf '%s' "$out" | grep -q 'states xunit.v3 1.2.3'; then
+  if grep -q 'states xunit.v3 1.2.3' <<<"$out"; then
     bad "section 2 is not load-bearing: the blinded check still refused the stale mark"
   else
     ok "mutation 'accept-stale-marks' silences section 2 — that assertion is load-bearing"
@@ -664,7 +664,7 @@ fi
 # touch — a bare grep would stay green even with xunit-v3's guard blinded.
 if mutate no-vacuity-guard 's/^    if marked == 0:$/    if False:/'; then
   out=$(run_with "$MUTANT" "$WORK/vacuous")
-  if printf '%s' "$out" | grep -q '`pinned:xunit-v3` marker.*verified NOTHING'; then
+  if grep -q '`pinned:xunit-v3` marker.*verified NOTHING' <<<"$out"; then
     bad "section 8 is not load-bearing: the blinded check still reported the vacuity refusal"
   else
     ok "mutation 'no-vacuity-guard' silences section 8 — that assertion is load-bearing"
@@ -676,7 +676,7 @@ fi
 # is that line 1 loses its evidence, not that the repo goes silent altogether).
 if mutate blind-to-wraps 's/^    if next_line is not None:$/    if False:/'; then
   out=$(run_with "$MUTANT" "$WORK/wrapped")
-  if printf '%s' "$out" | grep -q 'docs/wrapped.md:1'; then
+  if grep -q 'docs/wrapped.md:1' <<<"$out"; then
     bad "section 11 is not load-bearing: the un-joined check still named docs/wrapped.md:1"
   else
     ok "mutation 'blind-to-wraps' silences section 11 — that assertion is load-bearing"
@@ -691,7 +691,7 @@ fi
 # losing either is enough to prove it load-bearing.
 if mutate no-wrap-boundary 's/^                if m.start() < len(line) < m.end():$/                if True:/'; then
   out=$(run_with "$MUTANT" "$WORK/nolaunder")
-  if printf '%s' "$out" | grep -q 'docs/nolaunder.md:1' && printf '%s' "$out" | grep -q 'docs/nolaunder.md:2'; then
+  if grep -q 'docs/nolaunder.md:1' <<<"$out" && grep -q 'docs/nolaunder.md:2' <<<"$out"; then
     bad "section 12 is not load-bearing: the boundary-less check still refused both lines"
   else
     ok "mutation 'no-wrap-boundary' silences section 12 — that assertion is load-bearing"

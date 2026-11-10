@@ -404,7 +404,7 @@ case "$VERB" in
     [ -n "$n" ] || { echo "github: issue-children needs a parent issue number" >&2; exit 2; }
     if out=$(gh api -H "Accept: application/vnd.github+json" "repos/$(_repo_slug)/issues/$n/sub_issues" 2>&1); then
       printf '%s' "$out" | jq -c '[.[].number]'
-    elif printf '%s' "$out" | grep -q 'HTTP 404'; then
+    elif grep -q 'HTTP 404' <<<"$out"; then
       # Two spellings, same as the link verbs' own classifier: `gh: <message> (HTTP 404)` and the
       # bare `gh: HTTP 404` a GHES proxy's non-JSON error body produces — both must read as
       # "the feature is off", not as "no status" (#507 review).
@@ -420,7 +420,7 @@ case "$VERB" in
     if out=$(gh api -H "Accept: application/vnd.github+json" "repos/$(_repo_slug)/issues/$n" \
                --jq '.issue_dependencies_summary.blocked_by // "n/a"' 2>&1); then
       printf '%s\n' "$out"
-    elif printf '%s' "$out" | grep -q 'HTTP 404'; then
+    elif grep -q 'HTTP 404' <<<"$out"; then
       # 404 is the documented "the dependencies feature is off" answer, read the same way
       # issue-children reads it. Every OTHER failure (401 bad credentials, 403, a network error, a
       # rate limit) is a REAL failure and must not be laundered into that same `n/a`: Step 7's

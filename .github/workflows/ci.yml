@@ -189,11 +189,11 @@ jobs:
       - name: Every skill closes with the shared recap, and the hand-off table matches the graph
         run: python3 scripts/recap-wiring-check.py
 
-      # One more of the same family (#391): a positive-match `grep -q` fed by an external streaming
-      # producer (awk's range pattern, `tail -n +N`, a nested `grep`, ...) under `pipefail` reports
-      # its writer's SIGPIPE as the verdict, even though the match succeeded — measured on
-      # tests/survey/test.sh at ~22% of runs. Cheap and structural like its neighbours; its own
-      # golden suite runs below with the others.
+      # One more of the same family (#391): a positive-match `grep -q` fed through a pipe (awk's
+      # range pattern, `tail -n +N`, a nested `grep`, and just as much a builtin `printf`/`echo` of
+      # a multi-line variable) under `pipefail` reports its writer's SIGPIPE as the verdict, even
+      # though the match succeeded — measured on tests/survey/test.sh at ~22% of runs. Cheap and
+      # structural like its neighbours; its own golden suite runs below with the others.
       - name: No positive-match grep -q is fed by a streaming producer under pipefail
         run: python3 scripts/sigpipe-idiom-check.py
 
@@ -425,7 +425,8 @@ jobs:
           # happened to be sitting in. That is the exact scenario this simulation exists to catch.
           for g in guarded-commit guarded-push guarded-merge; do
             script="$KIT/skills/implement-issue/scripts/$g.sh"
-            bash "$script" --help | grep -q 'Exit codes:'
+            help_out=$(bash "$script" --help)
+            grep -q 'Exit codes:' <<<"$help_out"
             if bash "$script" -C "$PWD" no-such-branch -- -m x 2>/dev/null; then
               echo "$g.sh accepted a path that is not a git repository"; exit 1
             fi
@@ -435,7 +436,8 @@ jobs:
           # `-- <git args>` — so it gets its own check rather than joining the loop above, which
           # would otherwise pass it an argument list it does not accept.
           mw_script="$KIT/skills/implement-issue/scripts/make-worktree.sh"
-          bash "$mw_script" --help | grep -q 'Exit codes:'
+          help_out=$(bash "$mw_script" --help)
+          grep -q 'Exit codes:' <<<"$help_out"
           if bash "$mw_script" -C "$PWD" no-such-branch 2>/dev/null; then
             echo "make-worktree.sh accepted a path that is not a git repository"; exit 1
           fi

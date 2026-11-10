@@ -339,7 +339,7 @@ run_tracker "$PROFILED" --tracker github frobnicate
 run_tracker "$PROFILED" --tracker bitbucket repo
 if [ "$RC" -ne 3 ]; then
   note_fail "AC3b missing backend — expected exit 3, got $RC ('$OUT')"
-elif ! printf '%s\n%s\n' "$OUT" "$ERR" | grep -Fq 'NOT_IMPLEMENTED bitbucket repo'; then
+elif ! grep -Fq 'NOT_IMPLEMENTED bitbucket repo' <<<"$OUT"$'\n'"$ERR"; then
   note_fail "AC3b missing backend — exit 3 but no 'NOT_IMPLEMENTED bitbucket repo'
       stdout: $OUT
       stderr: $ERR"
@@ -353,7 +353,7 @@ fi
 run_tracker "$PROFILED" --tracker github verbs
 if [ "$RC" -ne 0 ]; then
   note_fail "verbs — the backend protocol verb exited $RC ($ERR)"
-elif ! printf '%s\n' "$OUT" | grep -Fqx 'issue-view'; then
+elif ! grep -Fqx 'issue-view' <<<"$OUT"; then
   note_fail "verbs — the backend did not list issue-view: '$OUT'"
 else
   ok "verbs — the backend lists what it implements"
@@ -458,7 +458,7 @@ fi
 run_tracker "$BARE" --repo one/repo issue-create -R two/repo --title T --body-file "$BODY_F"
 if [ "$RC" -ne 2 ]; then
   note_fail "--repo and -R disagreeing — expected exit 2, got $RC ($ERR)"
-elif ! printf '%s' "$ERR" | grep -Fq "given twice"; then
+elif ! grep -Fq "given twice" <<<"$ERR"; then
   note_fail "--repo and -R disagreeing — the refusal does not say 'given twice': $ERR"
 elif [ -s "$GH_CALL_LOG" ]; then
   note_fail "--repo and -R disagreeing — gh was called anyway:
@@ -478,7 +478,7 @@ run_tracker "$BARE" --repo other/repo issue-create -R other/repo --title T --bod
 run_tracker "$BARE" --nope repo
 if [ "$RC" -ne 2 ]; then
   note_fail "an unknown router option — expected exit 2, got $RC"
-elif ! printf '%s' "$ERR" | grep -Fq -- "[--repo|-R <slug>]"; then
+elif ! grep -Fq -- "[--repo|-R <slug>]" <<<"$ERR"; then
   note_fail "the router's usage line does not name -R beside --repo: $ERR"
 else
   ok "the router's usage line names -R beside --repo"
@@ -601,7 +601,7 @@ if [ "$RC" -eq 0 ]; then
   note_fail "issue-link-parent stderr-on-success — exited 0, so a non-numeric id was accepted (out '$OUT')"
 elif grep -q -- '--method POST' "$GH_CALL_LOG"; then
   note_fail "issue-link-parent stderr-on-success — refused, but a POST was still sent: $(cat "$GH_CALL_LOG")"
-elif ! printf '%s' "$ERR" | grep -q 'not a database id'; then
+elif ! grep -q 'not a database id' <<<"$ERR"; then
   note_fail "issue-link-parent stderr-on-success — the refusal does not name the rule: $ERR"
 else
   ok "issue-link-parent — a warning on a SUCCESSFUL id lookup is refused, and nothing is POSTed"
@@ -744,8 +744,8 @@ check_coverage() {
   needs=$(jq -r --arg s "$skill" '.skills[$s] // [] | .[]' "$CONTRACT_JSON")
   while IFS= read -r v; do
     [ -n "$v" ] || continue
-    printf '%s\n' "$table" | grep -Fxq "$v" || echo "gap: $v not on contract.json's verb table"
-    printf '%s\n' "$needs" | grep -Fxq "$v" || echo "gap: $v not on skills.$skill"
+    grep -Fxq "$v" <<<"$table" || echo "gap: $v not on contract.json's verb table"
+    grep -Fxq "$v" <<<"$needs" || echo "gap: $v not on skills.$skill"
   done <<EOF
 $(collect_verbs "$dir")
 EOF
@@ -759,7 +759,7 @@ printf '\n"<kit>/scripts/tracker.sh" issue-frobnicate 5\n' >> "$FIXTURE_DIR/07-a
 fixture_out=$(check_coverage "$FIXTURE_DIR" create-issue)
 if [ -z "$fixture_out" ]; then
   note_fail "AC4 fixture — a verb absent from the contract should have failed coverage, nothing was reported"
-elif ! printf '%s\n' "$fixture_out" | grep -Fq 'issue-frobnicate'; then
+elif ! grep -Fq 'issue-frobnicate' <<<"$fixture_out"; then
   note_fail "AC4 fixture — coverage output did not name issue-frobnicate:
       $fixture_out"
 else
@@ -789,7 +789,7 @@ printf '\n# regression: a direct call reintroduced\nid=$(gh api repos/o/r/issues
 fixture_gh_out=$(grep -rnE "$GUARD_PATTERN" "$FIXTURE_GH" || true)
 if [ -z "$fixture_gh_out" ]; then
   note_fail "AC3 fixture — a reintroduced 'gh api' line should have failed the guard, nothing was reported"
-elif ! printf '%s\n' "$fixture_gh_out" | grep -Fq 'wire-edges.sh'; then
+elif ! grep -Fq 'wire-edges.sh' <<<"$fixture_gh_out"; then
   note_fail "AC3 fixture — the guard did not name the file:
       $fixture_gh_out"
 else
@@ -1319,7 +1319,7 @@ printf '%s\n' '# Repo profile' '' '## Tracker' \
 # verbs — the introspection call, answered before any org/project resolution.
 : > "$AZ_CALL_LOG"
 run_az "$AZBARE" --repo acme/Shop verbs
-if [ "$RC" -ne 0 ] || ! printf '%s\n' "$OUT" | grep -Fxq 'issue-view'; then
+if [ "$RC" -ne 0 ] || ! grep -Fxq 'issue-view' <<<"$OUT"; then
   note_fail "verbs — expected issue-view among the verbs, exited $RC: $OUT ($ERR)"
 elif [ -s "$AZ_CALL_LOG" ]; then
   note_fail "verbs — must answer without calling az at all: $(cat "$AZ_CALL_LOG")"
@@ -1507,7 +1507,7 @@ rm -rf "$CAPTURE_DIR" "$AZ_PATCH_CAPTURE"
 AZ_PROCESS="Agile - Custom" run_az "$AZBARE" --repo acme/Shop issue-create --title T --body-file "$BODY_F"
 if [ "$RC" -ne 2 ]; then
   note_fail "AC3 issue-create — expected exit 2 for an unmapped process, got $RC ($ERR)"
-elif ! printf '%s' "$ERR" | grep -Fq 'Agile - Custom'; then
+elif ! grep -Fq 'Agile - Custom' <<<"$ERR"; then
   note_fail "AC3 issue-create — the refusal does not name the process: $ERR"
 else
   ok "AC3 issue-create — 'Agile - Custom' exits 2, named, no verdict guessed"
@@ -1531,7 +1531,7 @@ fi
 AZ_PROJECT_FAIL=1 run_az "$AZBARE" --repo acme/Shop issue-create --title T --body-file "$BODY_F"
 if [ "$RC" -ne 1 ]; then
   note_fail "issue-create az-failure-reading-process — expected exit 1 (host failure), got $RC ($ERR)"
-elif ! printf '%s' "$ERR" | grep -Fq 'az login'; then
+elif ! grep -Fq 'az login' <<<"$ERR"; then
   note_fail "issue-create az-failure-reading-process — the real az error is not surfaced: $ERR"
 else
   ok "issue-create az-failure-reading-process — exit 1, the real az error surfaced, not a misleading 'unmapped process'"
@@ -1593,7 +1593,7 @@ if [ "$RC" -ne 0 ]; then
   note_fail "issue-link-parent --dry-run — exited $RC ($ERR)"
 elif [ -s "$AZ_CALL_LOG" ]; then
   note_fail "issue-link-parent --dry-run — az was called anyway: $(cat "$AZ_CALL_LOG")"
-elif ! printf '%s' "$OUT" | grep -Fq 'DRY-RUN'; then
+elif ! grep -Fq 'DRY-RUN' <<<"$OUT"; then
   note_fail "issue-link-parent --dry-run — did not print the write it would send: $OUT"
 else
   ok "issue-link-parent --dry-run — prints the write it would send, calls az not at all"

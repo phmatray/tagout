@@ -56,7 +56,8 @@ grep -qi -- 'guarded-pr-merge\.sh' "$DOC" \
 
 # Naming it in the intro isn't enough — the fallback's own Step 1 recipe (the "## The fallback"
 # section) must actually cp it, or an agent following that recipe hits "No such file or directory".
-if ! awk '/^## The fallback/{f=1} f' "$DOC" | grep -qi -- 'guarded-pr-merge\.sh'; then
+fallback_section=$(awk '/^## The fallback/{f=1} f' "$DOC")
+if ! grep -qi -- 'guarded-pr-merge\.sh' <<<"$fallback_section"; then
   note_fail "$DOC names guarded-pr-merge.sh only outside '## The fallback' — its Step 1 cp recipe doesn't cover it"
 fi
 

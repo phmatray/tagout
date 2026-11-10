@@ -50,8 +50,8 @@
   unrestated by prose — `docs/decisions.md`),
   `python3 scripts/recap-wiring-check.py` (every skill closes with the shared recap, and its
   hand-off table matches ARCHITECTURE.md's dashed edges),
-  `python3 scripts/sigpipe-idiom-check.py` (no positive-match `grep -q` is fed by a streaming
-  external producer under `pipefail`, #391) and
+  `python3 scripts/sigpipe-idiom-check.py` (no positive-match `grep -q` is fed through a pipe
+  under `pipefail`, a builtin `printf`/`echo` included — read a variable with `<<<"$var"`, #391) and
   `python3 tests/skills/check-frontmatter.py` (skill frontmatter/compatibility tokens). All seven
   run as part of `./scripts/run-all-tests.sh`, and `tests/repo-profile/test.sh` refuses when this
   list omits a gate script `run-all-tests.sh --list` runs (#388) — it went stale once already.

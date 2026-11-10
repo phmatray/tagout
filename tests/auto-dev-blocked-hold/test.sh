@@ -90,7 +90,8 @@ grep -qF '## Held on a prerequisite' "$SKILL_MD" \
 
 STEP6=$(grep -n '^## Step 6' "$SKILL_MD" | head -1 | cut -d: -f1) || true
 [ -n "$STEP6" ] || fail "SKILL.md is missing a '## Step 6' heading"
-if ! tail -n "+$STEP6" "$SKILL_MD" | grep -qF '## Held on a prerequisite'; then
+step6_onward=$(tail -n "+$STEP6" "$SKILL_MD")
+if ! grep -qF '## Held on a prerequisite' <<<"$step6_onward"; then
   fail "AC6: Step 6's final summary does not mention '## Held on a prerequisite'"
 fi
 

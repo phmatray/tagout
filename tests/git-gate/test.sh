@@ -838,7 +838,7 @@ PY
 # off, so the manifest has to name this gate too, not just the roseline one.
 REQ="$KIT/requirements.json"
 hint=$(jq -r '.tools[] | select(.name | test("jq")) | .hint' "$REQ")
-printf '%s' "$hint" | grep -qF 'git-write-gate.sh' \
+grep -qF 'git-write-gate.sh' <<<"$hint" \
   || { echo "FAIL: requirements.json's jq hint does not mention hooks/git-write-gate.sh: '$hint'"; exit 1; }
 echo "ok: requirements.json's jq hint names both gates"
 

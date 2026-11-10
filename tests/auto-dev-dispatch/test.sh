@@ -65,9 +65,9 @@ grep -qF 'Agent(subagent_type: general-purpose, model: <tier>, run in background
 # actually wired, which no earlier version of this suite could have caught.
 STEP1=$(awk '/^## Step 1 —/{flag=1} /^## Step 2 —/{flag=0} flag' "$SKILL_MD")
 [ -n "$STEP1" ] || fail "skills/auto-dev/SKILL.md has no '## Step 1 —' section"
-printf '%s\n' "$STEP1" | grep -q "git rev-parse --show-toplevel" \
+grep -q "git rev-parse --show-toplevel" <<<"$STEP1" \
   || fail "Step 1 does not capture the supervisor's own toplevel"
-printf '%s\n' "$STEP1" | grep -qi "SUPERVISOR_TOPLEVEL" \
+grep -qi "SUPERVISOR_TOPLEVEL" <<<"$STEP1" \
   || fail "Step 1 does not name the SUPERVISOR_TOPLEVEL value the guard compares against"
 
 toplevel_fact_count=$(printf '%s\n' "$STEP3" | grep -cF 'SUPERVISOR_TOPLEVEL=' || true)
@@ -77,9 +77,9 @@ toplevel_fact_count=$(printf '%s\n' "$STEP3" | grep -cF 'SUPERVISOR_TOPLEVEL=' |
 # Gotchas names the cwd-inheritance hazard, so the next reader doesn't rediscover it cold.
 GOTCHAS=$(awk '/^## Gotchas /{flag=1} flag' "$SKILL_MD")
 [ -n "$GOTCHAS" ] || fail "skills/auto-dev/SKILL.md has no '## Gotchas' section"
-printf '%s\n' "$GOTCHAS" | grep -qi "inherit" \
+grep -qi "inherit" <<<"$GOTCHAS" \
   || fail "Gotchas does not name the cwd-inheritance hazard (#412)"
-printf '%s\n' "$GOTCHAS" | grep -qi "cwd\|working directory" \
+grep -qi "cwd\|working directory" <<<"$GOTCHAS" \
   || fail "Gotchas does not mention the supervisor's cwd/working directory being inherited"
 
 # --- Task 2: the worker commands say the given worktree IS the worktree ----------------------
@@ -115,15 +115,15 @@ GUARD_SECTION=$(awk '
 [ -n "$GUARD_SECTION" ] \
   || fail "skills/auto-dev/SKILL.md has no '### ⛔ Dispatch-time guard — confirm the worker actually got its own worktree' section"
 
-printf '%s\n' "$GUARD_SECTION" | grep -q "git rev-parse --show-toplevel" \
+grep -q "git rev-parse --show-toplevel" <<<"$GUARD_SECTION" \
   || fail "the new guard section does not document the first-act 'git rev-parse --show-toplevel' assertion"
-printf '%s\n' "$GUARD_SECTION" | grep -qi "re-dispatch" \
+grep -qi "re-dispatch" <<<"$GUARD_SECTION" \
   || fail "the new guard section does not say the supervisor re-dispatches on a refusal"
-printf '%s\n' "$GUARD_SECTION" | grep -Eqi "not.{0,40}BLOCKED|never.{0,40}BLOCKED" \
+grep -Eqi "not.{0,40}BLOCKED|never.{0,40}BLOCKED" <<<"$GUARD_SECTION" \
   || fail "the new guard section does not say a same-cwd refusal is NOT counted as a BLOCKED issue"
-printf '%s\n' "$GUARD_SECTION" | grep -qi "auto-clean" \
+grep -qi "auto-clean" <<<"$GUARD_SECTION" \
   || fail "the new guard section does not state the auto-clean-only-if-unchanged cleanup nuance for isolation: \"worktree\""
-printf '%s\n' "$GUARD_SECTION" | grep -qi "Needs manual sweep" \
+grep -qi "Needs manual sweep" <<<"$GUARD_SECTION" \
   || fail "the new guard section does not point a leftover worker worktree at '## Needs manual sweep'"
 
 # 3a'. The plan also asks Step 4's per-slot handling to say what happens on a refusal — a second,
@@ -134,9 +134,9 @@ STEP4_INTRO=$(awk '
   /^You.re woken by a worker.s report/ { exit }
 ' "$SKILL_MD")
 [ -n "$STEP4_INTRO" ] || fail "skills/auto-dev/SKILL.md has no '## Step 4 —' section"
-printf '%s\n' "$STEP4_INTRO" | grep -qi "re-dispatch" \
+grep -qi "re-dispatch" <<<"$STEP4_INTRO" \
   || fail "Step 4's intro does not say the supervisor re-dispatches a worker-toplevel guard refusal"
-printf '%s\n' "$STEP4_INTRO" | grep -Eqi "not.{0,40}BLOCKED|never.{0,40}BLOCKED" \
+grep -Eqi "not.{0,40}BLOCKED|never.{0,40}BLOCKED" <<<"$STEP4_INTRO" \
   || fail "Step 4's intro does not say a same-cwd refusal is NOT counted as a BLOCKED issue"
 
 # 3b. The decision itself, extracted and RUN — not just grepped for — same discipline as
