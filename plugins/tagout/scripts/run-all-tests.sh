@@ -122,9 +122,9 @@ add_gate "python3 scripts/decision-check.py"
 # One more of the same family, on the kit's user-facing ending: every skill closes with the shared
 # recap, and the hand-off table agrees with ARCHITECTURE.md's dashed edges (#175).
 add_gate "python3 scripts/recap-wiring-check.py"
-# One more of the same family (#391): no positive-match `grep -q` is fed through a pipe under
-# `pipefail`, whatever the producer (a builtin `printf`/`echo` included) -- the shape that
-# reported a failure that did not happen on ~22% of tests/survey/test.sh runs.
+# One more of the same family (#391): no positive-match `grep -q` is fed by an external streaming
+# producer under `pipefail` -- the shape that reported a failure that did not happen on ~22% of
+# tests/survey/test.sh runs.
 add_gate "python3 scripts/sigpipe-idiom-check.py"
 
 add_suite "tests/lib/test.sh"
@@ -305,6 +305,7 @@ add_suite "tests/plan-freshness/test.sh"
 add_suite "tests/roseline/test.sh"
 add_suite "tests/git-gate/test.sh"
 add_suite "tests/routing-context/test.sh"
+add_suite "tests/sizing/test.sh"
 add_suite "tests/host-adapters/test.sh"
 add_suite "tests/autodev-stop-gate/test.sh"
 add_suite "tests/auto-dev-state-path/test.sh"
@@ -319,6 +320,7 @@ add_suite "tests/auto-dev-dispatch/test.sh"
 add_suite "tests/release-branch/test.sh"
 add_suite "tests/wait-ci/test.sh"
 add_suite "tests/usage-report/test.sh"
+add_suite "tests/context-cost/test.sh"
 add_suite "tests/survey/test.sh"
 add_suite "tests/wire-edges/test.sh"
 add_suite "tests/hitl-loop/test.sh"
@@ -351,6 +353,7 @@ add_suite "tests/decision-tally/test.sh"
 add_suite "tests/report-verdict/test.sh"
 
 add_suite "tests/fleet-counters/test.sh"
+add_suite "tests/merge-approval/test.sh"
 
 add_suite "tests/run-all-tests/test.sh"
 

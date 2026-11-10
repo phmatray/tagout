@@ -117,4 +117,43 @@ step6=$(tail -n "+$STEP6" "$SKILL_MD")
 grep -qF '## Held for owner' <<<"$step6" \
   || fail "AC3: Step 6's final summary does not name the '## Held for owner' entries"
 
+# ---------------------- opt-in `Merge approval: owner`: every PR is held for the owner, never landed
+
+owner=$(sed -n '/<!-- owner-approval-hold:start -->/,/<!-- owner-approval-hold:end -->/p' "$SKILL_MD")
+[ -n "$owner" ] || fail "owner-approval: SKILL.md carries no owner-approval-hold block"
+for want in 'decide.sh merge.approval' 'repo-profile.sh show' 'no phase-2 dispatch' 'retire the slot' \
+            '## Held for owner' 'owner approval (profile)' '/merge-pr #' 'No verdict is a `hold` too' \
+            'unrecognised-value' 'deliver-issue'; do
+  grep -qF -- "$want" <<<"$owner" || fail "owner-approval: owner-approval-hold block does not name: $want"
+done
+# The block INVOKES the decision and may not restate it: the values the program accepts live in
+# merge-approval.sh, and a sentence here saying which spellings land is the second home that
+# let "any other value = unattended" merge with no human.
+if grep -qiE 'absent, .unattended., or any other value' <<<"$owner"; then
+  fail "owner-approval: the block restates which values land instead of asking merge.approval"
+fi
+# deliver-issue is the second place an agent merges with nobody watching (its Step 5): it asks too.
+DELIVER_MD="$KIT/skills/deliver-issue/SKILL.md"
+step5=$(sed -n '/^## Step 5 /,/^## Step 6 /p' "$DELIVER_MD")
+for want in 'decide.sh merge.approval' 'dispatch nothing' '/merge-pr #'; do
+  grep -qF -- "$want" <<<"$step5" || fail "owner-approval: deliver-issue Step 5 does not name: $want"
+done
+# A refresh must not silently drop the owner's decision.
+GEN_MD="$KIT/skills/init/references/generating.md"
+gen_row=$(grep -F '**Merge approval**' "$GEN_MD") \
+  || fail "owner-approval: generating.md has no Merge approval row"
+grep -qF 'verbatim' <<<"$gen_row" \
+  || fail "owner-approval: generating.md does not say a refresh carries the Merge approval bullet over verbatim"
+grep -qF '<!-- one-way-door-hold:start -->' "$SKILL_MD" \
+  || fail "owner-approval: the one-way-door-hold block is gone"
+grep -qF -- '— owner approval (profile)' <<<"$(sed -n '/^```markdown/,/^```/p' "$SKILL_MD")" \
+  || fail "owner-approval: the state-file template lacks the 'owner approval (profile)' held form"
+PROFILE_TPL="$KIT/skills/init/references/profile-template.md"
+[ -f "$PROFILE_TPL" ] || fail "missing $PROFILE_TPL"
+merge_approval=$(grep -F '**Merge approval:**' "$PROFILE_TPL") \
+  || fail "owner-approval: the profile template has no '**Merge approval:**' bullet"
+for want in 'unattended' 'owner'; do
+  grep -qF -- "$want" <<<"$merge_approval" || fail "owner-approval: profile template bullet does not name: $want"
+done
+
 echo "PASS: auto-dev-blocked-hold"

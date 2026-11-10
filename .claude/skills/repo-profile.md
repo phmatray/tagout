@@ -41,7 +41,8 @@
   running anything.
   `--jobs auto` (or `--jobs N`) runs the plan's ~90 independent items in parallel and prints the
   **same report in the same order** — measured ~6 min serial against ~1 min at 8 jobs — so prefer
-  `./scripts/run-all-tests.sh --jobs auto` for the pre-ready full pass.
+  `./scripts/run-all-tests.sh --jobs auto` for the pre-ready full pass; drop the flag only to
+  reproduce a failure in isolation.
 - **Single-suite filter (per-task, fast):** `./tests/<suite>/test.sh` — e.g. `./tests/preflight/test.sh`.
   This is the per-task command the lifecycle skills should lean on; suites are independent.
 - **Format/lint apply:** none — no formatter is configured for the shell/python/markdown sources.
@@ -53,8 +54,8 @@
   unrestated by prose — `docs/decisions.md`),
   `python3 scripts/recap-wiring-check.py` (every skill closes with the shared recap, and its
   hand-off table matches ARCHITECTURE.md's dashed edges),
-  `python3 scripts/sigpipe-idiom-check.py` (no positive-match `grep -q` is fed through a pipe
-  under `pipefail`, a builtin `printf`/`echo` included — read a variable with `<<<"$var"`, #391) and
+  `python3 scripts/sigpipe-idiom-check.py` (no positive-match `grep -q` is fed by a streaming
+  external producer under `pipefail`, #391) and
   `python3 tests/skills/check-frontmatter.py` (skill frontmatter/compatibility tokens). All seven
   run as part of `./scripts/run-all-tests.sh`, and `tests/repo-profile/test.sh` refuses when this
   list omits a gate script `run-all-tests.sh --list` runs (#388) — it went stale once already.

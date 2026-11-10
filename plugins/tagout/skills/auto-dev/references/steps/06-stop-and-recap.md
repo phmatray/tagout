@@ -17,8 +17,8 @@ the state file is discarded. Also name any `## Held on a prerequisite` entries: 
 picks it back up as `QUEUE` on its own), but a `fallback` entry wired nothing durable and will
 re-queue as eligible on the very next survey regardless — call those out by name, since this
 summary is the only place anyone sees that before the file is discarded. Name every
-`## Held for owner` PR too, each with Next `/merge-pr #<pr>`: a one-way door the fleet deliberately
-did not land, and the stop gate does not count it as undrained.
+`## Held for owner` PR too, each with Next `/merge-pr #<pr>`: a one-way door, or a merge the
+profile reserves for the owner, that the fleet deliberately did not land, and the stop gate does not count it as undrained.
 
 **Remove the state file** at its pinned path (Step 2) once the queue has fully drained — `rm -f
 "${AUTODEV_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}}/tagout/auto-dev/<host>/<owner>/<repo>.md"`

@@ -56,6 +56,9 @@ grep -qi -- 'guarded-pr-merge\.sh' "$DOC" \
 
 # Naming it in the intro isn't enough — the fallback's own Step 1 recipe (the "## The fallback"
 # section) must actually cp it, or an agent following that recipe hits "No such file or directory".
+# Captured, then read by herestring: negated, this pipe is exempt from sigpipe-idiom-check.py, yet it
+# is the same race — an awk killed by SIGPIPE makes the pipeline 141, `!` turns that into "no
+# match", and the FAIL below fires on a document that does name the guard.
 fallback_section=$(awk '/^## The fallback/{f=1} f' "$DOC")
 if ! grep -qi -- 'guarded-pr-merge\.sh' <<<"$fallback_section"; then
   note_fail "$DOC names guarded-pr-merge.sh only outside '## The fallback' — its Step 1 cp recipe doesn't cover it"

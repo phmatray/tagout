@@ -250,6 +250,28 @@ it in the final summary with Next `/merge-pr #<n>`. Everything else lands exactl
 is a result, not a wait: nothing idles on the owner, and a human-run `merge-pr` is unchanged.
 <!-- one-way-door-hold:end -->
 
+<!-- owner-approval-hold:start -->
+**Every PR is held when the profile asks for owner approval (#740).** Whether this repository lets
+an unattended run merge is a registered decision over the committed profile — ask it before the
+run's first phase-2 dispatch, and never read the bullet yourself:
+
+```bash
+<kit>/skills/init/scripts/repo-profile.sh show | <kit>/scripts/decide.sh merge.approval
+```
+
+`land` — unchanged: PRs land as below, and one-way doors stay held by the block above. `hold` —
+treat **every** PR exactly like a one-way door: **no phase-2 dispatch**, retire the slot, add
+`- #<issue> → PR #<n> — owner approval (profile)` under `## Held for owner` in the state file, and
+name it in the final summary with Next `/merge-pr #<n>`. **No verdict is a `hold` too** — a
+non-zero exit, an empty answer, a profile that could not be read — and the summary says which. When
+the rule is `unrecognised-value`, the summary also quotes the profile's `**Merge approval:**` line:
+the owner wrote something the program does not know, and a merge control that guessed would have
+merged. The profile is repo data (ADR-0001), not an interaction mode (ADR-0009): the rule is about
+the repo, not about how much a run is trusted, so it holds in every mode — `deliver-issue` asks the
+same decision before its own phase 2. The hold is a result, not a wait: nothing idles on the
+owner, and a human-run `merge-pr` is unchanged.
+<!-- owner-approval-hold:end -->
+
 **Phase 2 defaults to the cheapest capable tier** — small/cheap by default, decoupled from phase 1's
 tier. The supervisor hands phase 2 the CI verdict (pass/fail), merge state (clean/blocked), and the
 local gate command to run, so it does no design work and carries no design risk — it is a rote merge +

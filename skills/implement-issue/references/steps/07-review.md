@@ -32,6 +32,10 @@ commit) along **three axes, run in parallel and never merged**:
   typed in any session, and one bare call inherited `xhigh` and spent 106.8M tokens on 25 review
   sub-agents (2026-09-07). `ultra` is never prescribed — it is a cloud review the user launches and
   pays for, which no agent can start. **Never `--fix`**: read the findings and apply them yourself.
+  **No `code-review` skill in this session?** Run the kit's own fallback,
+  [`standards-review-fallback.md`](../../../_shared/standards-review-fallback.md), at the same
+  level — it reads the staged diff file, never writes, and reports what it could not check;
+  everything after it (the post-review check, the one-way-door rule) is unchanged.
 
   <!-- one-way-door:start -->
   **A one-way door overrides the breadth (#694).** Before you pick the level, read

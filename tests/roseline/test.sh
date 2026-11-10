@@ -88,7 +88,7 @@ shim_path() { # $1 destination dir; $2… stub names
 verdict() {
   local name="$1" want="$2" want_msg="$3" payload="$4" gate_path="${5:-$PATH}" gate="${6:-$GATE}" \
         out decision rc=0
-  out=$(printf '%s' "$payload" | env PATH="$gate_path" bash "$gate" 2>/dev/null) || rc=$?
+  out=$(env PATH="$gate_path" bash "$gate" 2>/dev/null <<<"$payload") || rc=$?
   # Exit status is half the PreToolUse contract — exit 2 blocks the tool regardless of stdout. If
   # we only scored stdout, a regression that turned a fail-open path into `exit 2` would be
   # reported here as "pass" while blocking every Read in production.
@@ -150,7 +150,7 @@ verdict "the denial names P.csproj"           deny "P.csproj"          "$(pay Re
 verdict "the denial names the plugin prefix"  deny "mcp__plugin_"      "$(pay Read "$SLNXP/src/P/Quux.cs" "$SLNXP" s2)"
 SLNONLY=$(mktemp -d "$WORK/sln.XXXXXX"); : > "$SLNONLY/X.sln"
 verdict "a .sln-only marker is gated" deny "search_symbols" "$(pay Read "$SLNONLY/Foo.cs" "$SLNONLY" s3)"
-r=$(printf '%s' "$(pay Read "$SLNONLY/Foo2.cs" "$SLNONLY" s3)" | bash "$GATE" | jq -r '.hookSpecificOutput.permissionDecisionReason')
+r=$(bash "$GATE" <<<"$(pay Read "$SLNONLY/Foo2.cs" "$SLNONLY" s3)" | jq -r '.hookSpecificOutput.permissionDecisionReason')
 case "$r" in *"project:"*) echo "FAIL: .sln-only denial carries a project: hint"; exit 1 ;; esac
 echo "ok: .sln-only denial has no project hint"
 
@@ -260,7 +260,7 @@ echo "ok: ROSELINE_GATE=off disables the gate"
 ONREPO=$(csharp_repo)
 ONP=$(pay Read "$ONREPO/Forced.cs" "$ONREPO" force-session)
 
-out=$(printf '%s' "$ONP" | env PATH="$NODNX" ROSELINE_GATE=on bash "$GATE" 2>/dev/null || true)
+out=$(env PATH="$NODNX" ROSELINE_GATE=on bash "$GATE" 2>/dev/null <<<"$ONP" || true)
 # Herestrings, not pipes into `grep -q` (#391): `jq` can still be writing when the match closes
 # the read end, and under pipefail that SIGPIPE becomes this check's verdict.
 decision=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // ""' 2>/dev/null)
@@ -274,7 +274,7 @@ echo "ok: ROSELINE_GATE=on enforces where the probe cannot see the server"
 # `off` stays the MASTER switch — it is checked first, so a host with `dnx` present (where the probe
 # alone would deny) still passes. A user who disabled the gate is never overridden.
 OFFP=$(pay Read "$ONREPO/Spared.cs" "$ONREPO" off-session)
-out=$(printf '%s' "$OFFP" | env PATH="$WITHDNX" ROSELINE_GATE=off bash "$GATE" 2>/dev/null || true)
+out=$(env PATH="$WITHDNX" ROSELINE_GATE=off bash "$GATE" 2>/dev/null <<<"$OFFP" || true)
 [ -z "$out" ] || { echo "FAIL: ROSELINE_GATE=off did not win over a passing probe"; echo "$out"; exit 1; }
 echo "ok: ROSELINE_GATE=off outranks a probe that would have denied"
 
@@ -293,7 +293,7 @@ echo "ok: the off branch is checked before the on branch"
 # An unrecognised value is neither switch: it falls through to the probe, exactly as an unset
 # variable does. Without this, `ROSELINE_GATE=maybe` could match a sloppy `on*` pattern and enforce.
 MAYBE=$(pay Read "$ONREPO/Maybe.cs" "$ONREPO" maybe-session)
-out=$(printf '%s' "$MAYBE" | env PATH="$NODNX" ROSELINE_GATE=maybe bash "$GATE" 2>/dev/null || true)
+out=$(env PATH="$NODNX" ROSELINE_GATE=maybe bash "$GATE" 2>/dev/null <<<"$MAYBE" || true)
 [ -z "$out" ] || { echo "FAIL: an unrecognised ROSELINE_GATE value must fall through to the probe"; echo "$out"; exit 1; }
 echo "ok: an unrecognised ROSELINE_GATE value falls through to the probe"
 

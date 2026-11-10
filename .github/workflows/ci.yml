@@ -189,11 +189,11 @@ jobs:
       - name: Every skill closes with the shared recap, and the hand-off table matches the graph
         run: python3 scripts/recap-wiring-check.py
 
-      # One more of the same family (#391): a positive-match `grep -q` fed through a pipe (awk's
-      # range pattern, `tail -n +N`, a nested `grep`, and just as much a builtin `printf`/`echo` of
-      # a multi-line variable) under `pipefail` reports its writer's SIGPIPE as the verdict, even
-      # though the match succeeded — measured on tests/survey/test.sh at ~22% of runs. Cheap and
-      # structural like its neighbours; its own golden suite runs below with the others.
+      # One more of the same family (#391): a positive-match `grep -q` fed by an external streaming
+      # producer (awk's range pattern, `tail -n +N`, a nested `grep`, ...) under `pipefail` reports
+      # its writer's SIGPIPE as the verdict, even though the match succeeded — measured on
+      # tests/survey/test.sh at ~22% of runs. Cheap and structural like its neighbours; its own
+      # golden suite runs below with the others.
       - name: No positive-match grep -q is fed by a streaming producer under pipefail
         run: python3 scripts/sigpipe-idiom-check.py
 
@@ -587,6 +587,9 @@ jobs:
       - name: Routing-context golden test (SessionStart hook, extracts AGENTS.md's routing table, #416, #525)
         run: ./tests/routing-context/test.sh
 
+      - name: Sizing golden test (a request is sized before the lifecycle starts, and the rule fails towards the full cycle, #737)
+        run: ./tests/sizing/test.sh
+
       - name: Host-adapters golden test (AGENTS.md's rule copies for six hosts, generated and checked for drift, #525)
         run: ./tests/host-adapters/test.sh
 
@@ -628,6 +631,9 @@ jobs:
 
       - name: Usage-report golden test (counts sub-agent transcripts too, not just top-level, #281)
         run: ./tests/usage-report/test.sh
+
+      - name: Context-cost golden test (the kit's skill entries can shorten other skills' descriptions, not only add tokens)
+        run: ./tests/context-cost/test.sh
 
       - name: Survey golden test (effort tiers by the manifest's own vocabulary, not S/M/L)
         run: ./tests/survey/test.sh
@@ -688,6 +694,9 @@ jobs:
 
       - name: Fleet-counters golden test (the fleet's counts and autodev.cadence)
         run: ./tests/fleet-counters/test.sh
+
+      - name: Merge-approval golden test (merge.approval holds every PR on `owner` and on any value it does not know, #740)
+        run: ./tests/merge-approval/test.sh
 
       - name: Run-all-tests golden test (the three exits, and no drift from this file)
         run: ./tests/run-all-tests/test.sh

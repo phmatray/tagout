@@ -95,6 +95,7 @@ contend for one path. Keep it small and current:
 - #<n> replan (assigned <login>)
 ## Held for owner
 - #<n> → PR #<pr> — one-way door: <paths>
+- #<n> → PR #<pr> — owner approval (profile)
 ## Off-scope issues filed by workers
 - #<n> — <title> (label) from #<source>
 ## Skipped (ineligible: no-plan / manual-QA)
