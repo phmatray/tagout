@@ -44,6 +44,19 @@ run "$GUARD" -C "$R" --branch "$B" 42
 grep -q "guarded-ready: OK — review recorded at $HEAD_SHA" "$OUT" || fail ok "missing OK line"
 grep -qx "pr ready 42" "$WORK/gh.log" || fail ok "gh not called with 'pr ready 42'"
 
+# -C decides the host, not the cwd (#751): run from a GitLab-profiled directory, the guard still
+# reaches the -C repository's tracker (no profile there → GitHub), and glab is never called.
+GL="$WORK/gitlab-cwd"
+mkdir -p "$GL/.claude/skills"
+git init -q "$GL"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** gitlab (gitlab.com)' > "$GL/.claude/skills/repo-profile.md"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s/glab.log"\nexit 1\n' "$WORK" > "$WORK/bin/glab"; chmod +x "$WORK/bin/glab"
+: > "$WORK/gh.log"
+OUT="$WORK/out"; set +e; (cd "$GL" && "$GUARD" -C "$R" --branch "$B" 43) > "$OUT" 2>&1; RC=$?; set -e
+[ "$RC" -eq 0 ] || fail other-cwd "expected exit 0 from a foreign cwd, got $RC"
+grep -qx "pr ready 43" "$WORK/gh.log" || fail other-cwd "gh not called with 'pr ready 43'"
+[ ! -s "$WORK/glab.log" ] || fail other-cwd "the cwd's GitLab profile leaked into the -C repository's flip"
+
 # usage errors -> 2
 run "$GUARD" --branch "$B" 42;          [ "$RC" -eq 2 ] || fail usage "missing -C: got $RC"
 run "$GUARD" -C "$R" 42;                [ "$RC" -eq 2 ] || fail usage "missing --branch: got $RC"

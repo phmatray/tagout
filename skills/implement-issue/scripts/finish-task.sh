@@ -8,6 +8,9 @@
 # every turn re-reads the whole context. Measured average: 127 turns per run. This is the same
 # sequence, in the same order Step 6 prescribes (commit → tick → mirror → push), in one turn.
 #
+# The issue plan and the PR mirror are read and written through scripts/tracker.sh (#751), so the
+# same stages run on GitHub, GitLab and Azure DevOps.
+#
 # It composes the existing guards and never bypasses one: the commit goes through
 # guarded-commit.sh, the issue write through tick-plan.sh (fail-closed, read-back verified), the
 # push through guarded-push.sh. Each stage's exit code is this script's exit code, prefixed with
@@ -22,7 +25,8 @@
 #                 once, by skills/_shared/scripts/_gh-host.sh (#514), and tick-plan.sh inherits it
 #   --task        the `### Task <k>` block whose `- [ ]` lines are flipped — only that block
 #   --pr          the PR whose body carries the `### Plan` mirror; omitted → the mirror is skipped
-#   --comment-id  the plan lives in that comment, not the issue body (older issues)
+#   --comment-id  the plan lives in that comment, not the issue body (older issues) — a GitHub-only
+#                 shape, refused with nothing sent on any other tracker (#751)
 #   -c            forwarded to guarded-commit.sh (commit identity), repeatable
 #   -m            the commit message; default: the task's last step, `Commit: \`…\``
 #   --dry-run     print what each stage would do; write nothing anywhere
@@ -79,8 +83,22 @@ GH_HOST_LIB="$HERE/../../_shared/scripts/_gh-host.sh"
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve >/dev/null 2>&1 \
   || { echo "$TOOL: REFUSED — cannot load $GH_HOST_LIB; reinstall the kit" >&2; exit 64; }
-gh_host_resolve "$REPO" || exit 64
-REPO="$KIT_REPO_SLUG"
+
+# The issue plan and the PR mirror travel through the tracker contract (#751), run from the
+# worktree so the profile that names the tracker is the repository's own, whatever the caller's cwd.
+TRACKER_SH="$HERE/../../../scripts/tracker.sh"
+[ -x "$TRACKER_SH" ] || { echo "$TOOL: REFUSED — cannot find $TRACKER_SH; reinstall the kit" >&2; exit 64; }
+trk() { ( cd "$WORKTREE" 2>/dev/null || true; "$TRACKER_SH" "$@" ); }
+TRACKER_NAME=$(trk state implement-issue 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+[ -n "$TRACKER_NAME" ] || { echo "$TOOL: REFUSED — tracker.sh state could not name the tracker" >&2; exit 64; }
+
+if [ "$TRACKER_NAME" = github ]; then
+  gh_host_resolve "$REPO" || exit 64
+  REPO="$KIT_REPO_SLUG"
+elif [ -n "$COMMENT_ID" ]; then
+  echo "$TOOL: REFUSED — a plan hosted in a comment is a GitHub-only shape (#750); move the plan into the issue body. Nothing sent" >&2
+  exit 64
+fi
 
 WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
 
@@ -135,9 +153,19 @@ extract_creates() {  # extract_creates <plan.md> ; prints one create-or-new path
 }
 
 # --- stage 0: the plan, and the message ---------------------------------------------------------
-if [ -n "$COMMENT_ID" ]; then endpoint="repos/$REPO/issues/comments/$COMMENT_ID"; else endpoint="repos/$REPO/issues/$ISSUE"; fi
-gh api "$endpoint" --jq .body > "$WORK/plan.orig.md" \
-  || { echo "$TOOL: plan: could not read $endpoint" >&2; exit 1; }
+if [ -n "$COMMENT_ID" ]; then
+  # GitHub only (refused above on any other tracker).
+  endpoint="repos/$REPO/issues/comments/$COMMENT_ID"
+  gh api "$endpoint" --jq .body > "$WORK/plan.orig.md" \
+    || { echo "$TOOL: plan: could not read $endpoint" >&2; exit 1; }
+else
+  endpoint="$TRACKER_NAME issue #$ISSUE"
+  [ "$TRACKER_NAME" = github ] && endpoint="repos/$REPO/issues/$ISSUE"
+  trk --repo "$REPO" issue-view "$ISSUE" > "$WORK/issue.json" \
+    || { echo "$TOOL: plan: could not read $endpoint" >&2; exit 1; }
+  jq -r '.body // ""' "$WORK/issue.json" > "$WORK/plan.orig.md" \
+    || { echo "$TOOL: plan: $endpoint did not answer JSON" >&2; exit 1; }
+fi
 task_present "$WORK/plan.orig.md" \
   || { echo "$TOOL: plan: no '### Task $TASK' block in the plan (issue #$ISSUE${COMMENT_ID:+, comment $COMMENT_ID})" >&2; exit 65; }
 flipped=$(flip_task "$WORK/plan.orig.md" "$WORK/plan.md")
@@ -196,21 +224,24 @@ fi
 if [ "$flipped" -eq 0 ]; then
   echo "$TOOL: tick: Task $TASK has no unticked box — already ticked"
 else
-  "$HERE/tick-plan.sh" --repo "$REPO" --issue "$ISSUE" ${COMMENT_ID:+--comment-id "$COMMENT_ID"} \
-      --before "$WORK/plan.orig.md" --after "$WORK/plan.md" \
+  ( cd "$WORKTREE" 2>/dev/null || true
+    "$HERE/tick-plan.sh" --repo "$REPO" --issue "$ISSUE" ${COMMENT_ID:+--comment-id "$COMMENT_ID"} \
+      --before "$WORK/plan.orig.md" --after "$WORK/plan.md" ) \
     || { rc=$?; echo "$TOOL: tick: tick-plan.sh exited $rc" >&2; exit "$rc"; }
 fi
 
 # --- stage 3: the PR's `### Plan` mirror — one `- [ ] Task <k>: <name>` line per task (Step 5) ----
 if [ -n "$PR" ]; then
-  gh pr view "$PR" --repo "$REPO" --json body --jq .body > "$WORK/pr.orig.md" \
+  trk --repo "$REPO" pr-view "$PR" > "$WORK/pr.json" \
     || { echo "$TOOL: mirror: could not read PR #$PR" >&2; exit 1; }
+  jq -r '.body // ""' "$WORK/pr.json" > "$WORK/pr.orig.md" \
+    || { echo "$TOOL: mirror: PR #$PR did not answer JSON" >&2; exit 1; }
   if grep -qE "^[[:space:]]*- \[[ x]\] Task ${TASK}([: ]|\$)" "$WORK/pr.orig.md"; then
     if grep -qE "^[[:space:]]*- \[ \] Task ${TASK}([: ]|\$)" "$WORK/pr.orig.md"; then
       sed -E "s/^([[:space:]]*)- \[ \] Task ${TASK}([: ]|\$)/\1- [x] Task ${TASK}\2/" "$WORK/pr.orig.md" > "$WORK/pr.md"
       [ -s "$WORK/pr.md" ] || { echo "$TOOL: mirror: refusing to write an empty PR body" >&2; exit 1; }
-      gh pr edit "$PR" --repo "$REPO" --body-file "$WORK/pr.md" >/dev/null \
-        || { rc=$?; echo "$TOOL: mirror: gh pr edit exited $rc" >&2; exit "$rc"; }
+      trk --repo "$REPO" pr-edit-body "$PR" --body-file "$WORK/pr.md" >/dev/null \
+        || { rc=$?; echo "$TOOL: mirror: pr-edit-body exited $rc" >&2; exit "$rc"; }
       echo "$TOOL: mirror: PR #$PR — Task $TASK ticked"
     else
       echo "$TOOL: mirror: PR #$PR already shows Task $TASK ticked"

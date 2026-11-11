@@ -37,7 +37,16 @@ case "$*" in
     f=""; prev=""; for a in "$@"; do [ "$prev" = "--input" ] && f="$a"; prev="$a"; done
     jq -r .body < "$f" > "$GH_ISSUE"; exit 0 ;;
   "api repos/"*"--jq .body")   cat "$GH_ISSUE" ;;
-  "pr view"*)                  cat "$GH_PR" ;;
+  # The body path and the PR mirror go through the tracker contract's github backend (#751):
+  # `issue edit --body-file` / `issue view --json`, and `pr view --json`, answered as gh's JSON.
+  "issue edit"*)
+    f=""; prev=""; for a in "$@"; do [ "$prev" = "--body-file" ] && f="$a"; prev="$a"; done
+    cp "$f" "$GH_ISSUE" ;;
+  "issue view"*)
+    jq -Rs '{number: 42, title: "t", state: "OPEN", url: "u", labels: [], body: .}' < "$GH_ISSUE" ;;
+  "pr view"*)
+    jq -Rs '{number: 7, title: "t", url: "u", state: "OPEN", isDraft: true, body: ., headRefName: "fix/42",
+             baseRefName: "main", headRefOid: "x", author: {login: "a"}}' < "$GH_PR" ;;
   "pr edit"*)
     f=""; prev=""; for a in "$@"; do [ "$prev" = "--body-file" ] && f="$a"; prev="$a"; done
     cp "$f" "$GH_PR" ;;
@@ -105,7 +114,7 @@ printf 'more\n' > "$WT/b.txt"
 rc=0; out=$("$FINISH" --repo o/r --issue 42 --task 9 --worktree "$WT" --branch fix/42 2>&1) || rc=$?
 [ "$rc" -eq 65 ] || fail absent "expected exit 65, got $rc — $out"
 [ "$(git -C "$WT" rev-parse HEAD)" = "$before" ] || fail absent-commit "a missing task still produced a commit"
-grep -q 'PATCH\|pr edit' "$GH_LOG" && fail absent-write "a missing task still wrote to GitHub"
+grep -q 'PATCH\|pr edit\|issue edit' "$GH_LOG" && fail absent-write "a missing task still wrote to GitHub"
 echo "  ok: refused by name, no commit, no write"
 
 echo "== 4. the worktree is on another branch: guarded-commit refuses (2) BEFORE any tick =="
@@ -114,7 +123,7 @@ git -C "$WT" checkout -q -b elsewhere
 rc=0; out=$("$FINISH" --repo o/r --issue 42 --task 2 --worktree "$WT" --branch fix/42 2>&1) || rc=$?
 [ "$rc" -eq 2 ] || fail branch "expected guarded-commit's exit 2, got $rc — $out"
 grep -q '^finish-task: commit:' <<<"$out" || fail branch-name "the failing stage must be named: $out"
-grep -q 'PATCH' "$GH_LOG" && fail branch-order "the tick ran although the commit was refused"
+grep -q 'PATCH\|issue edit' "$GH_LOG" && fail branch-order "the tick ran although the commit was refused"
 grep -q '^- \[ \] \*\*Step 2:\*\* Commit: `feat(x): second slice`' "$GH_ISSUE" || fail branch-tick "Task 2 was ticked without a commit"
 echo "  ok: commit refused, stage named, tick never ran"
 
@@ -124,7 +133,7 @@ git -C "$WT" checkout -q fix/42
 out=$("$FINISH" --repo o/r --issue 42 --task 2 --pr 7 --worktree "$WT" --branch fix/42 --dry-run 2>&1) || fail dry "expected exit 0, got $? — $out"
 grep -q 'would commit' <<<"$out" && grep -q 'would flip 2 box' <<<"$out" && grep -q 'would push' <<<"$out" \
   || fail dry-say "dry-run must name the three stages: $out"
-grep -q 'PATCH\|pr edit' "$GH_LOG" && fail dry-write "dry-run wrote to GitHub"
+grep -q 'PATCH\|pr edit\|issue edit' "$GH_LOG" && fail dry-write "dry-run wrote to GitHub"
 porcelain=$(git -C "$WT" status --porcelain)
 grep -q 'b.txt' <<<"$porcelain" || fail dry-commit "dry-run committed the tree"
 echo "  ok: three stages named, nothing written"
@@ -145,11 +154,11 @@ git -C "$CO_GHE" remote add origin git@ghe.example.com:acme/widgets.git
 out=$(cd "$CO_GHE" && GH_STUB_HOSTS=ghe.example.com "$FINISH" --repo acme/widgets --issue 42 --task 2 --pr 7 \
         --worktree "$WT" --branch fix/42 -c user.email=t@t -c user.name=t 2>&1) \
   || fail ghe-origin "expected exit 0, got $? — $out"
-has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 --jq \.body$'
-has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 -X PATCH '
+has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: issue view 42 --repo acme/widgets --json '
+has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: issue edit 42 --repo acme/widgets --body-file '
 has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: pr view 7 --repo acme/widgets '
 has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: pr edit 7 --repo acme/widgets '
-grep -qE '^GH_HOST=<unset> ARGS: (api|pr) ' "$GH_LOG" && fail ghe-origin-all "a call ran without the host: $(cat "$GH_LOG")"
+grep -qE '^GH_HOST=<unset> ARGS: (api|pr|issue) ' "$GH_LOG" && fail ghe-origin-all "a call ran without the host: $(cat "$GH_LOG")"
 echo "  ok: read, PATCH, read-back, pr view and pr edit all ran under GH_HOST=ghe.example.com"
 
 echo "== 7. --repo HOST/OWNER/REPO: OWNER/REPO reaches every call, and tick-plan inherits the host =="
@@ -163,9 +172,9 @@ git init -q "$CO_NONE"
 out=$(cd "$CO_NONE" && "$FINISH" --repo ghe.example.com/acme/widgets --issue 42 --task 3 --pr 7 \
         --worktree "$WT" --branch fix/42 2>&1) \
   || fail ghe-prefix "expected exit 0, got $? — $out"
-has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 -X PATCH '
+has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: issue edit 42 --repo acme/widgets --body-file '
 has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: pr edit 7 --repo acme/widgets '
-grep -qE '^GH_HOST=<unset> ARGS: (api|pr) ' "$GH_LOG" && fail ghe-prefix-all "a call ran without the host: $(cat "$GH_LOG")"
+grep -qE '^GH_HOST=<unset> ARGS: (api|pr|issue) ' "$GH_LOG" && fail ghe-prefix-all "a call ran without the host: $(cat "$GH_LOG")"
 grep -q 'ghe\.example\.com/acme' "$GH_LOG" && fail ghe-prefix-slug "the host leaked into a repository argument: $(cat "$GH_LOG")"
 echo "  ok: every call got acme/widgets under GH_HOST=ghe.example.com, the spawned tick-plan's PATCH included"
 
@@ -251,5 +260,20 @@ grep -qF "malformed repository slug 'acme'" <<<"$out" || fail symlink-say "the r
 grep -qF 'cannot load' <<<"$out" && fail symlink-broken "refused to load _gh-host.sh even though it exists at the real kit root: $out"
 [ ! -s "$GH_LOG" ] || fail symlink-call "gh was called for a malformed slug: $(cat "$GH_LOG")"
 echo "  ok: reached through a symlinked script, the real kit root (not the symlink's) is resolved"
+
+echo "== 15. a comment-hosted plan on GitLab is refused by name, nothing sent (#751) =="
+GL_WT="$WORK/gl-wt"
+mkdir -p "$GL_WT/.claude/skills"
+git init -q "$GL_WT"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** gitlab (gitlab.com)' \
+  > "$GL_WT/.claude/skills/repo-profile.md"
+export GLAB_LOG="$WORK/glab.log"; : > "$GLAB_LOG"
+printf '#!/usr/bin/env bash\necho "$*" >> "$GLAB_LOG"\nexit 1\n' > "$WORK/bin/glab"; chmod +x "$WORK/bin/glab"
+: > "$GH_LOG"
+rc=0; out=$("$FINISH" --repo g/p --issue 42 --task 2 --comment-id 5 --worktree "$GL_WT" --branch fix/42 2>&1) || rc=$?
+[ "$rc" -ne 0 ] || fail gitlab-comment "a comment plan on GitLab was not refused — $out"
+grep -qF 'a plan hosted in a comment is a GitHub-only shape (#750)' <<<"$out" || fail gitlab-comment-say "the refusal must name the shape: $out"
+[ ! -s "$GH_LOG" ] && [ ! -s "$GLAB_LOG" ] || fail gitlab-comment-call "a host was called: $(cat "$GH_LOG" "$GLAB_LOG")"
+echo "  ok: refused by name, no gh call, no glab call"
 
 echo "finish-task golden test: all cases behaved as specified"
