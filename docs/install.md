@@ -18,10 +18,13 @@ Every command below carries a copy button; the full capability table is on [Plat
 ## Plugin hosts
 
 {% for host in plugin_hosts %}
+{%- assign lines = host.install -%}
+{%- if host.addon %}{% assign lines = lines | concat: host.addon %}{% endif %}
+
 ### {{ host.name }}
 
 ```bash
-{{ host.install | join: "
+{{ lines | join: "
 " }}
 ```
 

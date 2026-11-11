@@ -6,12 +6,11 @@
       <span>Tagout</span>
     </a>
     <nav class="kit-topnav" aria-label="Site">
-      <a href="{{ '/methodology.html' | relative_url }}"{% if page.url == '/methodology.html' %} aria-current="page"{% endif %}>Methodology</a>
-      <a href="{{ '/install.html' | relative_url }}"{% if page.url == '/install.html' %} aria-current="page"{% endif %}>Install</a>
-      <a href="{{ '/platforms.html' | relative_url }}"{% if page.url == '/platforms.html' %} aria-current="page"{% endif %}>Platforms</a>
-      <a href="{{ '/journal/' | relative_url }}"{% if page.url contains '/journal/' %} aria-current="page"{% endif %}>Journal</a>
+      <a href="{{ '/install.html' | relative_url }}"{% if page.url == '/install.html' %} aria-current="page"{% endif %}>Get started</a>
+      <a href="{{ '/methodology.html#when-to-call-which-skill' | relative_url }}"{% if page.url == '/methodology.html' %} aria-current="page"{% endif %}>Commands</a>
+      <a href="{{ '/migrate.html' | relative_url }}"{% if page.url == '/migrate.html' %} aria-current="page"{% endif %}>.NET add-on</a>
       <a class="kit-topnav-docs" href="{% if page.url == "/" %}{{ '/methodology.html' | relative_url }}{% else %}#site-nav{% endif %}">Docs</a>
-      <a class="kit-topnav-github" href="https://github.com/phmatray/tagout" rel="noopener">GitHub</a>
+      <a class="kit-topnav-github kit-star" href="https://github.com/phmatray/tagout" rel="noopener">Star<span class="kit-star-word"> on GitHub</span></a>
       <button type="button" class="kit-scheme-toggle" aria-pressed="false"><span class="kit-scheme-off">Dark<span class="kit-scheme-word"> scheme</span></span><span class="kit-scheme-on">Light<span class="kit-scheme-word"> scheme</span></span></button>
     </nav>
   </div>

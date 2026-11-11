@@ -641,6 +641,9 @@ jobs:
       - name: Survey golden test (effort tiers by the manifest's own vocabulary, not S/M/L)
         run: ./tests/survey/test.sh
 
+      - name: Site-figures golden test (the home page's figures from a stubbed tracker, refusing when nothing was delivered, #788)
+        run: ./tests/site-figures/test.sh
+
       - name: Wire-edges golden test (sub-issue and blocked_by edges, 404 = text fallback, #315)
         run: ./tests/wire-edges/test.sh
 

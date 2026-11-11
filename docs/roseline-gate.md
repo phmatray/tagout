@@ -1,6 +1,7 @@
 ---
 title: The roseline gate
 nav_order: 5
+nav_group: internals
 ---
 
 # The roseline gate

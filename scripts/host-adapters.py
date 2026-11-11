@@ -394,7 +394,7 @@ def invariants(repo, files):
         if not adapter or not (repo / adapter).exists():
             refusals.append(f"REFUSE: {HOSTS} host {hid} names adapter {adapter!r}, which does not exist")
         if host.get("tier") == "plugin":
-            for line in host.get("install", []):
+            for line in host.get("install", []) + (host.get("addon") or []):
                 if line not in readme:
                     refusals.append(f"REFUSE: README.md does not carry {hid}'s install line: {line}")
 
@@ -485,7 +485,7 @@ def plugin_invariants(repo, files):
                 refusals.append(f"REFUSE: {plugin} ships skills/{name}, which belongs to "
                                 f"{(expected - {plugin}).pop()} — the two plugins are disjoint")
     hosts_install = " ".join(line for host in load_hosts(repo) if host.get("tier") == "plugin"
-                             for line in host.get("install", []))
+                             for line in host.get("install", []) + (host.get("addon") or []))
     for plugin in PLUGINS:
         root = repo / plugin
         if not root.is_dir():

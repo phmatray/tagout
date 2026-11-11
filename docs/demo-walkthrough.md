@@ -1,6 +1,7 @@
 ---
 title: Demo walkthrough
 nav_order: 7
+nav_group: internals
 ---
 
 # Demo Walkthrough — LegacyShop, net6.0 → net10.0
