@@ -36,7 +36,8 @@ else
           kind=DRAFT; state=DRAFT
         else
           kind=READY; state=$mstate   # "-" is a null (a tab-read cannot hold an empty field)
-          [ "$state" != - ] || state=$("$TRACKER" pr-merge-state "$n" 2>/dev/null </dev/null | jq -r '.mergeStateStatus // "UNKNOWN"' 2>/dev/null) || state=""
+          # A list can answer UNKNOWN for a mergeability not yet computed; pr-merge-state recomputes it.
+          { [ "$state" != - ] && [ "$state" != UNKNOWN ]; } || state=$("$TRACKER" pr-merge-state "$n" 2>/dev/null </dev/null | jq -r '.mergeStateStatus // "UNKNOWN"' 2>/dev/null) || state=""
           [ -n "$state" ] || state=UNKNOWN
         fi
         printf '#%s\t%s\t%s\t%s\t%s\n' "$n" "$kind" "$state" "$branch" "$title"
