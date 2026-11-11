@@ -738,7 +738,8 @@ grep -q 'bucket: null' skills/merge-pr/scripts/base-run-verdict.sh \
   && { echo "FAIL [fallback-bucket]: the fallback maps bucket: null again"; exit 1; }
 grep -q 'bucket: (\$s | bucket)' skills/merge-pr/scripts/base-run-verdict.sh \
   || { echo "FAIL [fallback-bucket]: the fallback does not bucket through the shared rule"; exit 1; }
-if grep -l "^JQ_BUCKET=" scripts/tracker/*.sh | grep -qv '/_bucket.sh$'; then
+hits=$(grep -l "^JQ_BUCKET=" scripts/tracker/*.sh || true)
+if [ -n "$hits" ] && grep -qv '/_bucket.sh$' <<<"$hits"; then
   echo "FAIL [fallback-bucket]: JQ_BUCKET is defined outside scripts/tracker/_bucket.sh"; exit 1; fi
 got=$(. scripts/tracker/_bucket.sh; printf '%s' '["success","failure","in_progress","cancelled"]' \
   | jq -c "$JQ_BUCKET"'map(bucket)')
