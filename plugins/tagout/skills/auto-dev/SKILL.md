@@ -42,7 +42,7 @@ The value is the orchestration a naive "run them in a loop" lacks:
 The user starts this and walks away — they watch a backlog drain, they don't approve each step. Run
 **hands-off**: pick the reasonable default, state it, keep going. Stop only for genuine blockers:
 
-- `gh` is unauthenticated, or you lack push/merge rights.
+- The tracker is unauthenticated (`"<kit>/scripts/tracker.sh" auth` fails), `tracker.capable` answers anything but `capable` for auto-dev, or you lack push/merge rights.
 - **No eligible issues** (queue empty after filtering) — report the backlog drained.
 - A worker's honest hard blocker (tests it can't green, a both-sides-rewrote-the-same-logic conflict, a required approval it can't self-give). Surface it; don't force a merge.
 
@@ -82,10 +82,10 @@ your context. Rely on the report + GitHub ground truth.
 
 Track these as todos. Steps 4–6 are the long-running supervision loop.
 
-1. **Preconditions & profile** — `gh` works; load the repo profile via `init`.
+1. **Preconditions & profile** — `"<kit>/scripts/tracker.sh" auth` works and `tracker.capable` answers `capable` for auto-dev; load the repo profile via `init`.
 2. **Build the work queue** — survey open issues, filter to eligible, order small→medium, persist a state file.
 3. **Dispatch the first N workers** — area-isolated, using the worker-prompt contract.
-4. **Supervise (loop)** — on every report / idle notification: reconcile against GitHub, re-drive any merge stalled at "ready", retire merged workers, refill slots from the queue; **re-survey the backlog (Step 2) when the cadence decision says so**.
+4. **Supervise (loop)** — on every report / idle notification: reconcile against the tracker, re-drive any merge stalled at "ready", retire merged workers, refill slots from the queue; **re-survey the backlog (Step 2) when the cadence decision says so**.
 5. **Heartbeat** — keep a self-paced wakeup armed (via `loop`) as the safety net; poll CI only while actively driving a merge.
 6. **Stop & recap** — when the queue drains (or the user stops), let the last workers finish, then close with the shared recap shape: merged PRs, filed follow-ups, anything blocked.
 
@@ -136,7 +136,7 @@ that frees. Hold the line at N unless told otherwise.
 
 - **"Ready" is not "merged."** Throughput is gated on actually *landing* PRs; the #1 stall is idling at ready. Verify merge state on the tracker on every signal; re-drive or take over.
 - **A worker idling at "ready" is usually YOUR bug, not its judgement.** If you dispatched phase 2 while CI was still pending, the sub-agent had no winning move — it backgrounded a watch, ended its turn, and returned a deferral. Wait for CI yourself first (`scripts/wait-ci.sh`), then dispatch. Cost five lost workers in one run before it was diagnosed; the fix took merges to 17–55 s. See Step 3.
-- **Don't read a worker's transcript** — it overflows your context. Use its structured report + `gh`.
+- **Don't read a worker's transcript** — it overflows your context. Use its structured report + the tracker (`scripts/reconcile.sh`).
 - **One area per concurrent worker** — the entire conflict strategy. If the next-queued issue shares an area with an in-flight one, skip down to a disjoint area (note the reorder).
 - **A worktree destroyed mid-run does not fail — it silently becomes the user's checkout** (#469). The worktree home `.claude/worktrees/` sits inside the main checkout, so when a tree is `rm -rf`ed and re-created (shape B) git's upward discovery walks out of it and `git rev-parse --show-toplevel` answers the PARENT, exit 0, no warning; only a pruned admin record with the directory surviving (shape A) fails loudly. Measured 2026-09-05 on a journal-backfill run: the worker for #447 lost its tree mid-run and kept going in the main checkout; the only thing that caught it was `assert_branch` refusing the commit, by luck (HEAD there was `main`), with the wrong diagnosis. `git worktree prune` skips locked trees and the three locked siblings survived — that is the lead; the sweeper was NOT identified. The shared guard now refuses a guarded write from a relocated tree by name (`assert_worktree_live`), so a worker's alertness is no longer the only thing standing there.
 - **A background sub-agent inherits the supervisor's cwd — it does not get one of its own** (#314, #412). A supervisor running in a worktree that dispatches without Step 3's `isolation: "worktree"` puts every worker in that SAME tree: nothing in `survey.sh` or `reconcile.sh` can see this, because neither queries a worktree or maps a PR back to one — a worker's own good judgement is the only thing that ever caught it. Always pass `isolation: "worktree"` on both spawns (Step 3); a worker that somehow lands without it is refused by the first-act toplevel assertion before it edits anything.

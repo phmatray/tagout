@@ -1276,11 +1276,13 @@ FIXTURE_GH_AD="$WORK/auto-dev-gh-fixture"
 mkdir -p "$FIXTURE_GH_AD"
 cp "$KIT_ROOT/skills/auto-dev/scripts/reconcile.sh" "$FIXTURE_GH_AD/"
 printf '\ngh pr list --state open --json number\n' >> "$FIXTURE_GH_AD/reconcile.sh"
-fixture_gh_out=$(d4_grep "$FIXTURE_GH_AD/reconcile.sh" /dev/null)
-if ! grep -Fq 'reconcile.sh' <<<"$fixture_gh_out"; then
+cp "$KIT_ROOT/skills/auto-dev/scripts/survey.sh" "$FIXTURE_GH_AD/"
+printf '\nISSUES_JSON=$(gh issue list --state open --json number)\n' >> "$FIXTURE_GH_AD/survey.sh"
+fixture_gh_out=$(d4_grep "$FIXTURE_GH_AD/reconcile.sh" "$FIXTURE_GH_AD/survey.sh")
+if ! grep -Fq 'reconcile.sh' <<<"$fixture_gh_out" || ! grep -Fq 'survey.sh' <<<"$fixture_gh_out"; then
   note_fail "D4 fixture — a reintroduced 'gh pr list' line was not named: '$fixture_gh_out'"
 else
-  ok "D4 fixture — a direct gh pr list reintroduced into reconcile.sh fails the guard, named"
+  ok "D4 fixture — a direct gh pr list in reconcile.sh and gh issue list in survey.sh each fail the guard, named"
 fi
 real_gh_out=$(d4_grep "$KIT_ROOT/skills/auto-dev/scripts/survey.sh" "$KIT_ROOT/skills/auto-dev/scripts/reconcile.sh")
 if [ -n "$real_gh_out" ]; then

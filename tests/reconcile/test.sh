@@ -39,6 +39,7 @@ case "$1 $2" in
                   {"number":7,"title":"t","url":"x","state":"OPEN","isDraft":false,"headRefName":"feat/x","body":"","mergedAt":null},
                   {"number":8,"title":"v","url":"x","state":"OPEN","isDraft":false,"headRefName":"feat/z","body":"","mergedAt":null}]' ;;
       *"--state merged"*)
+        [ -z "${GH_MERGED_FAIL:-}" ] || { echo "HTTP 502" >&2; exit 1; }
         payload='[{"number":5,"title":"t","url":"x","state":"MERGED","isDraft":false,"headRefName":"feat/w","body":"","mergedAt":"2026-11-01T00:00:00Z"}]' ;;
       *) echo "gh stub: unexpected pr list: $*" >&2; exit 1 ;;
     esac ;;
@@ -82,6 +83,14 @@ grep -Fq "(tracker.sh pr-list failed — exit 1)" <<<"$OUT" \
 $OUT"
 grep -Fxq "#5${TAB}2026-11-01T00:00:00Z${TAB}t" <<<"$OUT" \
   && ok "the merged section still prints after the open list failed" || fail "merged section lost:
+$OUT"
+
+rc=0; GH_MERGED_FAIL=1 run || rc=$?
+[ "$rc" -eq 0 ] && grep -Fq "(tracker.sh pr-list failed — exit 1)" <<<"$(awk '/^== RECENTLY/{f=1} f' <<<"$OUT")" \
+  && ok "a failed merged pr-list prints a named line under its header, exit 0" || fail "merged-fail (rc $rc):
+$OUT"
+grep -Fxq "#7${TAB}READY${TAB}CLEAN${TAB}feat/x${TAB}t" <<<"$OUT" \
+  && ok "the open section still prints when the merged list failed" || fail "open section lost:
 $OUT"
 
 [ "$FAILED" -eq 0 ] || exit 1

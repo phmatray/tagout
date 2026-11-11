@@ -29,7 +29,8 @@ if [ "$rc" -ne 0 ]; then
   echo "(tracker.sh pr-list failed — exit $rc)"
 else
   # ponytail: one pr-merge-state per ready PR — add a mergeStateStatus field to pr-list if a repo with many ready PRs makes the wake slow
-  printf '%s' "$open" | jq -r '.[] | [.number, .isDraft, .headBranch, .title] | @tsv' \
+  # join, not @tsv: @tsv escapes a backslash in a title and `read -r` would print it doubled.
+  { printf '%s' "$open" | jq -r '.[] | [.number, .isDraft, .headBranch, .title] | map(tostring) | join("\t")' \
     | while IFS="$(printf '\t')" read -r n draft branch title; do
         if [ "$draft" = true ]; then
           kind=DRAFT; state=DRAFT
@@ -39,7 +40,7 @@ else
           [ -n "$state" ] || state=UNKNOWN
         fi
         printf '#%s\t%s\t%s\t%s\t%s\n' "$n" "$kind" "$state" "$branch" "$title"
-      done | sort -t '#' -k2 -n
+      done | sort -t '#' -k2 -n; } || echo "(tracker.sh pr-list printed unreadable output)"
 fi
 
 echo
@@ -49,5 +50,6 @@ merged=$("$TRACKER" pr-list --state merged --limit 10) || rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "(tracker.sh pr-list failed — exit $rc)"
 else
-  printf '%s' "$merged" | jq -r '.[] | "#\(.number)\t\(.mergedAt)\t\(.title)"'
+  printf '%s' "$merged" | jq -r '.[] | "#\(.number)\t\(.mergedAt)\t\(.title)"' \
+    || echo "(tracker.sh pr-list printed unreadable output)"
 fi

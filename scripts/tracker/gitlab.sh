@@ -485,19 +485,22 @@ case "$VERB" in
     # Edges come from each issue's links: is_blocked_by fills blockedBy, blocks fills blocking. A 403
     # on the first read is a tier without linked issues (issue-blocked-by-count's rule): every edge
     # is then null, said once on stderr, never a failed survey.
-    edges='{}'; nolinks=0
+    edges='{}'; nolinks=0; first=1
     # ponytail: one links read per open issue — GitLab's list carries no blocked-by edges
     for n in $(printf '%s' "$issues" | jq -r '.[].iid'); do
       if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
         # Kept to the three fields read below: a link carries the whole linked issue, description too.
         edges=$(printf '%s\n%s' "$edges" "$out" | jq -sc --arg n "$n" \
           '.[0] + {($n): [.[1][] | {iid, state, link_type}]}') || exit 1
-      elif grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
+      elif [ "$first" -eq 1 ] && grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
         echo "gitlab: issue-list: this tier has no linked issues (HTTP 403 on links) — every edge reads null, so the frontier rule holds nothing" >&2
         nolinks=1; break
       else
+        # A 403 past the first read is one issue refusing, not a tier without links: nulling every
+        # edge already read would fail OPEN, so it is a failed read.
         echo "gitlab: issue-list: $out" >&2; exit 1
       fi
+      first=0
     done
     printf '%s\n%s' "$issues" "$edges" | jq -sc --argjson nolinks "$nolinks" '
       .[1] as $e | .[0] |
