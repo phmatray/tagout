@@ -1610,12 +1610,18 @@ if "undecided" not in _users:
 # stale the day its host's row changes, and nothing else notices. Install shows the rule-file
 # hosts' shared clone line once, then each one's last line, so each such row has exactly that shape.
 hosts = yaml.safe_load((docs / "_data" / "hosts.yml").read_text(encoding="utf-8"))
-for page in ("index.md", "install.md", "platforms.md"):
+for page in ("index.md", "install.md", "platforms.md", "migrate.md"):
     ptext = (docs / page).read_text(encoding="utf-8")
     for host in hosts:
-        for line in host.get("install") or []:
+        for line in (host.get("install") or []) + (host.get("addon") or []):
             if line in ptext or html.escape(line, quote=False) in ptext:
                 print("FAIL: docs/" + page + " types " + host["id"] + "'s install command instead of rendering it from docs/_data/hosts.yml: " + line); sys.exit(1)
+_cc = next(h for h in hosts if h["id"] == "claude-code")
+if any("tagout-migrate" in line for line in _cc.get("install") or []):
+    print("FAIL: docs/_data/hosts.yml lists tagout-migrate in claude-code's install — the add-on line belongs in addon, so the home picker installs the lifecycle only"); sys.exit(1)
+for page in ("install.md", "migrate.md"):
+    if "addon" not in (docs / page).read_text(encoding="utf-8"):
+        print("FAIL: docs/" + page + " does not render host.addon"); sys.exit(1)
 rules = [h for h in hosts if h.get("tier") == "rules"]
 for host in rules:
     if len(host.get("install") or []) != 2 or host["install"][0] != rules[0]["install"][0]:

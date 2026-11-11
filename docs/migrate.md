@@ -10,7 +10,7 @@ nav_order: 2.5
 `tagout-migrate` takes a legacy .NET application to verified production with the seven-phase `/migrate` pipeline. RoselineMCP does every C# analysis and edit, so it needs the .NET 10 SDK. It installs next to `tagout`, the issue → pull request lifecycle:
 
 ```bash
-{{ claude_code.install | join: "
+{{ claude_code.install | concat: claude_code.addon | join: "
 " }}
 ```
 
