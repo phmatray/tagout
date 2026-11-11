@@ -1335,3 +1335,28 @@ run_survey "$W1" "$F17" "$O17"
 got17=$(grep -F "$(printf '\t#1701\t')" "$O17" || true)
 [ "$got17" = "$WANT17" ] || { echo "FAIL: the GitHub row for #1701 differs"; echo "want: $WANT17"; echo "got:  $got17"; exit 1; }
 echo "ok: same-row — a GitHub issue's labels and body give the expected QUEUE row"
+
+# The Azure DevOps half: the same issue as a work item — tags `effort: small; area: skills`, the
+# same body — served by an `az` stub to a checkout whose profile names azure-devops.
+W17="$WORK/same-row-azure"
+mkdir -p "$W17/.github" "$W17/.claude/skills" "$W17/bin"
+cp "$W1/.github/repo-setup.yml" "$W17/.github/"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** azure-devops (dev.azure.com/acme/Shop) — fixture.' \
+  > "$W17/.claude/skills/repo-profile.md"
+cat > "$W17/bin/az" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "boards query") echo '[{"id":1701}]' ;;
+  "devops invoke") case "$*" in *workitemsbatch*) cat "$AZ_BATCH_FIXTURE" ;; *) echo "az stub: $*" >&2; exit 1 ;; esac ;;
+  *) echo "az stub: unexpected call: $*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$W17/bin/az"
+printf '{"count":1,"value":[{"id":1701,"fields":{"System.Title":"Same row on every host","System.Tags":"effort: small; area: skills","System.Description":"%s"}}]}' \
+  "$PLAN_BODY" > "$W17/batch.json"
+O17A="$WORK/same-row-azure.out"
+( cd "$W17" && env PATH="$W17/bin:$PATH" AZ_BATCH_FIXTURE="$W17/batch.json" bash "$SURVEY" ) > "$O17A" 2>"$O17A.err" \
+  || { echo "FAIL: survey.sh exited $? on an Azure DevOps profile"; cat "$O17A.err"; exit 1; }
+got17a=$(grep -F "$(printf '\t#1701\t')" "$O17A" || true)
+[ "$got17a" = "$WANT17" ] || { echo "FAIL: the Azure DevOps row for #1701 differs from the GitHub one"; echo "want: $WANT17"; echo "got:  $got17a"; exit 1; }
+echo "ok: same-row — the same issue as an Azure DevOps work item gives the GitHub row byte for byte (AC3)"

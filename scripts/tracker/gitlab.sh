@@ -489,7 +489,9 @@ case "$VERB" in
     # ponytail: one links read per open issue — GitLab's list carries no blocked-by edges
     for n in $(printf '%s' "$issues" | jq -r '.[].iid'); do
       if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
-        edges=$(jq -c --arg n "$n" --argjson l "$out" '. + {($n): $l}' <<<"$edges") || exit 1
+        # Kept to the three fields read below: a link carries the whole linked issue, description too.
+        edges=$(printf '%s\n%s' "$edges" "$out" | jq -sc --arg n "$n" \
+          '.[0] + {($n): [.[1][] | {iid, state, link_type}]}') || exit 1
       elif grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
         echo "gitlab: issue-list: this tier has no linked issues (HTTP 403 on links) — every edge reads null, so the frontier rule holds nothing" >&2
         nolinks=1; break
@@ -497,7 +499,8 @@ case "$VERB" in
         echo "gitlab: issue-list: $out" >&2; exit 1
       fi
     done
-    printf '%s' "$issues" | jq -c --argjson e "$edges" --argjson nolinks "$nolinks" '
+    printf '%s\n%s' "$issues" "$edges" | jq -sc --argjson nolinks "$nolinks" '
+      .[1] as $e | .[0] |
       def conn($t): if $nolinks == 1 then null else
         [.[] | select(.link_type == $t)
          | {number: .iid, state: ({"opened": "OPEN", "closed": "CLOSED"}[.state] // null)}]

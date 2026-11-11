@@ -309,7 +309,7 @@ case "$VERB" in
       FULL=1
     else
       err=$(gh "${ARGS[@]}" --json "$BASE_FIELDS,blockedBy,blocking,subIssues,assignees" 2>&1 >/dev/null) || true
-      if printf '%s' "$err" | grep -qi 'unknown json field'; then
+      if grep -qi 'unknown json field' <<<"$err"; then
         echo "github: issue-list: this gh cannot serve the dependency fields (blockedBy/blocking/subIssues) — falling back to $BASE_FIELDS. Every edge then reads null, so the frontier rule holds NOTHING and a blocked child can be dispatched ahead of its blocker (#317). Upgrade gh to restore it. gh said: $(printf '%s' "$err" | tr '\n' ' ')" >&2
         out=$(gh "${ARGS[@]}" --json "$BASE_FIELDS") || exit 1
         FULL=0

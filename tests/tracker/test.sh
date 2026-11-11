@@ -929,13 +929,17 @@ else
   note_fail "skills.auto-dev is missing a verb of a skill it drives (or is absent)"
 fi
 
-for host_want in github:capable/github-reference azure-devops:missing/verb-not-implemented; do
-  run_tracker "$PROFILED" --tracker "${host_want%%:*}" state auto-dev
-  got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
-  [ "$got" = "${host_want#*:}" ] \
-    && ok "state auto-dev on ${host_want%%:*} — ${host_want#*:}" \
-    || note_fail "state auto-dev on ${host_want%%:*} — want ${host_want#*:}, got $got"
-done
+run_tracker "$PROFILED" --tracker github state auto-dev
+got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+[ "$got" = capable/github-reference ] && ok "state auto-dev on github — capable/github-reference" \
+  || note_fail "state auto-dev on github — want capable/github-reference, got $got"
+# Every real backend answers both verbs since #753, so "missing" is azure-devops' own report with
+# one auto-dev verb struck from `implements` — the same synthetic A5 uses for merge-pr.
+run_tracker "$PROFILED" --tracker azure-devops state auto-dev
+got=$(printf '%s' "$OUT" | jq -c '.implements -= ["issue-list"]' \
+  | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+[ "$got" = missing/verb-not-implemented ] && ok "state auto-dev, a backend lacking issue-list — missing/verb-not-implemented" \
+  || note_fail "state auto-dev, a backend lacking issue-list — want missing/verb-not-implemented, got $got"
 
 echo "== B. the state report, and the tracker.capable verdict"
 
@@ -2093,6 +2097,7 @@ case "${1-} ${2-}" in
     printf '%s' "${AZ_WI_SHOW_JSON:-$default_wi_show}"
     exit 0 ;;
   "devops invoke") : ;;
+  "account show") echo "${AZ_ACCOUNT_USER:-me@acme.example}"; exit 0 ;;
   "devops project")
     if [ -n "${AZ_PROJECT_FAIL:-}" ]; then
       echo "az stub: ERROR: Please run 'az login' to setup account." >&2
@@ -2133,6 +2138,15 @@ case "$resource $http_method" in
   "tags GET")
     printf '%s' "${AZ_TAGS_JSON:-$default_tags}"
     ;;
+  # #753: issue-list's batch read. Each call's id count is appended to $AZ_BATCH_SIZES; the reply is
+  # $AZ_BATCH_JSON, or one bare work item per id in the --in-file.
+  "workitemsbatch POST")
+    [ -z "${AZ_BATCH_FAIL:-}" ] || fail 500 "workitemsbatch"
+    inf=""; prev=""
+    for a in "$@"; do [ "$prev" = --in-file ] && inf="$a"; prev="$a"; done
+    [ -n "${AZ_BATCH_SIZES:-}" ] && jq '.ids | length' "$inf" >> "$AZ_BATCH_SIZES"
+    if [ -n "${AZ_BATCH_JSON:-}" ]; then printf '%s' "$AZ_BATCH_JSON"
+    else jq -c '{value: [.ids[] | {id: ., fields: {"System.Title": "t\(.)"}}]}' "$inf"; fi ;;
   "pullRequests POST") printf '%s' "$default_pr_create" ;;
   "pullRequests PATCH") printf '{}' ;;
   "pullRequestCommits GET") printf '%s' '{"value":[{"commitId":"aaa"},{"commitId":"bbb"}]}' ;;
@@ -2740,6 +2754,54 @@ else
 fi
 out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 [ "$out" = capable ] || note_fail "azure state implement-issue — expected 'capable' still, got '$out'"
+
+echo "== F4. the auto-dev verbs on Azure DevOps (#753)"
+
+PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
+export AZ_QUERY_JSON='[{"id":31},{"id":32}]'
+export AZ_BATCH_JSON='{"count":2,"value":[{"id":32,"fields":{"System.Title":"t32"}},{"id":31,"fields":{"System.Title":"t31","System.Tags":"effort: small; area: skills","System.Description":"<p>b</p>","System.CreatedDate":"2026-11-01T00:00:00Z","System.AssignedTo":{"uniqueName":"ann@acme.example"}},"relations":[{"rel":"System.LinkTypes.Dependency-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/20"},{"rel":"System.LinkTypes.Dependency-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/40"},{"rel":"System.LinkTypes.Hierarchy-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/41"},{"rel":"System.LinkTypes.Related","url":"https://dev.azure.com/acme/_apis/wit/workItems/42"}]}]}'
+pr_case "azure issue-list — open WIQL, then one workitemsbatch POST" 0 - "--resource workitemsbatch" -- issue-list --state open --limit 10
+grep -q "NOT IN ('Closed','Done','Removed')" "$AZ_CALL_LOG" || note_fail "azure issue-list — the WIQL is not the open set: $(cat "$AZ_CALL_LOG")"
+want='{"number":31,"title":"t31","labels":["effort: small","area: skills"],"body":"<p>b</p>","comments":null,"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":20,"state":null}],"totalCount":1},"blocking":{"nodes":[{"number":40,"state":null}],"totalCount":1},"subIssues":{"nodes":[{"number":41,"state":null}],"totalCount":1},"assignees":["ann@acme.example"]}'
+got=$(printf '%s' "$OUT" | jq -c '.[0]' 2>/dev/null)
+[ "$got" = "$want" ] && ok "azure issue-list — tags split, AssignedTo, Dependency and Hierarchy relations as edges" \
+  || note_fail "azure issue-list — wrong row
+      want: $want
+      got:  $got"
+[ "$(printf '%s' "$OUT" | jq -c '.[1] | [.number, .labels, .assignees, .blockedBy.totalCount]')" = '[32,[],[],0]' ] \
+  && ok "azure issue-list — rows in id order, an untagged item has empty labels" || note_fail "azure issue-list — second row: $OUT"
+unset AZ_BATCH_JSON
+
+export AZ_QUERY_JSON
+AZ_QUERY_JSON=$(jq -nc '[range(1; 202) | {id: .}]')
+export AZ_BATCH_SIZES="$WORK/az-batch-sizes"
+: > "$AZ_BATCH_SIZES"
+pr_case "azure issue-list — 201 open ids" 0 - - -- issue-list --state open
+[ "$(tr '\n' ' ' < "$AZ_BATCH_SIZES")" = "200 1 " ] && ok "azure issue-list — 201 ids make two batch POSTs, of 200 and 1" \
+  || note_fail "azure issue-list — batch sizes: $(tr '\n' ' ' < "$AZ_BATCH_SIZES")"
+[ "$(printf '%s' "$OUT" | jq length)" = 201 ] || note_fail "azure issue-list — expected 201 rows"
+unset AZ_BATCH_SIZES
+export AZ_BATCH_FAIL=1
+pr_case "azure issue-list — a failing batch exits 1 with empty stdout" 1 '' - -- issue-list --state open
+unset AZ_BATCH_FAIL AZ_QUERY_JSON
+
+export AZ_WORKITEM_JSON='{"id":9,"fields":{"System.AssignedTo":{"uniqueName":"ann@acme.example"}}}'
+pr_case "azure issue-assign — an assigned item is already-assigned, no PATCH" 0 already-assigned - -- issue-assign 9
+grep -q -- '--http-method PATCH' "$AZ_CALL_LOG" && note_fail "azure issue-assign — patched an assigned item: $(cat "$AZ_CALL_LOG")"
+export AZ_WORKITEM_JSON='{"id":9,"fields":{}}'
+export AZ_INFILE_CAPTURE="$WORK/az-assign-infile.json"
+rm -f "$AZ_INFILE_CAPTURE"
+pr_case "azure issue-assign — unassigned: a PATCH, prints ok" 0 ok "--http-method PATCH" -- issue-assign 9
+[ "$(jq -c '.[0] | [.op, .path, .value]' "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '["add","/fields/System.AssignedTo","me@acme.example"]' ] \
+  && ok "azure issue-assign — the in-file adds /fields/System.AssignedTo as the az account user" \
+  || note_fail "azure issue-assign — in-file: $(cat "$AZ_INFILE_CAPTURE" 2>/dev/null)"
+unset AZ_WORKITEM_JSON AZ_INFILE_CAPTURE
+pr_case "azure issue-assign --dry-run — no az call" 0 - EMPTY -- issue-assign 9 --dry-run
+[ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" = 1 ] || note_fail "azure issue-assign --dry-run — got: $OUT"
+
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state auto-dev 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] && ok "azure state auto-dev — capable once issue-list and issue-assign land" \
+  || note_fail "azure state auto-dev — expected 'capable', got '$out'"
 
 if [ "$FAILED" -ne 0 ]; then
   echo
