@@ -411,3 +411,19 @@
   font: inherit;
   color: var(--ink);
 }
+
+// The kit's internal record (decisions, ADRs, gates, walkthrough, journal) sits in one group below the
+// product pages; section details inside it step in one level.
+.kit-sidenav .kit-nav-group {
+  border-top: 1px solid var(--rule);
+}
+
+.kit-sidenav .kit-nav-group > details,
+.kit-sidenav .kit-nav-group > .kit-nav-item {
+  margin-left: var(--unit);
+}
+
+.kit-sidenav .kit-nav-group > details:first-of-type,
+.kit-sidenav .kit-nav-group > .kit-nav-item:first-of-type {
+  border-top: 1px solid var(--rule);
+}

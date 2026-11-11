@@ -1563,6 +1563,12 @@ if not all(x in topbar for x in ("/install.html", "/methodology.html#", "/migrat
     print("FAIL: docs/_includes/topbar.html must link install, the commands table, the .NET add-on and the repository, and nothing from the kit's internals"); sys.exit(1)
 if not sitejs.exists() or "kit-scheme-toggle" not in sitejs.read_text(encoding="utf-8"):
     print("FAIL: docs/assets/js/site.js does not wire the kit-scheme-toggle"); sys.exit(1)
+# The side navigation reads one front-matter key to put the internal record under its own group.
+for f in ("decisions.md", "adr/README.md", "roseline-gate.md", "bundle-gate.md", "demo-walkthrough.md", "journal/index.md"):
+    if not re.search(r"^nav_group: internals$", (docs / f).read_text(encoding="utf-8").split("---")[1], re.M):
+        print("FAIL: docs/" + f + " must carry nav_group: internals — it belongs to the kit's internal record, not to the product pages"); sys.exit(1)
+if "nav_group" not in (docs / "_includes" / "sidenav.html").read_text(encoding="utf-8"):
+    print("FAIL: docs/_includes/sidenav.html does not read nav_group"); sys.exit(1)
 tokens = (docs / "_sass" / "kit" / "_tokens.scss").read_text(encoding="utf-8")
 if 'data-kit-scheme="dark"' not in tokens or "prefers-color-scheme: dark" not in tokens:
     print("FAIL: docs/_sass/kit/_tokens.scss must answer both [data-kit-scheme=\"dark\"] and prefers-color-scheme: dark"); sys.exit(1)

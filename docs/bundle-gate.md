@@ -1,6 +1,7 @@
 ---
 title: The bundle gate
 nav_order: 6
+nav_group: internals
 ---
 
 # The bundle-gate — opt-in drift check for a committed front-end bundle

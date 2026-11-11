@@ -1,0 +1,18 @@
+{%- comment -%} One side-navigation entry: a page (include.p), or a section with its children. {%- endcomment -%}
+{%- assign p = include.p -%}
+{%- if p.has_children %}
+  {%- assign kids = titled | where: "parent", p.title | sort: "nav_order" -%}
+  {%- assign is_open = false -%}
+  {%- if page.url == p.url or page.parent == p.title %}{% assign is_open = true %}{% endif %}
+    <details{% if is_open %} open{% endif %}>
+      <summary><span>{{ p.title }}</span><span class="kit-nav-count">{{ kids.size }}</span></summary>
+      <ul>
+        <li><a href="{{ p.url | relative_url }}"{% if page.url == p.url %} aria-current="page"{% endif %}>Overview</a></li>
+        {%- for k in kids %}
+        <li><a href="{{ k.url | relative_url }}"{% if page.url == k.url %} aria-current="page"{% endif %}>{{ k.title }}</a></li>
+        {%- endfor %}
+      </ul>
+    </details>
+{%- else %}
+    <div class="kit-nav-item"><a href="{{ p.url | relative_url }}"{% if page.url == p.url %} aria-current="page"{% endif %}>{{ p.title }}</a></div>
+{%- endif %}
