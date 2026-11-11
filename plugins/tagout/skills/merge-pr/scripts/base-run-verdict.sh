@@ -173,7 +173,8 @@ TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // emp
   || { echo "$TOOL: REFUSED — tracker.sh state could not name this repository's tracker" >&2; exit 64; }
 
 # The fallback's bucket is the backends' own rule, defined once (#807) — not a second copy, not null.
-[ -r "$BUCKET_LIB" ] && . "$BUCKET_LIB"
+unset JQ_BUCKET
+if [ -r "$BUCKET_LIB" ]; then . "$BUCKET_LIB" || true; fi
 [ -n "${JQ_BUCKET:-}" ] || { echo "$TOOL: REFUSED — cannot load $BUCKET_LIB; reinstall the kit" >&2; exit 64; }
 
 OWNER_REPO=""

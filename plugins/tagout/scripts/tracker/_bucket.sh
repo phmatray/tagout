@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # _bucket.sh — the ONE `JQ_BUCKET` rule (#807), sourced by the three tracker backends and by
 # base-run-verdict.sh's workflow-runs fallback; never executed on its own.
 #
