@@ -137,22 +137,28 @@ section() { # $1 file  $2 heading regex (anchored at line start)
 in_flight=$(section "$state_file" '^## In flight')
 queue=$(section "$state_file" '^## Queue')
 
-# In flight is counted by SLOT LINE (`grep -c '^- '`), not by `#NNN` token: a slot's phase can
-# legitimately carry two — "PR #<pr> ready→merging" names both the issue and the PR on one line
-# (skills/auto-dev/SKILL.md Step 2's own template) — and counting tokens double-counts that slot.
+# In flight is counted by LIVE SLOT LINE, not by bullet and not by `#NNN` token (#764). A slot is
+# `- Slot <id> → #<n>` (skills/auto-dev/references/steps/02-build-the-work-queue.md's template);
+# a slot whose phase reads merged/done is drained work, and a note or recap bullet ("- Last: #1
+# after #2") is no evidence at all — the supervisor annotates this file, so counting any bullet
+# refused a finished fleet. A live slot written in a drifted shape is missed: the gate fails open
+# (ADR 0002). Lines, not tokens: a phase can carry two refs ("PR #<pr> ready→merging").
 # Queue rows carry exactly one issue ref each with no PR-number companion, so token-counting is
 # still correct there.
-in_flight_count=$(printf '%s\n' "$in_flight" | grep -c '^- ' || true)
+live=$(printf '%s\n' "$in_flight" | grep -E '^- Slot [^ ]+ → #[0-9]+' | grep -viwE 'merged|done' || true)
+in_flight_count=0
+[ -z "$live" ] || in_flight_count=$(printf '%s\n' "$live" | wc -l | tr -d ' ')
 queue_count=$(printf '%s\n' "$queue" | grep -oE '#[0-9]+' | wc -l | tr -d ' ')
 
 [ "$((in_flight_count + queue_count))" -gt 0 ] || exit 0
 
 # --------------------------------------------------------------------------- refuse, naming the evidence
-detail=$(printf '%s\n' "$in_flight" | grep -E '^- ' || true)
+detail=$live
 {
   echo "Blocked by the auto-dev stop gate: an auto-dev fleet has undrained work in ${owner_repo} —"
   echo "${in_flight_count} in-flight slot(s), ${queue_count} queued issue(s)."
   [ -n "$detail" ] && printf '%s\n' "$detail"
+  echo "A slot that has landed belongs under ## Completed, not ## In flight — move it there first."
   echo "If you mean to stop anyway, set AUTODEV_GATE=off (an \`export\` inside a Bash call never"
   echo "reaches this hook — launch Claude with it set, or use it as a one-shot prefix on a command"
   echo "that stops the fleet's own supervision loop)."

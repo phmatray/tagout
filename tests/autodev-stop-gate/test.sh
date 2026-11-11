@@ -148,6 +148,25 @@ grep -qF '2 in-flight slot(s)' <<<"$out" \
 echo "ok: a slot naming both #issue and #PR counts as one in-flight slot"
 write_state "- Slot A → #123 (auto-dev) — implementing" ""  # restore for what follows
 
+# --------------------------------------- 3c. #764: only live slot lines count
+write_state "- Slot A → #12 (auto-dev) — PR #34 merged
+- Slot B → #13 (auto-dev) — DONE abc123" ""
+verdict "#764 AC1 merged/DONE slots only allow" 0 "$(pay "$REPO" false)" "$SDIR"
+write_state "- Disk filled → freed bin/obj, restarted Docker
+- Last: #1 after #2" ""
+verdict "#764 AC2 notes only allow" 0 "$(pay "$REPO" false)" "$SDIR"
+write_state "- Slot A → #12 (auto-dev) — implementing
+- Slot B → #13 (auto-dev) — PR #5 merged
+- Slot C → #14 (auto-dev) — done
+- Disk filled → freed bin/obj" ""
+out=$(env AUTODEV_STATE_DIR="$SDIR" AUTODEV_GATE="" bash "$GATE" 2>&1 1>/dev/null <<<"$(pay "$REPO" false)") || true
+grep -qF '1 in-flight slot(s)' <<<"$out" && grep -qF 'Slot A' <<<"$out" \
+  && ! grep -qE 'Slot B|Slot C|Disk filled' <<<"$out" \
+  || { echo "FAIL [#764 AC4 mixed]: want only the live slot counted and printed, got: $out"; exit 1; }
+grep -qF '## Completed' <<<"$out" || { echo "FAIL [#764 AC5]: refusal lacks '## Completed': $out"; exit 1; }
+echo "ok: #764 mixed section counts and prints only the live slot, names ## Completed"
+write_state "- Slot A → #123 (auto-dev) — implementing" ""
+
 # ----------------------------------------------- 4. same state, AUTODEV_GATE=off -> allow (AC4)
 verdict "AC4 AUTODEV_GATE=off allows"  0 "$(pay "$REPO" false)" "$SDIR" off
 
