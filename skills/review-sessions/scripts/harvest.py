@@ -209,7 +209,7 @@ def default_project_dirs(kit_name):
     stem = enc.split("--claude-worktrees-")[0]
     # Exact stem or its worktree suffix: a bare `stem*` also matched a sibling repo (`repo2`).
     found = glob.glob(os.path.join(base, stem)) + glob.glob(os.path.join(base, stem + "--claude-worktrees-*"))
-    cands = sorted(d for d in set(found) if os.path.isdir(d))
+    cands = sorted(d for d in found if os.path.isdir(d))
     return cands
 
 
