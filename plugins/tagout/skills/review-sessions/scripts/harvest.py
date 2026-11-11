@@ -207,7 +207,9 @@ def default_project_dirs(kit_name):
     # A worktree session encodes `<repo>--claude-worktrees-<name>`; strip our own suffix so the
     # repo directory and every worktree sibling are found from either kind of cwd.
     stem = enc.split("--claude-worktrees-")[0]
-    cands = sorted(d for d in glob.glob(os.path.join(base, stem + "*")) if os.path.isdir(d))
+    # Exact stem or its worktree suffix: a bare `stem*` also matched a sibling repo (`repo2`).
+    found = glob.glob(os.path.join(base, stem)) + glob.glob(os.path.join(base, stem + "--claude-worktrees-*"))
+    cands = sorted(d for d in set(found) if os.path.isdir(d))
     return cands
 
 
