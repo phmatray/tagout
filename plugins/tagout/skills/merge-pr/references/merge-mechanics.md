@@ -23,9 +23,15 @@ PR token alone.
 Confirm it's a real, open PR before doing anything irreversible:
 
 ```bash
-gh pr view "$PR" --json number,title,state,isDraft,mergeStateStatus,headRefName,baseRefName,url \
-  --jq '"\(.number) [\(.state)\(if .isDraft then "/draft" else "" end)] \(.mergeStateStatus) \(.headRefName) — \(.title)"'
+"<kit>/scripts/tracker.sh" pr-view "$PR" \
+  | jq -r '"\(.number) [\(.state)\(if .isDraft then "/draft" else "" end)] \(.headBranch) — \(.title)"'
 ```
+
+Every PR and issue call in this file goes through the tracker contract (`<kit>` is the kit root), so
+the same recipe runs on GitHub, GitLab and Azure DevOps (#752). `pr-view` lower-cases `state`
+(`open`/`closed`/`merged`) and prints bare branch names (`headBranch`, `baseBranch`). What stays a
+direct, GitHub-only `gh` call is named where it appears: `approve-runs.sh` (SKILL Step 4), `gh pr checks
+--watch` (a human-facing view), and Step 5b's workflow-runs fallback.
 
 ---
 
@@ -34,7 +40,7 @@ gh pr view "$PR" --json number,title,state,isDraft,mergeStateStatus,headRefName,
 Corrections must land in a checkout of the PR's head branch. List worktrees and match the branch:
 
 ```bash
-HEAD_BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+HEAD_BRANCH=$("<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r .headBranch)
 
 # Print "<path> <branch>" per worktree, then grep the branch. `substr($0, N)` — not `$2` — for both
 # fields: splitting on whitespace truncates a checkout under a path containing a space
@@ -262,11 +268,10 @@ timeout — is a genuine non-verdict and still blocks. `tests/merge-gate/test.sh
 above from this file and drives both cases over fixtures, so a rewrite that weakens the gate into
 blanket-ignoring cancellations goes red instead of quiet.
 
-Inspect failures via the rollup (gives the log URL to read):
+Inspect failures from the same list (`html_url` is the run to read):
 
 ```bash
-gh pr view "$PR" --json statusCheckRollup \
-  --jq '.statusCheckRollup[] | select(.conclusion=="FAILURE") | {name, detailsUrl}'
+"<kit>/scripts/tracker.sh" commit-checks "$SHA" | jq '.[] | select(.bucket == "fail") | {name, html_url}'
 ```
 
 - **`n_latest` is 0** (no check-runs at all) → the PR has no CI; treat CI as satisfied and let
@@ -276,8 +281,9 @@ gh pr view "$PR" --json statusCheckRollup \
   "there is no CI" are opposite verdicts that an unguarded empty string spells identically.
 - **Long pipelines** → re-poll the check-runs recipe rather than busy-looping. If you'd rather not hold
   the turn open, come back later (e.g. via `ScheduleWakeup`).
-- `gh pr checks "$PR" --watch` is still useful as a **human-facing** progress view in a terminal, but
-  don't wire its exit code or printed verdict into the gate — re-derive from the check-runs recipe above.
+- `gh pr checks "$PR" --watch` (GitHub-only) is still useful as a **human-facing** progress view in a
+  terminal, but don't wire its exit code or printed verdict into the gate — re-derive from the
+  check-runs recipe above.
 
 The repo's CI gates (so you can reproduce a red check locally) are the profile's *CI gates* — its build,
 test, and format/lint **verify** commands, plus any prerequisite the profile flags (a workload, a
@@ -488,7 +494,7 @@ This fallback only covers the self-imposed staleness check (`behind_by > 0` whil
 still reports `CLEAN`) — GitHub doesn't block that merge either way. It does not cover a real
 GitHub-side gate: a PR reported `DIRTY` needs its conflict resolution pushed to the real branch, and a
 PR reported literal `BEHIND` (base requires branches to be up to date) needs the real branch actually
-updated — `gh pr merge` won't succeed on either without that push. If the branch has no writable
+updated — the merge won't succeed on either without that push. If the branch has no writable
 checkout (not the transient sandbox push failure of Step 2/§8, which is just a retry) and
 `mergeStateStatus` is `DIRTY` or `BEHIND`, that combination is a genuine blocker: stop and report it
 rather than running this fallback.
@@ -503,7 +509,7 @@ Where SKILL.md Step 4 sends you when `merge.step4` answers `review` with either 
 The overall decision — useful context, **not** the gate:
 
 ```bash
-gh pr view "$PR" --json reviewDecision --jq .reviewDecision   # APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null
+"<kit>/scripts/tracker.sh" pr-merge-state "$PR" | jq -r .reviewDecision   # APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null
 ```
 
 ⚠️ **`reviewDecision` is empty for a `COMMENTED` review, and that is the common case.** A review bot
@@ -511,56 +517,41 @@ gh pr view "$PR" --json reviewDecision --jq .reviewDecision   # APPROVED | CHANG
 the merge state clean. Until #294 that meant its findings reached no gate at all: two PRs merged with
 four and one unresolved thread on them. Read the threads, not the decision.
 
-⚠️ **`gh pr view --json reviews` shows those bot reviews with an EMPTY `body`.** The substance is
-only in the inline `reviewThreads` below. "Empty review body" must never be read as "no feedback" —
-that reading is what made the merges look defensible afterwards.
+⚠️ **GitHub shows those bot reviews with an EMPTY review `body`.** The substance is only in the
+inline review threads below. "Empty review body" must never be read as "no feedback" — that reading
+is what made the merges look defensible afterwards.
 
-Inline review comments (REST — quick read of what reviewers said and where):
+The review threads — one entry each, with its first comment's `path`, `line` and `body`:
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/$PR/comments" --hostname <host> --paginate \
-  --jq '.[] | {path, line, user:.user.login, body}'
+"<kit>/scripts/tracker.sh" pr-threads "$PR" \
+  | jq '.[] | select(.isResolved == false) | {id, path, line, body}'
 ```
 
-Unresolved **threads** need GraphQL (REST doesn't expose `isResolved`):
+A failed read exits 1 and prints nothing, never `[]` — and an unanswered query is not an empty
+answer, so check the exit code before reading "no threads" off it. §4's shape block aborts the whole
+state build on that path for the same reason.
+
+Fix the legitimate asks in the worktree, commit + push (project identity). Then reply to the thread
+and resolve it (`THREAD_ID` is the `id` from the read above). The verb posts the file as a reply,
+then resolves; it refuses a missing or empty `--body-file` (exit 2) and sends nothing:
 
 ```bash
-gh api graphql -f query='
-  query($owner:String!,$repo:String!,$pr:Int!){
-    repository(owner:$owner,name:$repo){
-      pullRequest(number:$pr){
-        reviewThreads(first:100){
-          nodes{ id isResolved isOutdated
-            comments(first:1){ nodes{ path body author{login} } } } } } } }' \
-  -F owner='{owner}' -F repo='{repo}' -F pr="$PR" \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | {id, path:.comments.nodes[0].path, body:.comments.nodes[0].body}'
-```
-
-⚠️ **On a GitHub Enterprise host `gh api graphql` needs an explicit `--hostname <host>`.** Without it
-the query fails with *"Could not resolve to a Repository"* — which reads exactly like "this PR has no
-threads" to anyone who does not check the exit code. Check it: an unanswered query is not an empty
-answer. §4's shape block aborts the whole state build on this path for the same reason.
-
-Fix the legitimate asks in the worktree, commit + push (project identity). Then either reply to the
-thread explaining the fix, or resolve it once addressed (`THREAD_ID` from the query above):
-
-```bash
-gh api graphql -f query='
-  mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' \
-  -F id="$THREAD_ID"
+"<kit>/scripts/tracker.sh" pr-thread-resolve "$PR" "$THREAD_ID" --body-file <reply>
 ```
 
 **A thread has two honest exits, and the `unresolved-threads` rule accepts both.** This matters more
 than it looks: the rule blocks the merge, so a gate clearable only by changing code would hang an
 autonomous run forever on the first finding the agent judges wrong or cannot satisfy.
 
-1. **Fix the ask**, push, then resolve the thread.
-2. **Reply on the thread with your reasoning, then resolve it.** Disagreeing is a legitimate
-   outcome of review.
+1. **Fix the ask**, push, then `pr-thread-resolve` with a reply that names the fix.
+2. **`pr-thread-resolve` with your reasoning as the reply.** Disagreeing is a legitimate outcome of
+   review.
 
 What is forbidden is resolving *silently*: it clears the gate and deletes the reason. Reply first,
 resolve second, always in that order — the reply is the artifact a human reads later to decide
-whether the agent was right.
+whether the agent was right. `pr-thread-resolve` makes that order its own: it has no way to resolve
+without the reply.
 
 The goal is that no thread is left both open and unanswered — not that `reviewDecision` flips, which
 for a `COMMENTED` review it never will. A required-approvals block you can't self-clear, or a thread
@@ -575,14 +566,15 @@ Two sources beyond the inline `--follow-up` args:
 **PR body** — look for a deferred-work section:
 
 ```bash
-gh pr view "$PR" --json body --jq .body \
+"<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r '.body // ""' \
   | grep -iA12 -E '^#+ *(follow[ -]?ups?|deferred|out[ -]of[ -]scope|future work)'
 ```
 
-**Review comments that defer work** — phrases that explicitly punt to a later change:
+**Review threads that defer work** — phrases that explicitly punt to a later change (each thread's
+first comment):
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/$PR/comments" --hostname <host> --paginate --jq '.[].body' \
+"<kit>/scripts/tracker.sh" pr-threads "$PR" | jq -r '.[].body' \
   | grep -iE 'follow[ -]?up|separate (pr|issue)|in a (later|future) (pr|change)|out of scope|TODO.*(later|future)'
 ```
 
@@ -597,12 +589,12 @@ the two share almost no vocabulary and a keyword search on the symptom misses th
 
 ```bash
 # root causes are usually refactors — read the open ones first
-gh issue list --state open --label "type:refactor" --limit 30 \
-  --json number,title --jq '.[] | "#\(.number) \(.title)"'
+"<kit>/scripts/tracker.sh" issue-search --state open --label "type:refactor" --limit 30 \
+  | jq -r '.[] | "#\(.number) \(.title)"'
 
 # then search on the file the findings land in — CLOSED ones too (see below)
-gh issue list --state all --search "<TheFile> in:title,body" --limit 15 \
-  --json number,title,state,url --jq '.[] | "#\(.number) [\(.state)] \(.title)"'
+"<kit>/scripts/tracker.sh" issue-search --state all --query "<TheFile>" --limit 15 \
+  | jq -r '.[] | "#\(.number) [\(.state)] \(.title)"'
 ```
 
 **Why this one search spans closed issues.** The findings you are triaging came out of the PR you
@@ -616,8 +608,8 @@ exactly this reason.
 is closed and the finding is that same job resurfacing:
 
 ```bash
-gh issue reopen "$ANCESTOR" \
-  --comment "Reopening: #$PR closed this, but <what still fails> — \`<file>:<symbol>\`."
+# <reopen.md>: "Reopening: #$PR closed this, but <what still fails> — `<file>:<symbol>`."
+"<kit>/scripts/tracker.sh" issue-reopen "$ANCESTOR" --body-file <reopen.md>
 ```
 
 Reopen when the original scope still describes the work. File fresh only when the finding is a
@@ -631,7 +623,8 @@ That is an owner decision (hand it to `triage-backlog`), not another `create-iss
 **Fold an instance into that root** instead of filing a leaf — the comment carries the evidence:
 
 ```bash
-gh issue comment "$ROOT" --body "Another instance, found merging #$PR: <what broke> (\`<file>:<symbol>\`)."
+# <instance.md>: "Another instance, found merging #$PR: <what broke> (`<file>:<symbol>`)."
+"<kit>/scripts/tracker.sh" issue-comment "$ROOT" --body-file <instance.md>
 ```
 
 If the root issue carries an implementation-plan checklist, add the instance as a `- [ ]` item in the
@@ -640,7 +633,8 @@ body instead — those boxes drive the progress meter and `implement-issue` tick
 **Record — don't file — an observation** that's worth retrieving but not worth doing:
 
 ```bash
-gh pr comment "$PR" --body "Noted while merging: … (recorded, not filed — no action planned)."
+# <note.md>: "Noted while merging: … (recorded, not filed — no action planned)."
+"<kit>/scripts/tracker.sh" pr-comment "$PR" --body-file <note.md>
 ```
 
 Then hand only the clusters that earned an issue to the `create-issue` skill, noting the source PR
@@ -712,9 +706,9 @@ So finish the job here instead of assuming either mechanism reached it:
 skills/merge-pr/scripts/remote-branch-teardown.sh "$HEAD_BRANCH" "{owner}/{repo}"
 ```
 
-It runs `git ls-remote --heads origin <headRefName>` and, only if the branch is still there, `gh api
--X DELETE repos/{owner}/{repo}/git/refs/heads/<headRefName>` — tolerant of the same race gh's own
-`deleteRemoteBranch` tolerates (a 422/404 "Reference does not exist" from a concurrent
+It runs `git ls-remote --heads origin <headRefName>` and, only if the branch is still there,
+`"<kit>/scripts/tracker.sh" branch-delete <headRefName>` (#752; `ok` is `deleted`, `gone` is
+`already-gone`) — tolerant of the same race gh's own `deleteRemoteBranch` tolerates (a 422/404 "Reference does not exist" from a concurrent
 `delete_branch_on_merge` or a slow `--delete-branch` winning first). It always runs this check
 regardless of the repo's `delete_branch_on_merge` setting: that value is read from a profile
 snapshot that can go stale between refreshes, where a wrongly-trusted `true` would leave a branch

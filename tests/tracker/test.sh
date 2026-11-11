@@ -1087,6 +1087,66 @@ else
   ok "D2 real tree — no gh issue|label|repo|pr under skills/implement-issue/scripts or in pr-existence-guard.sh"
 fi
 
+echo "== C3. contract coverage over merge-pr's prose (#752)"
+
+FIXTURE_MP="$WORK/merge-pr-fixture"
+mkdir -p "$FIXTURE_MP"
+cp "$KIT_ROOT/skills/merge-pr/references/merge-mechanics.md" "$FIXTURE_MP/"
+printf '\n"<kit>/scripts/tracker.sh" pr-frobnicate 5\n' >> "$FIXTURE_MP/merge-mechanics.md"
+fixture_out=$(check_coverage "$FIXTURE_MP" merge-pr)
+if ! grep -Fq 'pr-frobnicate' <<<"$fixture_out"; then
+  note_fail "C3 fixture — a verb absent from the contract was not named: '$fixture_out'"
+else
+  ok "C3 fixture — a verb absent from the contract fails coverage, named"
+fi
+real_out=$(check_coverage "$KIT_ROOT/skills/merge-pr" merge-pr)
+# Every verb the Task 6 prose rewrite moves onto the contract must be spelled at least once, so a
+# section that silently fell back to a direct `gh` call goes red here rather than staying covered.
+missing_spelled=""
+for v in pr-view commit-checks pr-merge-state pr-threads pr-thread-resolve pr-closing-issues \
+  issue-parent issue-search issue-reopen issue-comment pr-comment; do
+  collect_verbs "$KIT_ROOT/skills/merge-pr" | grep -Fxq "$v" || missing_spelled="$missing_spelled $v"
+done
+if [ -n "$real_out" ]; then
+  note_fail "C3 real tree — coverage reported gaps:
+      $real_out"
+elif [ -n "$missing_spelled" ]; then
+  note_fail "C3 real tree — merge-pr's prose never spells these verbs through \"<kit>/scripts/tracker.sh\":$missing_spelled"
+else
+  ok "C3 real tree — every tracker.sh verb merge-pr's prose invokes is on skills.merge-pr, and each migrated call site spells one"
+fi
+
+echo "== D3. no direct gh tracker call in merge-pr's migrated scripts (#752)"
+
+# Comments may still describe gh (the GitHub case is the reference); only executable lines count.
+# GitHub-only paths kept direct by name (approve-runs.sh, base-run-verdict.sh's workflow-runs
+# fallback, base-run-followup.sh's `gh run list`) match neither alternative.
+GUARD_PATTERN_MP='\bgh (issue|label|repo|pr)\b|gh api [^|]*(check-runs|git/refs|/parent|graphql)'
+d3_grep() {
+  grep -nE "$GUARD_PATTERN_MP" "$@" 2>/dev/null | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true
+}
+FIXTURE_GH_MP="$WORK/merge-pr-gh-fixture"
+mkdir -p "$FIXTURE_GH_MP"
+cp "$KIT_ROOT/skills/merge-pr/scripts/guarded-pr-merge.sh" "$FIXTURE_GH_MP/"
+printf '\ngh pr view 7 --json state\n' >> "$FIXTURE_GH_MP/guarded-pr-merge.sh"
+fixture_gh_out=$(d3_grep "$FIXTURE_GH_MP/guarded-pr-merge.sh" /dev/null)
+if ! grep -Fq 'guarded-pr-merge.sh' <<<"$fixture_gh_out"; then
+  note_fail "D3 fixture — a reintroduced 'gh pr view' line was not named: '$fixture_gh_out'"
+else
+  ok "D3 fixture — a direct gh pr call reintroduced into guarded-pr-merge.sh fails the guard, named"
+fi
+real_gh_out=$(d3_grep "$KIT_ROOT/skills/merge-pr/scripts/guarded-pr-merge.sh" \
+  "$KIT_ROOT/skills/merge-pr/scripts/parent-decision-note.sh" \
+  "$KIT_ROOT/skills/merge-pr/scripts/remote-branch-teardown.sh" \
+  "$KIT_ROOT/skills/merge-pr/scripts/base-run-verdict.sh" \
+  "$KIT_ROOT/skills/auto-dev/scripts/wait-ci.sh")
+if [ -n "$real_gh_out" ]; then
+  note_fail "D3 real tree — a direct gh call survives:
+      $real_gh_out"
+else
+  ok "D3 real tree — no direct gh tracker call in merge-pr's migrated scripts or wait-ci.sh"
+fi
+
 echo "== E. the gitlab backend (#508)"
 
 # A fixture repository carrying a committed profile whose Tracker line names gitlab.

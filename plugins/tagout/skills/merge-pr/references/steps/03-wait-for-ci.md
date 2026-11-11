@@ -15,12 +15,12 @@ those five has a conclusion, so none is evidence of anything; reading them as gr
 `deploy` job merges without ever running.
 
 That reduction **and** the rule that reads it are the registered decision `ci.verdict`, so run it —
-do not re-derive it here. `$DECIDE` is Step 2's variable; the recipe in §3 is the same call with the
-`gh api` half spelled out:
+do not re-derive it here. `$DECIDE` is Step 2's variable; `commit-checks` is the tracker verb that
+reads every check on the sha into one normalised list (#752), on any tracker:
 
 ```bash
-ci=$(gh api "repos/{owner}/{repo}/commits/$SHA/check-runs" --hostname <host> --paginate --slurp \
-       | "$DECIDE" ci.verdict --json)
+SHA=$("<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r .headSha)
+ci=$("<kit>/scripts/tracker.sh" commit-checks "$SHA" | "$DECIDE" ci.verdict --json)
 [ -n "$ci" ] || { echo "check-runs query returned nothing — no verdict; do not merge"; exit 1; }
 ```
 
@@ -81,9 +81,9 @@ its `html_url`, both already in the reduced set §3 produces — no extra query,
 required-approvals block is surfaced rather than waited on (§5). Polling it to the timeout with no
 explanation is the failure this step exists to avoid.
 
-`gh pr checks "$PR" --watch` is still fine as a **human-facing convenience** for watching progress in
-a terminal, but don't treat its printed verdict as authoritative (the phantom-`skipped` case above) —
-re-derive from the check-runs recipe before acting. Failure inspection (rollup + log links) and the
+`gh pr checks "$PR" --watch` (GitHub-only) is still fine as a **human-facing convenience** for
+watching progress in a terminal, but don't treat its printed verdict as authoritative (the phantom-`skipped` case above) —
+re-derive from the check-runs recipe before acting. Failure inspection (failed runs + their links) and the
 long-pipeline polling pattern are also in reference §3.
 
 **Related:** #91 fixes a different defect in this same check-runs recipe — *which* check-runs count
