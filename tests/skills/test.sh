@@ -1583,6 +1583,8 @@ for page in ("install.md", "platforms.md"):
 # rendered from the host table, never a hand-typed list of hosts.
 if "](install.md)" not in itext or "kit-picker" not in itext or "site.data.hosts" not in itext:
     print("FAIL: docs/index.md must link install.md and carry a kit-picker rendered from site.data.hosts"); sys.exit(1)
+if "claude_code.install[" in itext:
+    print("FAIL: docs/index.md types an install command in the hero — the picker is the one place a command appears"); sys.exit(1)
 # ...and every command on those pages comes from the table too: a command typed into a page goes
 # stale the day its host's row changes, and nothing else notices. Install shows the rule-file
 # hosts' shared clone line once, then each one's last line, so each such row has exactly that shape.
