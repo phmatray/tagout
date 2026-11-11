@@ -849,11 +849,11 @@ done
 
 # merge-pr is on the contract now, so a host whose backend lacks its verbs is missing for THAT
 # reason — not because the skill is absent from the contract.
-run_tracker "$PROFILED" --tracker gitlab state merge-pr
+run_tracker "$PROFILED" --tracker azure-devops state merge-pr
 got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
 [ "$got" = missing/verb-not-implemented ] \
-  && ok "state merge-pr on gitlab — missing/verb-not-implemented" \
-  || note_fail "state merge-pr on gitlab — want missing/verb-not-implemented, got $got"
+  && ok "state merge-pr on azure-devops — missing/verb-not-implemented" \
+  || note_fail "state merge-pr on azure-devops — want missing/verb-not-implemented, got $got"
 
 echo "== B. the state report, and the tracker.capable verdict"
 
@@ -1270,6 +1270,26 @@ case "$method $endpoint_dispatch" in
     payload=$(_pl GLAB_MR_LIST_JSON '[{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","draft":false,"source_branch":"feat/7-x","description":"Closes #7","merged_at":"2026-11-01T00:00:00Z"}]') ;;
   "GET projects/:id/merge_requests/"[0-9]*"/commits"*)
     payload='[{"id":"aaa"},{"id":"bbb"}]' ;;
+  # The merge verbs (#752). Every sub-resource before the bare MR patterns below, whose `[0-9]*`
+  # would swallow it.
+  "GET projects/:id/merge_requests/"[0-9]*"/discussions"*)
+    s="${GLAB_DISCUSSIONS_STATUS:-200}"
+    case "$s" in 2??) payload=$(_pl GLAB_DISCUSSIONS_JSON '[{"id":"d1","notes":[{"body":"fix this","resolvable":true,"resolved":false,"position":{"new_path":"a.sh","new_line":3}}]},{"id":"d2","notes":[{"body":"done","resolvable":true,"resolved":true,"position":{"new_path":"b.sh","new_line":9}}]},{"id":"d3","notes":[{"body":"overall","resolvable":true,"resolved":false}]},{"id":"d4","notes":[{"body":"changed the title","resolvable":false,"system":true}]}]') ;;
+      *) fail_http "$s" ;; esac ;;
+  "POST projects/:id/merge_requests/"[0-9]*"/discussions/"*"/notes") : ;;
+  "PUT projects/:id/merge_requests/"[0-9]*"/discussions/"*) : ;;
+  "PUT projects/:id/merge_requests/"[0-9]*"/merge") : ;;
+  "GET projects/:id/merge_requests/"[0-9]*"/closes_issues"*)
+    payload='[{"iid":12},{"iid":13}]' ;;
+  "POST projects/:id/merge_requests/"[0-9]*"/notes") : ;;
+  "GET projects/:id/pipelines/"[0-9]*"/jobs"*)
+    payload=$(_pl GLAB_JOBS_JSON '[]') ;;
+  "GET projects/:id/repository/commits/"*"/statuses"*)
+    s="${GLAB_STATUSES_STATUS:-200}"
+    case "$s" in 2??) payload=$(_pl GLAB_STATUSES_JSON '[]') ;; *) fail_http "$s" ;; esac ;;
+  "DELETE projects/:id/repository/branches/"*)
+    s="${GLAB_BRANCH_DELETE_STATUS:-204}"
+    case "$s" in 2??) : ;; *) fail_http "$s" "${GLAB_BRANCH_DELETE_MESSAGE:-}" ;; esac ;;
   "GET projects/:id/merge_requests/"[0-9]*)
     payload=$(_pl GLAB_MR_JSON '{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"opened","draft":true,"description":"Closes #7","source_branch":"feat/7-x","target_branch":"main","sha":"abc123","author":{"username":"gl_user"}}') ;;
   "PUT projects/:id/merge_requests/"[0-9]*) : ;;
@@ -1302,16 +1322,16 @@ else
   ok "AC1 create-issue on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
-# merge-pr is on the contract (#752) but gitlab.sh does not answer its verbs yet — missing, not
-# capable, and not unsupported: the backend exists, it just lacks verbs this skill needs.
+# merge-pr is on the contract (#752) and gitlab.sh answers its twenty verbs: capable (section E3
+# drives each of the ten merge verbs through the stub).
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ]; then
   note_fail "AC1 merge-pr on gitlab — the Step 1 pipe exited $rc: $out"
-elif [ "$out" != "missing" ]; then
-  note_fail "AC1 merge-pr on gitlab — expected 'missing', got '$out'"
+elif [ "$out" != "capable" ]; then
+  note_fail "AC1 merge-pr on gitlab — expected 'capable', got '$out'"
 else
-  ok "AC1 merge-pr on gitlab — its verbs not answered yet, missing rather than capable or unsupported"
+  ok "AC1 merge-pr on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
 # ------------------------------------------------------------------------------------------- repo
@@ -1624,7 +1644,7 @@ pr_case "gitlab pr-list --search 9 — a non-matching short term returns nothing
 pr_case "gitlab pr-list --head — defaults to state=opened" 0 - \
   "merge_requests?source_branch=feat%2F7-x&state=opened" -- pr-list --head feat/7-x
 pr_case "gitlab pr-view — opened→open, sha→headSha, author.username→author" 0 \
-  '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user"}' \
+  '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user","mergedAt":null,"mergeSha":null}' \
   "api projects/:id/merge_requests/51" -- pr-view 51
 pr_case "gitlab pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "merge_requests/51/commits?per_page=100" -- pr-commits 51
 pr_case "gitlab pr-edit-body — PUT description=@file" 0 '' "-X PUT projects/:id/merge_requests/51 -F description=@$PR_BODY" -- \
@@ -1649,8 +1669,122 @@ if [ "$out" != capable ]; then
 else
   ok "gitlab state implement-issue — capable once the six PR verbs land"
 fi
+echo "== E3. the merge verbs on gitlab (#752)"
+
+# Same pr_case seam as E2: tracker.sh's stdout and exit code, and GLAB_CALL_LOG. Each case feeds a
+# raw GitLab reply through the stub and asserts the normalised stdout, never gitlab.sh's own jq.
+PR_TRACKER=gitlab; PR_DIR="$GITLAB_PROFILED"; PR_LOG="$GLAB_CALL_LOG"
+
+# detailed_merge_status → mergeStateStatus. CLEAN only on `mergeable`; anything unmapped, including
+# a word GitLab adds tomorrow, is UNKNOWN — merge.step4 waits on it rather than merging.
+for pair in mergeable:CLEAN need_rebase:BEHIND conflict:DIRTY broken_status:DIRTY draft_status:DRAFT \
+            not_approved:BLOCKED discussions_not_resolved:BLOCKED ci_still_running:UNKNOWN \
+            checking:UNKNOWN some_new_word:UNKNOWN; do
+  export GLAB_MR_JSON="{\"iid\":7,\"draft\":false,\"detailed_merge_status\":\"${pair%%:*}\",\"diverged_commits_count\":3}"
+  pr_case "gitlab pr-merge-state — ${pair%%:*} is ${pair#*:}" 0 - \
+    "merge_requests/7?include_diverged_commits_count=true&with_merge_status_recheck=true" -- pr-merge-state 7
+  got=$(printf '%s' "$OUT" | jq -r .mergeStateStatus 2>/dev/null)
+  [ "$got" = "${pair#*:}" ] || note_fail "gitlab pr-merge-state ${pair%%:*} — want ${pair#*:}, got '$got' ($OUT)"
+done
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"not_approved","diverged_commits_count":3}'
+pr_case "gitlab pr-merge-state — diverged_commits_count is behind_by, unresolved resolvable paths, (pr-level) for none" 0 \
+  '{"behind_by":3,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","unresolved_threads":["a.sh","(pr-level)"]}' \
+  "merge_requests/7/discussions" -- pr-merge-state 7
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"requested_changes","diverged_commits_count":0}'
+pr_case "gitlab pr-merge-state — requested_changes is BLOCKED / CHANGES_REQUESTED" 0 \
+  '{"behind_by":0,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","unresolved_threads":["a.sh","(pr-level)"]}' \
+  - -- pr-merge-state 7
+export GLAB_DISCUSSIONS_STATUS=500
+pr_case "gitlab pr-merge-state — a failed discussions read exits 1 and prints nothing" 1 '' - -- pr-merge-state 7
+pr_case "gitlab pr-threads — a failed discussions read is exit 1, never []" 1 '' - -- pr-threads 7
+unset GLAB_DISCUSSIONS_STATUS GLAB_MR_JSON
+pr_case "gitlab pr-threads — resolvable discussions only, first note's path/line/body" 0 \
+  '[{"id":"d1","path":"a.sh","line":3,"body":"fix this","isResolved":false},{"id":"d2","path":"b.sh","line":9,"body":"done","isResolved":true},{"id":"d3","path":null,"line":null,"body":"overall","isResolved":false}]' \
+  - -- pr-threads 7
+
+# Commit statuses → check-run words; `all=true` keeps the retried ones (ci.verdict reduces, not the verb).
+export GLAB_STATUSES_JSON='[{"id":1,"name":"build","status":"success","allow_failure":false,"target_url":"https://ci.invalid/1"},{"id":2,"name":"lint","status":"failed","allow_failure":true,"target_url":"https://ci.invalid/2"},{"id":3,"name":"test","status":"failed","allow_failure":false,"target_url":null},{"id":4,"name":"deploy","status":"manual","allow_failure":false},{"id":5,"name":"e2e","status":"running"},{"id":6,"name":"odd","status":"some_new_word"}]'
+pr_case "gitlab commit-checks — failed+allow_failure is neutral, unknown is UNKNOWN, app null, html_url from target_url" 0 \
+  '[{"name":"build","state":"success","bucket":"pass","id":1,"app":null,"html_url":"https://ci.invalid/1"},{"name":"lint","state":"neutral","bucket":"skipping","id":2,"app":null,"html_url":"https://ci.invalid/2"},{"name":"test","state":"failure","bucket":"fail","id":3,"app":null,"html_url":null},{"name":"deploy","state":"waiting","bucket":"pending","id":4,"app":null,"html_url":null},{"name":"e2e","state":"in_progress","bucket":"pending","id":5,"app":null,"html_url":null},{"name":"odd","state":"UNKNOWN","bucket":"pending","id":6,"app":null,"html_url":null}]' \
+  "repository/commits/abc123/statuses?all=true" -- commit-checks abc123
+unset GLAB_STATUSES_JSON
+export GLAB_STATUSES_STATUS=502
+pr_case "gitlab commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
+unset GLAB_STATUSES_STATUS
+
+pr_case "gitlab pr-checks — no head pipeline is [] and exit 0" 0 '[]' - -- pr-checks 7
+grep -q '/jobs' "$GLAB_CALL_LOG" && note_fail "gitlab pr-checks — read jobs with no head pipeline: $(cat "$GLAB_CALL_LOG")"
+export GLAB_MR_JSON='{"iid":7,"head_pipeline":{"id":88}}'
+export GLAB_JOBS_JSON='[{"name":"build","status":"success"},{"name":"lint","status":"failed","allow_failure":true},{"name":"test","status":"failed","allow_failure":false},{"name":"deploy","status":"manual"},{"name":"old","status":"canceled"},{"name":"e2e","status":"running"}]'
+pr_case "gitlab pr-checks — the head pipeline's jobs, bucketed" 0 \
+  '[{"name":"build","state":"success","bucket":"pass"},{"name":"lint","state":"failed","bucket":"pass"},{"name":"test","state":"failed","bucket":"fail"},{"name":"deploy","state":"manual","bucket":"skipping"},{"name":"old","state":"canceled","bucket":"cancel"},{"name":"e2e","state":"running","bucket":"pending"}]' \
+  "pipelines/88/jobs" -- pr-checks 7
+unset GLAB_MR_JSON GLAB_JOBS_JSON
+
+pr_case "gitlab pr-thread-resolve — posts the reply, then resolves" 0 '' \
+  "-X PUT projects/:id/merge_requests/7/discussions/d1?resolved=true" -- pr-thread-resolve 7 d1 --body-file "$PR_BODY"
+note_at=$(grep -n -- '-X POST projects/:id/merge_requests/7/discussions/d1/notes' "$GLAB_CALL_LOG" | head -1 | cut -d: -f1)
+put_at=$(grep -n -- '-X PUT projects/:id/merge_requests/7/discussions/d1' "$GLAB_CALL_LOG" | head -1 | cut -d: -f1)
+if [ -z "$note_at" ] || [ -z "$put_at" ] || [ "$note_at" -ge "$put_at" ]; then
+  note_fail "gitlab pr-thread-resolve — the note POST must be logged before the PUT: $(cat "$GLAB_CALL_LOG")"
+fi
+
+MERGE_BODY="$WORK/merge-body.md"; printf 'the body\n' > "$MERGE_BODY"
+rm -f "$GLAB_CAPTURE_DIR/squash_commit_message.bin"
+pr_case "gitlab pr-merge --squash --delete-branch --subject — PUT merge with squash and branch removal" 0 '' \
+  "-X PUT projects/:id/merge_requests/7/merge" -- \
+  pr-merge 7 --squash --delete-branch --subject s --body-file "$MERGE_BODY"
+for want in "-F squash=true" "-F should_remove_source_branch=true" "-F squash_commit_message=@"; do
+  grep -Fq -- "$want" "$GLAB_CALL_LOG" || note_fail "gitlab pr-merge — '$want' not sent: $(cat "$GLAB_CALL_LOG")"
+done
+grep -q merge_when_pipeline_succeeds "$GLAB_CALL_LOG" && note_fail "gitlab pr-merge — set merge_when_pipeline_succeeds"
+[ "$(cat "$GLAB_CAPTURE_DIR/squash_commit_message.bin" 2>/dev/null)" = "$(printf 's\n\nthe body')" ] \
+  || note_fail "gitlab pr-merge — the message is not '<subject>, blank line, body': $(cat "$GLAB_CAPTURE_DIR/squash_commit_message.bin" 2>/dev/null)"
+pr_case "gitlab pr-merge — a flag outside the four is exit 2, no glab call" 2 - EMPTY -- pr-merge 7 --admin
+
+pr_case "gitlab branch-delete — DELETE the url-encoded branch, ok" 0 ok \
+  "-X DELETE projects/:id/repository/branches/feature%2Fx%231" -- branch-delete 'feature/x#1'
+export GLAB_BRANCH_DELETE_STATUS=404 GLAB_BRANCH_DELETE_MESSAGE="404 Branch Not Found"
+pr_case "gitlab branch-delete — a 404 is gone" 0 gone - -- branch-delete feature/x
+export GLAB_BRANCH_DELETE_STATUS=403 GLAB_BRANCH_DELETE_MESSAGE="403 Forbidden"
+pr_case "gitlab branch-delete — any other failure is exit 1" 1 '' - -- branch-delete feature/x
+unset GLAB_BRANCH_DELETE_STATUS GLAB_BRANCH_DELETE_MESSAGE
+
+pr_case "gitlab issue-parent — fallback, with no request" 0 fallback EMPTY -- issue-parent 5
+pr_case "gitlab pr-closing-issues — closes_issues' iids" 0 '[12,13]' "merge_requests/7/closes_issues" -- pr-closing-issues 7
+pr_case "gitlab pr-comment — POST an MR note from the file" 0 '' \
+  "-X POST projects/:id/merge_requests/7/notes -F body=@$PR_BODY" -- pr-comment 7 --body-file "$PR_BODY"
+
+for refusal in "pr-thread-resolve 7 d1 --body-file $PR_EMPTY" "pr-thread-resolve 7 d1" \
+               "pr-comment 7 --body-file $PR_EMPTY" "pr-comment 7 --body-file $WORK/no-such-file" \
+               "pr-merge 7 --squash --body-file $PR_EMPTY"; do
+  # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+  pr_case "gitlab ${refusal%% *} — refuses a missing or empty --body-file, exit 2, no glab call" 2 - EMPTY -- $refusal
+done
+for dry in "pr-merge 7 --squash --delete-branch --subject s --dry-run" \
+           "pr-thread-resolve 7 d1 --body-file $PR_BODY --dry-run" \
+           "pr-comment 7 --body-file $PR_BODY --dry-run" "branch-delete feature/x --dry-run"; do
+  # shellcheck disable=SC2086
+  pr_case "gitlab ${dry%% *} --dry-run — no glab call" 0 - EMPTY -- $dry
+  if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+    note_fail "gitlab ${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+  fi
+done
+
+export GLAB_MR_JSON='{"iid":51,"state":"merged","merged_at":"2026-11-11T10:00:00Z","merge_commit_sha":null,"squash_commit_sha":"sq123"}'
+pr_case "gitlab pr-view — mergedAt from merged_at, mergeSha falls back to squash_commit_sha" 0 - - -- pr-view 51
+[ "$(printf '%s' "$OUT" | jq -c '[.state, .mergedAt, .mergeSha]' 2>/dev/null)" = '["merged","2026-11-11T10:00:00Z","sq123"]' ] \
+  || note_fail "gitlab pr-view — merged fields wrong: $OUT"
+unset GLAB_MR_JSON
+
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
-[ "$out" = missing ] || note_fail "gitlab state merge-pr — expected 'missing', got '$out'"
+if [ "$out" = capable ]; then
+  ok "gitlab state merge-pr — capable once the ten merge verbs land"
+else
+  note_fail "gitlab state merge-pr — expected 'capable', got '$out'"
+fi
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] || note_fail "gitlab state implement-issue — expected 'capable' still, got '$out'"
 
 echo "== F. the Azure DevOps backend (#509)"
 
