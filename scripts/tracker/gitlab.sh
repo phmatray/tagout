@@ -70,9 +70,10 @@ command -v glab > /dev/null 2>&1 || {
 #
 # Sets GITLAB_HOST (empty = let `glab` pick its own default) and PROJECT_PATH (empty = let `:id`
 # resolve from the current directory). Mirrors _gh-host.sh's 2-vs-3-segment split; see the header.
-# An inherited GITLAB_HOST (glab's own variable) is kept: it is the one route to a dotless host
+# An inherited GITLAB_HOST (glab's own variable) is read, only to name the host: it is the one route to a dotless host
 # (localhost) on a subgroup slug, which the dot rule below cannot tell from a subgroup (#801).
-GITLAB_HOST="${GITLAB_HOST:-}"
+_env_host=$(printf '%s' "${GITLAB_HOST:-}" | tr '[:upper:]' '[:lower:]')
+GITLAB_HOST=""
 PROJECT_PATH=""
 if [ -n "${TRACKER_REPO:-}" ]; then
   _slug="$TRACKER_REPO"
@@ -94,8 +95,9 @@ if [ -n "${TRACKER_REPO:-}" ]; then
   _first="${_slug%%/*}"
   if [ "$_segments" -lt 2 ]; then
     echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER[/SUBGROUP…]/REPO" >&2; exit 2
-  elif [ "$_segments" -ge 3 ] && case "$_first" in *.*) true ;; "${GITLAB_HOST:-}") [ -n "$_first" ] ;; *) false ;; esac; then
-    GITLAB_HOST=$(printf '%s' "$_first" | tr '[:upper:]' '[:lower:]')
+  elif [ "$_segments" -ge 3 ] && _lf=$(printf '%s' "$_first" | tr '[:upper:]' '[:lower:]') \
+    && case "$_lf" in *.*) true ;; "$_env_host") [ -n "$_lf" ] ;; *) false ;; esac; then
+    GITLAB_HOST="$_lf"
     PROJECT_PATH="${_slug#*/}"
   else
     PROJECT_PATH="$_slug"
