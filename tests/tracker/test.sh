@@ -2173,6 +2173,12 @@ case "$resource $http_method" in
     [ -z "${AZ_BATCH_FAIL:-}" ] || fail 500 "workitemsbatch"
     inf=""; prev=""
     for a in "$@"; do [ "$prev" = --in-file ] && inf="$a"; prev="$a"; done
+    # #811: the edge-state read asks for fields; its reply is $AZ_STATE_JSON, else every id Closed.
+    if jq -e 'has("fields")' "$inf" >/dev/null; then
+      if [ -n "${AZ_STATE_JSON:-}" ]; then printf '%s' "$AZ_STATE_JSON"
+      else jq -c '{value: [.ids[] | {id: ., fields: {"System.State": "Closed"}}]}' "$inf"; fi
+      exit 0
+    fi
     [ -n "${AZ_BATCH_SIZES:-}" ] && jq '.ids | length' "$inf" >> "$AZ_BATCH_SIZES"
     if [ -n "${AZ_BATCH_JSON:-}" ]; then printf '%s' "$AZ_BATCH_JSON"
     else jq -c '{value: [.ids[] | {id: ., fields: {"System.Title": "t\(.)"}}]}' "$inf"; fi ;;
@@ -2805,10 +2811,11 @@ echo "== F4. the auto-dev verbs on Azure DevOps (#753)"
 
 PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
 export AZ_QUERY_JSON='[{"id":31},{"id":32}]'
-export AZ_BATCH_JSON='{"count":2,"value":[{"id":32,"fields":{"System.Title":"t32"}},{"id":31,"fields":{"System.Title":"t31","System.Tags":"effort: small; area: skills","System.Description":"<p>b</p>","System.CreatedDate":"2026-11-01T00:00:00Z","System.AssignedTo":{"uniqueName":"ann@acme.example"}},"relations":[{"rel":"System.LinkTypes.Dependency-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/20"},{"rel":"System.LinkTypes.Dependency-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/40"},{"rel":"System.LinkTypes.Hierarchy-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/41"},{"rel":"System.LinkTypes.Related","url":"https://dev.azure.com/acme/_apis/wit/workItems/42"}]}]}'
+export AZ_STATE_JSON='{"value":[{"id":20,"fields":{"System.State":"Active"}},{"id":40,"fields":{"System.State":"Done"}},{"id":41,"fields":{"System.State":"Closed"}}]}'
+export AZ_BATCH_JSON='{"count":2,"value":[{"id":32,"fields":{"System.Title":"t32"}},{"id":31,"fields":{"System.Title":"t31","System.Tags":"effort: small; area: skills","System.Description":"<p>b</p><div>- [ ] a &amp; b</div><div><b>Blocked by:</b> #20</div>","System.CreatedDate":"2026-11-01T00:00:00Z","System.AssignedTo":{"uniqueName":"ann@acme.example"}},"relations":[{"rel":"System.LinkTypes.Dependency-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/20"},{"rel":"System.LinkTypes.Dependency-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/40"},{"rel":"System.LinkTypes.Hierarchy-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/41"},{"rel":"System.LinkTypes.Related","url":"https://dev.azure.com/acme/_apis/wit/workItems/42"}]}]}'
 pr_case "azure issue-list — open WIQL, then one workitemsbatch POST" 0 - "--resource workitemsbatch" -- issue-list --state open --limit 10
 grep -q "NOT IN ('Closed','Done','Removed')" "$AZ_CALL_LOG" || note_fail "azure issue-list — the WIQL is not the open set: $(cat "$AZ_CALL_LOG")"
-want='{"number":31,"title":"t31","labels":["effort: small","area: skills"],"body":"<p>b</p>","comments":null,"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":20,"state":null}],"totalCount":1},"blocking":{"nodes":[{"number":40,"state":null}],"totalCount":1},"subIssues":{"nodes":[{"number":41,"state":null}],"totalCount":1},"assignees":["ann@acme.example"]}'
+want='{"number":31,"title":"t31","labels":["effort: small","area: skills"],"body":"b\n- [ ] a & b\n**Blocked by:** #20","comments":null,"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":20,"state":"open"}],"totalCount":1},"blocking":{"nodes":[{"number":40,"state":"closed"}],"totalCount":1},"subIssues":{"nodes":[{"number":41,"state":"closed"}],"totalCount":1},"assignees":["ann@acme.example"]}'
 got=$(printf '%s' "$OUT" | jq -c '.[0]' 2>/dev/null)
 [ "$got" = "$want" ] && ok "azure issue-list — tags split, AssignedTo, Dependency and Hierarchy relations as edges" \
   || note_fail "azure issue-list — wrong row
@@ -2816,7 +2823,12 @@ got=$(printf '%s' "$OUT" | jq -c '.[0]' 2>/dev/null)
       got:  $got"
 [ "$(printf '%s' "$OUT" | jq -c '.[1] | [.number, .labels, .assignees, .blockedBy.totalCount]')" = '[32,[],[],0]' ] \
   && ok "azure issue-list — rows in id order, an untagged item has empty labels" || note_fail "azure issue-list — second row: $OUT"
-unset AZ_BATCH_JSON
+# #811: a predecessor the read cannot answer for holds the row, never reads as closed.
+export AZ_STATE_JSON='{"value":[{"id":20,"fields":{"System.State":"Active"}},null,{"id":41,"fields":{"System.State":"Closed"}}]}'
+pr_case "azure issue-list — an unresolvable edge holds its row" 0 - - -- issue-list --state open --limit 10
+[ "$(printf '%s' "$OUT" | jq -c 'map(.number)')" = '[32]' ] && ok "azure issue-list — the row with an unresolved edge is held" \
+  || note_fail "azure issue-list — unresolved edge not held: $OUT"
+unset AZ_BATCH_JSON AZ_STATE_JSON
 
 export AZ_QUERY_JSON
 AZ_QUERY_JSON=$(jq -nc '[range(1; 202) | {id: .}]')
