@@ -1116,6 +1116,33 @@ else
   ok "repo — path_with_namespace -> slug, default_branch -> defaultBranch, host gitlab.com"
 fi
 
+# originSlug keeps the WHOLE project path of origin — a GitLab subgroup project has more than two
+# segments (#799). Every expected value is a hand-written literal, never re-derived from the URL.
+gl_origin_case() { # <label> <origin-url|""> <want-json-literal>
+  local d="$WORK/gl-origin-$1"
+  mkdir -p "$d"
+  git -C "$d" init -q
+  [ -n "$2" ] && git -C "$d" remote add origin "$2"
+  run_tracker "$d" --tracker gitlab repo
+  local want="{\"slug\":\"acme/widgets\",\"host\":\"gitlab.com\",\"defaultBranch\":\"main\",\"originSlug\":$3}"
+  if [ "$RC" -ne 0 ]; then
+    note_fail "gitlab originSlug ($1) — exited $RC ($ERR)"
+  elif [ "$OUT" != "$want" ]; then
+    note_fail "gitlab originSlug ($1) — wrong stdout
+      want: $want
+      got:  $OUT"
+  else
+    ok "gitlab originSlug — $1"
+  fi
+}
+gl_origin_case sub-https "https://gitlab.com/group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-scp "git@gitlab.com:group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-ssh "ssh://git@gitlab.example.com:2222/group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-userinfo "https://user:tok@gitlab.com/group/sub/proj.git/" '"group/sub/proj"'
+gl_origin_case two-case "https://gitlab.com/Acme/Widgets.git" '"Acme/Widgets"'
+gl_origin_case one-seg "https://gitlab.com/proj.git" 'null'
+gl_origin_case no-origin "" 'null'
+
 # ---------------------------------------------------------------- --repo/-R: [host/]owner/repo (#668)
 #
 # The 2-vs-3-segment split gitlab.sh's own header claims (mirroring _gh-host.sh's rule for github),
