@@ -277,3 +277,10 @@ grep -qF 'a plan hosted in a comment is a GitHub-only shape (#750)' <<<"$out" ||
 echo "  ok: refused by name, no gh call, no glab call"
 
 echo "finish-task golden test: all cases behaved as specified"
+
+echo "== 16. a GitLab subgroup slug reaches glab as one full project path (#795) =="
+: > "$GLAB_LOG"
+rc=0; out=$(PATH="$WORK/bin:$PATH" bash "$FINISH" --repo group/subgroup/project --issue 42 --task 1 --worktree "$GL_WT" --branch fix/42 2>&1) || rc=$?
+grep -qF 'projects/group%2Fsubgroup%2Fproject' "$GLAB_LOG" || fail subgroup "glab never got the full project path: $(cat "$GLAB_LOG") — $out"
+grep -qF 'malformed' <<<"$out" && fail subgroup-slug "the slug was refused: $out"
+echo "  ok: group/subgroup/project forwarded unchanged"

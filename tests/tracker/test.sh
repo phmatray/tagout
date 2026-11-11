@@ -1143,10 +1143,24 @@ else
 fi
 
 : > "$GLAB_CALL_LOG"
-run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo a/b/c/d repo
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/subgroup/project repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsubgroup%2Fproject' "$GLAB_CALL_LOG" \
+  && ! grep -Fq -- '--hostname' "$GLAB_CALL_LOG" \
+  && ok "--repo (3 segments, dotless first) — a subgroup project path, fully encoded, no host (#795)" \
+  || note_fail "--repo (subgroup) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo gitlab.example.com/a/b/c/d repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/a%2Fb%2Fc%2Fd' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '--hostname gitlab.example.com' "$GLAB_CALL_LOG" \
+  && ok "--repo (host plus subgroups) — host split off, the rest is the project path (#795)" \
+  || note_fail "--repo (host plus subgroups) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo widgets repo
 [ "$RC" -eq 2 ] && [ ! -s "$GLAB_CALL_LOG" ] \
-  && ok "--repo (4 segments) — malformed slug refused before any glab call, exit 2" \
-  || note_fail "--repo (4 segments) — expected exit 2 with no call, got $RC, log: $(cat "$GLAB_CALL_LOG")"
+  && ok "--repo (1 segment) — malformed slug refused before any glab call, exit 2" \
+  || note_fail "--repo (1 segment) — expected exit 2 with no call, got $RC, log: $(cat "$GLAB_CALL_LOG")"
 
 # ------------------------------------------------------------------------------------------- AC5 (issue-view)
 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-view 9
