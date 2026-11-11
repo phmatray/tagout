@@ -46,6 +46,7 @@ defaults:
       path: ""
     values:
       layout: doc
+      image: /assets/og.png
   - scope:
       path: index.md
     values:

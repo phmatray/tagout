@@ -1,6 +1,7 @@
 ---
 title: Journal
 nav_order: 9
+nav_group: internals
 has_children: true
 ---
 

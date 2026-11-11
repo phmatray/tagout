@@ -31,11 +31,11 @@
 # this environment. Task 4 Step 5's live acceptance run is where that gap gets closed; until then
 # treat every HTTP-status mapping below as "per the issue's design table", not "measured".
 #
-# TRACKER_REPO carries `[host/]owner/repo` (tracker.sh's `--repo`/`-R`, #668) — GitLab's own nested
-# subgroups make a longer path genuinely ambiguous with a leading host segment, so — exactly like
-# github.sh's `_gh-host.sh` — only the 2-segment (`owner/repo`) and 3-segment (`host/owner/repo`)
-# shapes are accepted; a caller naming a project under a subgroup passes no host, or is unsupported
-# until a future issue is worth writing for it. Empty is the common case: create-issue runs inside
+# TRACKER_REPO carries `[host/]owner[/subgroup…]/repo` (tracker.sh's `--repo`/`-R`, #668, #795): a
+# leading segment with a dot is the host when there are 3+ segments (`host.tld/owner/repo`,
+# `host.tld/group/subgroup/project`); otherwise the whole slug is the project path, so
+# `group/subgroup/project` addresses a project under a subgroup. A dotless host (`localhost`) is
+# named by exporting `GITLAB_HOST=localhost`; a leading segment equal to it is then the host (#801). Empty is the common case: create-issue runs inside
 # the project's own checkout, and `:id`/`glab`'s own default host cover it with no extra call.
 #
 # Exit codes (the dispatcher passes them through), matching github.sh's:
@@ -70,13 +70,16 @@ command -v glab > /dev/null 2>&1 || {
 #
 # Sets GITLAB_HOST (empty = let `glab` pick its own default) and PROJECT_PATH (empty = let `:id`
 # resolve from the current directory). Mirrors _gh-host.sh's 2-vs-3-segment split; see the header.
+# An inherited GITLAB_HOST (glab's own variable) is read, only to name the host: it is the one route to a dotless host
+# (localhost) on a subgroup slug, which the dot rule below cannot tell from a subgroup (#801).
+_env_host=$(printf '%s' "${GITLAB_HOST:-}" | tr '[:upper:]' '[:lower:]')
 GITLAB_HOST=""
 PROJECT_PATH=""
 if [ -n "${TRACKER_REPO:-}" ]; then
   _slug="$TRACKER_REPO"
   case "$_slug" in
     /*|*/|*//*)
-      echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER/REPO" >&2; exit 2 ;;
+      echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER[/SUBGROUP…]/REPO" >&2; exit 2 ;;
   esac
   _segments=1; _rest="$_slug"
   while :; do
@@ -85,14 +88,20 @@ if [ -n "${TRACKER_REPO:-}" ]; then
       *) break ;;
     esac
   done
-  case "$_segments" in
-    2) PROJECT_PATH="$_slug" ;;
-    3) GITLAB_HOST=$(printf '%s' "${_slug%%/*}" | tr '[:upper:]' '[:lower:]')
-       PROJECT_PATH="${_slug#*/}" ;;
-    *) echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER/REPO (GitLab" \
-            "subgroups are not supported through --repo/-R yet)" >&2
-       exit 2 ;;
-  esac
+  # 2 segments: owner/repo. 3 or more: a leading segment with a dot is the host (host/owner/repo,
+  # host/group/subgroup/project); without one the whole slug is a project path under subgroups.
+  # A dotless host (localhost) is indistinguishable from a subgroup, so it is named by exporting
+  # GITLAB_HOST=localhost: a leading segment equal to it is then split off like a dotted host.
+  _first="${_slug%%/*}"
+  if [ "$_segments" -lt 2 ]; then
+    echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER[/SUBGROUP…]/REPO" >&2; exit 2
+  elif [ "$_segments" -ge 3 ] && _lf=$(printf '%s' "$_first" | tr '[:upper:]' '[:lower:]') \
+    && case "$_lf" in *.*) true ;; "$_env_host") [ -n "$_lf" ] ;; *) false ;; esac; then
+    GITLAB_HOST="$_lf"
+    PROJECT_PATH="${_slug#*/}"
+  else
+    PROJECT_PATH="$_slug"
+  fi
 fi
 
 # glab's own JSON-array %-encoding for a project path (owner/repo → owner%2Frepo); `:id` is left
@@ -219,12 +228,14 @@ case "$VERB" in
   repo)
     out=$(_api "projects/$(_id)") || exit 1
     origin_url=$(git remote get-url origin 2>/dev/null) || origin_url=""
+    # The whole project path of origin (scheme, userinfo, host and :port dropped), so a subgroup
+    # project keeps every segment (#799); fewer than two segments is JSON null.
     origin_arg=$(printf '%s' "$origin_url" \
-      | sed -E -e 's#(\.git)?/*$##' -e 's#.*[:/]([^/:]+)/([^/:]+)$#\1/\2#')
+      | sed -E -e 's#(\.git)?/*$##' -e 's#^([A-Za-z][A-Za-z0-9+.-]*://[^/]*/|[^:/]*:)##')
     printf '%s' "$out" | jq -c --arg host "${GITLAB_HOST:-gitlab.com}" --arg origin "$origin_arg" \
       '($origin | split("/")) as $p |
        {slug: .path_with_namespace, host: $host, defaultBranch: (.default_branch // null),
-        originSlug: (if ($p | length) == 2 and ($p[0] | length) > 0 and ($p[1] | length) > 0
+        originSlug: (if ($p | length) >= 2 and all($p[]; length > 0)
                      then $origin else null end)}'
     ;;
 

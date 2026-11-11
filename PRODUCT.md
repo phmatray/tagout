@@ -17,8 +17,12 @@ Gemini CLI, Cursor and the other hosts in `docs/_data/hosts.yml`), arriving from
 repository or a shared link. They want to install the kit and run a first command. Success is a
 completed install and a first `/migrate-assess`, `create-issue` or similar run, not time on site.
 
-No other audience is confirmed. Evaluators costing a .NET portfolio and peer skill authors visit
-too, but were not chosen as an audience to design for.
+A second audience, confirmed 2026-11-11: the undecided visitor, a developer who uses a coding
+agent, arrives from a shared link or the repository page and has never heard of Tagout. Success for
+them: they can say what Tagout does after the first viewport, and they star, share or install.
+
+Evaluators costing a .NET portfolio and peer skill authors visit too, but were not chosen as an
+audience to design for.
 
 ## Product Purpose
 
@@ -66,9 +70,10 @@ verification.
   preference and a stored toggle (`kit-scheme` in localStorage, `data-kit-scheme` on the root).
 - Token cost is an existential concern for the owner: docs changes must not bloat pages the skills
   or agents read, and the site carries no client-side framework.
-- No decision yet on imagery beyond the favicon; the only raster the site ships is the case-study
-  captures under `docs/case-studies/winrt-portfolio/captures/` (published since 2026-09-14 so
-  the Sokoban report's screenshot resolves).
+- Imagery (decided 2026-11-11): a share card (`docs/assets/og.png`) and a static run on the home
+  page are allowed; no other raster beyond the case-study captures under
+  `docs/case-studies/winrt-portfolio/captures/` (published since 2026-09-14 so the Sokoban
+  report's screenshot resolves) and the favicon.
 
 ## Brand Commitments
 
@@ -104,6 +109,7 @@ verification.
    site renders, never in copy that can drift.
 4. Legible without help: no JavaScript, no image and no colour is required to understand a page.
 5. Cheap to read for machines too: pages stay lean because agents and skills read this repository.
+6. Understood before installed: the first viewport says what the product does in words a newcomer uses.
 
 ## Accessibility & Inclusion
 

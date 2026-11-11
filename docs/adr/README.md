@@ -1,6 +1,7 @@
 ---
 title: Architectural Decision Records
 nav_order: 4
+nav_group: internals
 has_children: true
 ---
 

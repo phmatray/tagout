@@ -1,0 +1,20 @@
+# One real run from this repository, idea to merged pull request. The home page renders it
+# (docs/index.md, "One run, start to finish"); every step links to its live artifact.
+# Values re-read from the tracker on 2026-11-11: issue #762 created 2026-11-10 13:17:55Z, pull
+# request #779 opened 12:07:43Z and merged 12:24:27Z (e2a8964), 2 commits, +95 -40, closes #762.
+issue: 762
+pull_request: 779
+opened_to_merged: 17 min
+steps:
+  - skill: create-issue
+    left: "Issue #762, with a brainstorm, a spec and a plan"
+    at: 2026-11-10 13:17 UTC
+    url: https://github.com/phmatray/tagout/issues/762
+  - skill: "implement-issue #762"
+    left: "Pull request #779: 2 commits, +95 −40"
+    at: 2026-11-11 12:07 UTC
+    url: https://github.com/phmatray/tagout/pull/779
+  - skill: "merge-pr #779"
+    left: "CI green, squash-merged, issue closed"
+    at: 2026-11-11 12:24 UTC
+    url: https://github.com/phmatray/tagout/commit/e2a8964

@@ -6,16 +6,61 @@
   padding: calc(var(--unit) * 3) calc(var(--unit) * 3) calc(var(--unit) * 8);
 }
 
+// The hero is cut in three: the tag's pitch, the install window, and the rest of the tag (plugins,
+// refusal, actions). Wide, the pitch and the rest join into one tag on the left with the install
+// window beside both; narrow, they stack in DOM order, so the command follows the pitch.
 .kit-hero {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(20rem, 1fr);
-  gap: calc(var(--unit) * 3);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "tag install" "more install";
+  gap: 0 calc(var(--unit) * 3);
   align-items: stretch;
+}
+
+.kit-hero-tag {
+  grid-area: tag;
+}
+
+.kit-install {
+  grid-area: install;
+}
+
+.kit-hero-more {
+  grid-area: more;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--unit) * 2.5);
+  padding: 0 calc(var(--unit) * 4) calc(var(--unit) * 3);
+}
+
+@media (min-width: 64.0625rem) {
+  .kit-hero-tag {
+    border-bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .kit-hero .kit-hero-tag .kit-tag-body {
+    padding-bottom: calc(var(--unit) * 2.5);
+  }
+  // The lower half's shadow must not fall back onto the pitch above it: clip it at the seam.
+  .kit-hero-more {
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    clip-path: inset(0 calc(var(--unit) * -4) calc(var(--unit) * -4));
+  }
 }
 
 @media (max-width: 64rem) {
   .kit-hero {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "tag" "install" "more";
+    gap: calc(var(--unit) * 2);
+  }
+  .kit-hero-more {
+    padding-top: calc(var(--unit) * 3);
   }
 }
 
@@ -36,12 +81,22 @@
 
 @media (max-width: 40rem) {
   .kit-hero-tag .kit-tag-band {
-    padding: calc(var(--unit) * 3) calc(var(--unit) * 2.5) calc(var(--unit) * 2.5) calc(var(--unit) * 5);
+    padding: calc(var(--unit) * 2) calc(var(--unit) * 2.5) calc(var(--unit) * 2) calc(var(--unit) * 5);
   }
   .kit-hero .kit-hero-tag .kit-tag-body,
-  .kit-hero .kit-install .kit-tag-body {
+  .kit-hero .kit-install .kit-tag-body,
+  .kit-hero .kit-hero-more {
     padding-left: calc(var(--unit) * 2.5);
     padding-right: calc(var(--unit) * 2.5);
+  }
+  // On a phone the pitch is short and tight, so the install window starts in the first viewport.
+  .kit-hero .kit-hero-tag .kit-tag-body {
+    padding-top: calc(var(--unit) * 2);
+    padding-bottom: calc(var(--unit) * 2);
+    gap: calc(var(--unit) * 1.5);
+  }
+  .kit-home {
+    padding-top: calc(var(--unit) * 2);
   }
 }
 
@@ -106,6 +161,12 @@
   font-size: 0.875rem;
 }
 
+// Prose of more than one line is read, not typed: the body face. Labels stay typewritten.
+.kit-plugins dd,
+.kit-denial .kit-fields dd {
+  font-family: var(--font-body);
+}
+
 .kit-denial .kit-fields dt,
 .kit-denial .kit-fields dd {
   padding-top: calc(var(--unit) * 0.875);
@@ -166,7 +227,7 @@
   color: var(--ink-soft);
 }
 
-// The picker: radio inputs styled as chips; the chosen host renders solid, the rest dashed.
+// The picker: radio inputs styled as chips; the chosen host renders filled in ink, the rest outlined.
 .kit-picker {
   display: flex;
   flex-direction: column;
@@ -271,9 +332,9 @@
   border-top: 1px dotted var(--g4);
 }
 
-// Sections below the hero share one rhythm: a display heading, then the content, 8 units apart.
+// Sections below the hero share one rhythm: a display heading, then the content, --section-gap apart.
 .kit-section {
-  margin-top: calc(var(--unit) * 10);
+  margin-top: var(--section-gap);
 }
 
 .kit-section-head {
@@ -309,6 +370,95 @@
 
 // The lock-out record: the four apps, from where, cleared in how long. The minutes are the
 // largest type on the page after the tag band, stamped inside their rows.
+// One run (#786): three numbered steps side by side, stacked on a phone.
+.kit-run-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--unit) * 3);
+  counter-reset: run;
+}
+
+@media (min-width: 48rem) {
+  .kit-run-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kit-run-steps li {
+  counter-increment: run;
+  display: flex;
+  flex-direction: column;
+  gap: var(--unit);
+  padding-top: calc(var(--unit) * 2);
+  border-top: 1.5px solid var(--rule-strong);
+}
+
+.kit-run-steps li::before {
+  content: counter(run);
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 0.9;
+}
+
+.kit-run-steps code {
+  align-self: flex-start;
+}
+
+.kit-run-steps a {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.kit-run-at {
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
+// This repository's own figures (#788): three numbers in the display face, side by side, stacked on a phone.
+.kit-figures-list {
+  margin: 0 0 calc(var(--unit) * 3);
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--unit) * 3);
+}
+
+@media (min-width: 48rem) {
+  .kit-figures-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kit-figures-list div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: var(--unit);
+  padding-top: calc(var(--unit) * 2);
+  border-top: 1.5px solid var(--rule-strong);
+}
+
+.kit-figures-list dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 0.9;
+}
+
+.kit-figures-list dt {
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
 .kit-record {
   width: 100%;
   border-collapse: collapse;
@@ -540,3 +690,69 @@
   font-size: 0.9375rem;
 }
 
+// On a phone the page stays a pitch, not a scroll: the run's numerals move beside their step, the
+// three figures sit side by side, and the ruled rows below tighten by a quarter of their air.
+@media (max-width: 40rem) {
+  .kit-home {
+    padding-bottom: calc(var(--unit) * 6);
+  }
+  .kit-section-head {
+    margin-bottom: calc(var(--unit) * 2);
+    padding-bottom: calc(var(--unit) * 1.5);
+  }
+  .kit-run-steps {
+    gap: calc(var(--unit) * 2);
+  }
+  .kit-run-steps li {
+    padding-top: calc(var(--unit) * 1.5);
+    display: grid;
+    grid-template-columns: calc(var(--unit) * 5) minmax(0, 1fr);
+    gap: calc(var(--unit) * 0.5) calc(var(--unit) * 2);
+    align-items: start;
+  }
+  .kit-run-steps li > * {
+    grid-column: 2;
+  }
+  .kit-run-steps li::before {
+    grid-row: 1 / span 3;
+  }
+  .kit-figures-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: calc(var(--unit) * 2);
+  }
+  .kit-figures-list dd {
+    font-size: 2.25rem;
+  }
+  .kit-section-head p,
+  .kit-refusals p,
+  .kit-commands td,
+  .kit-siteindex span {
+    line-height: 1.45;
+  }
+  .kit-section-head p,
+  .kit-commands td {
+    font-size: 0.9375rem;
+  }
+  .kit-siteindex span {
+    font-size: 0.875rem;
+  }
+  .kit-hero .kit-install .kit-tag-body,
+  .kit-hero .kit-hero-more,
+  .kit-picker {
+    gap: calc(var(--unit) * 1.5);
+  }
+  .kit-hero .kit-hero-more {
+    padding-top: calc(var(--unit) * 2);
+  }
+  .kit-refusals li {
+    gap: var(--unit) calc(var(--unit) * 2);
+    padding: calc(var(--unit) * 2) 0;
+  }
+  .kit-commands td {
+    padding-top: var(--unit);
+    padding-bottom: var(--unit);
+  }
+  .kit-siteindex li {
+    padding: var(--unit) 0;
+  }
+}

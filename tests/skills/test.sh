@@ -1487,6 +1487,13 @@ home = (yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}).get("setting
 want = "/" + home.rstrip("/").rsplit("/", 1)[-1]
 if home and cfg.get("baseurl") != want:
     print("FAIL: docs/_config.yml baseurl is " + repr(cfg.get("baseurl")) + " but .github/repo-setup.yml homepage " + repr(home) + " implies " + repr(want)); sys.exit(1)
+# Every page carries a share card (#790): docs/assets/og.png is a byte copy of the README banner (Pages serves only docs/),
+# and the first defaults scope hands it to jekyll-seo-tag as the site-wide image.
+_og, _bn = docs / "assets" / "og.png", root / ".github" / "banner.png"
+if not (_og.exists() and _bn.exists() and _og.read_bytes() == _bn.read_bytes()):
+    print("FAIL: docs/assets/og.png is missing or differs from .github/banner.png — the share card is a copy of the README banner"); sys.exit(1)
+if not any(isinstance(v, dict) and v.get("values", {}).get("image") == "/assets/og.png" for v in cfg.get("defaults", [])):
+    print("FAIL: docs/_config.yml sets no default image — pages are shared without a card"); sys.exit(1)
 # The layouts the defaults assign must exist, and the base layout must include the head, the top bar,
 # the footer and the scripts — the four includes every page stands on.
 layouts = docs / "_layouts"
@@ -1514,7 +1521,15 @@ if not re.search(r"^title:", itext, re.M) or "nav_order: 1" not in itext or "](m
     print("FAIL: docs/index.md must carry title:, nav_order: 1 and link methodology.md"); sys.exit(1)
 if re.search(r"\]\([^)]*\.html\)", itext):
     print("FAIL: docs/index.md links .html pages — link the .md source, which renders on GitHub and on Pages"); sys.exit(1)
-globs = [e for e in cfg.get("exclude", []) if any(ch in e for ch in "*?[")]
+# The home page sells the lifecycle alone (#787): the .NET migration proof lives on its own page.
+_migrate = docs / "migrate.md"
+if not _migrate.exists() or not re.search(r"^title:\s*\S", _migrate.read_text(encoding="utf-8"), re.M):
+    print("FAIL: docs/migrate.md is missing or untitled — the .NET add-on has its own page"); sys.exit(1)
+if "](migrate.md)" not in itext:
+    print("FAIL: docs/index.md does not link migrate.md"); sys.exit(1)
+if "kit-hasp" in itext or "kit-record" in itext:
+    print("FAIL: docs/index.md still carries the migration proof (kit-hasp / kit-record) — it lives on docs/migrate.md"); sys.exit(1)
+globs =[e for e in cfg.get("exclude", []) if any(ch in e for ch in "*?[")]
 if globs:
     print("FAIL: docs/_config.yml excludes by glob (" + ", ".join(globs) + ") — Jekyll 3 applies exclude to the layouts too, so a bare glob unpublishes every layout; name the file by path"); sys.exit(1)
 excluded = [e.rstrip("/") for e in cfg.get("exclude", [])]
@@ -1550,8 +1565,19 @@ if "data-kit-scheme" not in head or "kit-scheme" not in head:
     print("FAIL: docs/_includes/head.html does not restore the stored scheme onto data-kit-scheme before first paint"); sys.exit(1)
 if 'class="kit-scheme-toggle"' not in topbar:
     print("FAIL: docs/_includes/topbar.html carries no kit-scheme-toggle button"); sys.exit(1)
+# The topbar names four product entries; the kit's internal record (journal, platforms) stays in the side navigation.
+if not all(x in topbar for x in ("/install.html", "/methodology.html#", "/migrate.html", "github.com/phmatray/tagout")) or "/journal/" in topbar or "/platforms.html" in topbar:
+    print("FAIL: docs/_includes/topbar.html must link install, the commands table, the .NET add-on and the repository, and nothing from the kit's internals"); sys.exit(1)
+if "kit-star" not in topbar or "https://github.com/phmatray/tagout" not in topbar:
+    print("FAIL: docs/_includes/topbar.html carries no kit-star link to the repository"); sys.exit(1)
 if not sitejs.exists() or "kit-scheme-toggle" not in sitejs.read_text(encoding="utf-8"):
     print("FAIL: docs/assets/js/site.js does not wire the kit-scheme-toggle"); sys.exit(1)
+# The side navigation reads one front-matter key to put the internal record under its own group.
+for f in ("decisions.md", "adr/README.md", "roseline-gate.md", "bundle-gate.md", "demo-walkthrough.md", "journal/index.md"):
+    if not re.search(r"^nav_group: internals$", (docs / f).read_text(encoding="utf-8").split("---")[1], re.M):
+        print("FAIL: docs/" + f + " must carry nav_group: internals — it belongs to the kit's internal record, not to the product pages"); sys.exit(1)
+if "nav_group" not in (docs / "_includes" / "sidenav.html").read_text(encoding="utf-8"):
+    print("FAIL: docs/_includes/sidenav.html does not read nav_group"); sys.exit(1)
 tokens = (docs / "_sass" / "kit" / "_tokens.scss").read_text(encoding="utf-8")
 if 'data-kit-scheme="dark"' not in tokens or "prefers-color-scheme: dark" not in tokens:
     print("FAIL: docs/_sass/kit/_tokens.scss must answer both [data-kit-scheme=\"dark\"] and prefers-color-scheme: dark"); sys.exit(1)
@@ -1583,16 +1609,43 @@ for page in ("install.md", "platforms.md"):
 # rendered from the host table, never a hand-typed list of hosts.
 if "](install.md)" not in itext or "kit-picker" not in itext or "site.data.hosts" not in itext:
     print("FAIL: docs/index.md must link install.md and carry a kit-picker rendered from site.data.hosts"); sys.exit(1)
+if "claude_code.install[" in itext:
+    print("FAIL: docs/index.md types an install command in the hero — the picker is the one place a command appears"); sys.exit(1)
+# The home page shows one real run (#786): docs/_data/demo.yml is its one home, and every step is proof.
+if "site.data.demo" not in itext:
+    print("FAIL: docs/index.md does not read site.data.demo — the run has one home, docs/_data/demo.yml"); sys.exit(1)
+_steps = (yaml.safe_load((docs / "_data" / "demo.yml").read_text(encoding="utf-8")) or {}).get("steps") or []
+if len(_steps) < 3:
+    print("FAIL: docs/_data/demo.yml has fewer than three steps — the run is idea, pull request, merge"); sys.exit(1)
+for _n, _s in enumerate(_steps, 1):
+    if not str(_s.get("url", "")).startswith("https://github.com/phmatray/tagout/"):
+        print("FAIL: docs/_data/demo.yml step " + str(_n) + " has no proof link into phmatray/tagout"); sys.exit(1)
+# The repository's own figures (#788): docs/_data/figures.yml is their one home, written by the script.
+if "site.data.figures" not in itext:
+    print("FAIL: docs/index.md does not read site.data.figures — the repository's figures have one home, docs/_data/figures.yml, written by scripts/site-figures.py"); sys.exit(1)
+_fig = yaml.safe_load((docs / "_data" / "figures.yml").read_text(encoding="utf-8")) or {}
+if not all(k in _fig for k in ("as_of", "prs_merged", "issues_delivered", "median_issue_to_merge_hours")):
+    print("FAIL: docs/_data/figures.yml is missing a key"); sys.exit(1)
+_product = (root / "PRODUCT.md").read_text(encoding="utf-8")
+_users =_product.split("## Users", 1)[1].split("\n## ", 1)[0]
+if "undecided" not in _users:
+    print("FAIL: PRODUCT.md § Users does not name the undecided visitor — the home page is designed for them since 2026-11-11"); sys.exit(1)
 # ...and every command on those pages comes from the table too: a command typed into a page goes
 # stale the day its host's row changes, and nothing else notices. Install shows the rule-file
 # hosts' shared clone line once, then each one's last line, so each such row has exactly that shape.
 hosts = yaml.safe_load((docs / "_data" / "hosts.yml").read_text(encoding="utf-8"))
-for page in ("index.md", "install.md", "platforms.md"):
+for page in ("index.md", "install.md", "platforms.md", "migrate.md"):
     ptext = (docs / page).read_text(encoding="utf-8")
     for host in hosts:
-        for line in host.get("install") or []:
+        for line in (host.get("install") or []) + (host.get("addon") or []):
             if line in ptext or html.escape(line, quote=False) in ptext:
                 print("FAIL: docs/" + page + " types " + host["id"] + "'s install command instead of rendering it from docs/_data/hosts.yml: " + line); sys.exit(1)
+_cc = next(h for h in hosts if h["id"] == "claude-code")
+if any("tagout-migrate" in line for line in _cc.get("install") or []):
+    print("FAIL: docs/_data/hosts.yml lists tagout-migrate in claude-code's install — the add-on line belongs in addon, so the home picker installs the lifecycle only"); sys.exit(1)
+for page in ("install.md", "migrate.md"):
+    if "addon" not in (docs / page).read_text(encoding="utf-8"):
+        print("FAIL: docs/" + page + " does not render host.addon"); sys.exit(1)
 rules = [h for h in hosts if h.get("tier") == "rules"]
 for host in rules:
     if len(host.get("install") or []) != 2 or host["install"][0] != rules[0]["install"][0]:
@@ -1615,7 +1668,8 @@ python3 "$_pscratch/pages-check.py" "$KIT_ROOT" || exit 1
 # The red halves: a full copy of docs/ per case, one file broken the way its check exists to catch,
 # refused by name. ONE check file, run on each.
 _red_docs() {  # <case> — a fresh copy of docs/ under $_pscratch/<case>
-  rm -rf "${_pscratch:?}/$1"; mkdir -p "$_pscratch/$1"; cp -R "$KIT_ROOT/docs" "$_pscratch/$1/docs"
+  rm -rf "${_pscratch:?}/$1"; mkdir -p "$_pscratch/$1"; cp -R "$KIT_ROOT/docs" "$_pscratch/$1/docs"; cp "$KIT_ROOT/PRODUCT.md" "$_pscratch/$1/PRODUCT.md"
+  mkdir -p "$_pscratch/$1/.github"; cp "$KIT_ROOT/.github/banner.png" "$_pscratch/$1/.github/banner.png"
 }
 _red_refused() {  # <case> <text the refusal must name> <what was broken>
   if python3 "$_pscratch/pages-check.py" "$_pscratch/$1" > "$_pscratch/$1.out" 2>&1; then
@@ -1643,9 +1697,31 @@ _red_refused theme "kit-theme" "a scheme restore reading a storage key the toggl
 _red_docs typed
 printf '%s\n' 'git clone https://github.com/phmatray/tagout ~/.tagout' >> "$_pscratch/typed/docs/install.md"
 _red_refused typed "docs/install.md types" "an install command typed into a page"
+_red_docs undecided
+sed 's/undecided/other/g' "$KIT_ROOT/PRODUCT.md" > "$_pscratch/undecided/PRODUCT.md"
+_red_refused undecided "PRODUCT.md" "a PRODUCT.md whose Users section names no undecided visitor"
+_red_docs card
+printf 'x' >> "$_pscratch/card/docs/assets/og.png"
+_red_refused card "differs from .github/banner.png" "a share card that drifted from the README banner"
+_red_docs noimage
+grep -v 'image: /assets/og.png' "$KIT_ROOT/docs/_config.yml" > "$_pscratch/noimage/docs/_config.yml"
+_red_refused noimage "sets no default image" "a docs/_config.yml with no default share image"
+_red_docs nostar
+sed 's/kit-star//g' "$KIT_ROOT/docs/_includes/topbar.html" > "$_pscratch/nostar/docs/_includes/topbar.html"
+_red_refused nostar "carries no kit-star link" "a topbar with no star button"
 _red_docs gets
 sed 's/, hooks: "yes"//' "$KIT_ROOT/docs/_data/hosts.yml" > "$_pscratch/gets/docs/_data/hosts.yml"
 _red_refused gets "claude-code gets" "a host row missing a capability"
+
+# README.md opens on the pitch, one real run and the install (#790), not on the jargon lead: the
+# first screen carries a proof link and the first command.
+echo "== README.md's first screen carries a proof link and the install command (#790) =="
+_first=$(head -40 "$KIT_ROOT/README.md")
+if [[ "$_first" == *"https://github.com/phmatray/tagout/pull/"* && "$_first" == *"claude plugin marketplace add phmatray/tagout"* ]]; then
+  echo "ok   README.md's first 40 lines link a real pull request and carry the install command"
+else
+  echo "FAIL: README.md's first screen carries no proof link and no install command — it opens on the pitch, the run and the install since the home-page job"; exit 1
+fi
 
 # ---------------------------------------------------------------------------------------------
 # docs/journal/ is a Journal section (#443): one article per published release, rendered as a

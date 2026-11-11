@@ -26,6 +26,7 @@ set -uo pipefail
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TRACKER="$KIT_ROOT/scripts/tracker.sh"
+unset GITLAB_HOST # glab's own variable; gitlab.sh reads it (#801), so the suite pins it empty
 DECIDE="$KIT_ROOT/scripts/decide.sh"
 FIXTURES="$KIT_ROOT/tests/decisions/fixtures/tracker.capable"
 
@@ -1325,6 +1326,33 @@ else
   ok "repo — path_with_namespace -> slug, default_branch -> defaultBranch, host gitlab.com"
 fi
 
+# originSlug keeps the WHOLE project path of origin — a GitLab subgroup project has more than two
+# segments (#799). Every expected value is a hand-written literal, never re-derived from the URL.
+gl_origin_case() { # <label> <origin-url|""> <want-json-literal>
+  local d="$WORK/gl-origin-$1"
+  mkdir -p "$d"
+  git -C "$d" init -q
+  [ -n "$2" ] && git -C "$d" remote add origin "$2"
+  run_tracker "$d" --tracker gitlab repo
+  local want="{\"slug\":\"acme/widgets\",\"host\":\"gitlab.com\",\"defaultBranch\":\"main\",\"originSlug\":$3}"
+  if [ "$RC" -ne 0 ]; then
+    note_fail "gitlab originSlug ($1) — exited $RC ($ERR)"
+  elif [ "$OUT" != "$want" ]; then
+    note_fail "gitlab originSlug ($1) — wrong stdout
+      want: $want
+      got:  $OUT"
+  else
+    ok "gitlab originSlug — $1"
+  fi
+}
+gl_origin_case sub-https "https://gitlab.com/group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-scp "git@gitlab.com:group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-ssh "ssh://git@gitlab.example.com:2222/group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-userinfo "https://user:tok@gitlab.com/group/sub/proj.git/" '"group/sub/proj"'
+gl_origin_case two-case "https://gitlab.com/Acme/Widgets.git" '"Acme/Widgets"'
+gl_origin_case one-seg "https://gitlab.com/proj.git" 'null'
+gl_origin_case no-origin "" 'null'
+
 # ---------------------------------------------------------------- --repo/-R: [host/]owner/repo (#668)
 #
 # The 2-vs-3-segment split gitlab.sh's own header claims (mirroring _gh-host.sh's rule for github),
@@ -1352,10 +1380,39 @@ else
 fi
 
 : > "$GLAB_CALL_LOG"
-run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo a/b/c/d repo
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/subgroup/project repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsubgroup%2Fproject' "$GLAB_CALL_LOG" \
+  && ! grep -Fq -- '--hostname' "$GLAB_CALL_LOG" \
+  && ok "--repo (3 segments, dotless first) — a subgroup project path, fully encoded, no host (#795)" \
+  || note_fail "--repo (subgroup) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+# A dotless host on a subgroup slug (#801; env case-insensitive): ambiguous with a subgroup, so it is named by GITLAB_HOST.
+: > "$GLAB_CALL_LOG"
+GITLAB_HOST=LocalHost run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo localhost/group/sub/proj repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsub%2Fproj' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '--hostname localhost' "$GLAB_CALL_LOG" \
+  && ok "--repo (dotless host named by GITLAB_HOST) — host split off, subgroup path kept (#801)" \
+  || note_fail "--repo (dotless host) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+GITLAB_HOST=localhost run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/sub/proj repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsub%2Fproj' "$GLAB_CALL_LOG" \
+  && ! grep -Fq -- '--hostname' "$GLAB_CALL_LOG" \
+  && ok "--repo (subgroup slug, GITLAB_HOST set) — the env host is not applied to a slug that does not lead with it (#801)" \
+  || note_fail "--repo (subgroup, GITLAB_HOST) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo gitlab.example.com/a/b/c/d repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/a%2Fb%2Fc%2Fd' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '--hostname gitlab.example.com' "$GLAB_CALL_LOG" \
+  && ok "--repo (host plus subgroups) — host split off, the rest is the project path (#795)" \
+  || note_fail "--repo (host plus subgroups) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo widgets repo
 [ "$RC" -eq 2 ] && [ ! -s "$GLAB_CALL_LOG" ] \
-  && ok "--repo (4 segments) — malformed slug refused before any glab call, exit 2" \
-  || note_fail "--repo (4 segments) — expected exit 2 with no call, got $RC, log: $(cat "$GLAB_CALL_LOG")"
+  && ok "--repo (1 segment) — malformed slug refused before any glab call, exit 2" \
+  || note_fail "--repo (1 segment) — expected exit 2 with no call, got $RC, log: $(cat "$GLAB_CALL_LOG")"
 
 # ------------------------------------------------------------------------------------------- AC5 (issue-view)
 run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-view 9
