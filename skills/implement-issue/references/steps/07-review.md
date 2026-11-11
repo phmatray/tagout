@@ -10,7 +10,8 @@ so it is the precondition for the check below, not housekeeping:
 
 ```bash
 git -C "$WORKTREE" status --porcelain                 # anything here is yours, and must land first
-"$GUARDS/guarded-commit.sh" -C "$WORKTREE" <commit-identity> "$BRANCH" -- -A -m "…"   # -A: untracked too
+git -C "$WORKTREE" add -A                            # untracked too
+"$GUARDS/guarded-commit.sh" -C "$WORKTREE" <commit-identity> "$BRANCH" -- -m "…"
 "$GUARDS/guarded-push.sh"   -C "$WORKTREE" "$BRANCH"
 git -C "$WORKTREE" rev-parse HEAD                    # write this sha into your report — see below
 ```

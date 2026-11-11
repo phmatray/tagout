@@ -131,6 +131,7 @@ done
 
 [ -n "$EXPECTED" ] || refuse "$TOOL" "an expected branch name is required: guarded-merge.sh [-C <path>] <branch> -- <git merge args…>"
 [ $# -gt 0 ]       || refuse "$TOOL" "no git merge arguments given (expected: -- origin/main)"
+[ "$1" != merge ]  || refuse "$TOOL" "'merge' after -- is passed to git as a ref; drop it (expected: -- origin/main)"
 
 # ---------------------------------------------------------------- assert, before anything
 #
