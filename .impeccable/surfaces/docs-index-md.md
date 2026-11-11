@@ -27,7 +27,7 @@ OWN-WORLD: White card stock on a concrete-grey ground (on a black bench in the d
 red #d1202f owns every header band; safety yellow #ffd100 marks the locked state and the hasp;
 brass #b08d57 is the grommet; ink #111111 the text. Neutrals come from one eleven-step grey ramp
 (g0 white to g10 ink), nothing else. Display and tag headers in Big Shoulders Display black caps;
-body in Archivo; typewritten fill-ins (meta, dates, fields) in Courier Prime; code in Red Hat
+body in Archivo; typewritten labels, dates and single values in Courier Prime; prose of more than one line in the body face; code in Red Hat
 Mono. Controls are tags and punched windows; state is a mark, never a hue: chosen renders solid,
 alternatives dashed. Every dimension is a whole 8px grommet module; seams are drawn as 1px rules,
 never hidden. No gradient, no glass, no eyebrow labels over headings.

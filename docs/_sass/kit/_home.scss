@@ -106,6 +106,12 @@
   font-size: 0.875rem;
 }
 
+// Prose of more than one line is read, not typed: the body face. Labels stay typewritten.
+.kit-plugins dd,
+.kit-denial .kit-fields dd {
+  font-family: var(--font-body);
+}
+
 .kit-denial .kit-fields dt,
 .kit-denial .kit-fields dd {
   padding-top: calc(var(--unit) * 0.875);

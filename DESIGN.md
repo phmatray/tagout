@@ -259,14 +259,14 @@ The ramp is the whole neutral vocabulary; semantic aliases bind steps to roles, 
 - **Figure** (900, `clamp(2rem, 4.5vw, 3.5rem)`, 0.9, uppercase, tabular): the measured minutes in the lock-out record; the largest type after the band.
 - **Headline** (800, `clamp(2rem, 4vw, 3rem)`, 0.98, mixed case, max 22ch): the article title on every Read page, under a 6px red rule 96px wide.
 - **Title** (Archivo 700, 1.5rem, 1.2): article h2, opened by a 1px rule above and 56px of air. h3 is 700 at 1.1875rem/1.25; h4 at 1rem; h5 and h6 at 0.9375rem.
-- **Body** (Archivo 400, 1rem, 1.6): running text on a 44rem measure; the hero lead runs at 1.0625rem/1.5 on 58ch; UI text (top nav, side nav, actions, notes) at 0.9375rem; side-nav children, footnotes and "then" lines at 0.875rem.
-- **Type** (Courier Prime 400, 0.9375rem, 1.45, 0.01em): field values in `dl.kit-fields`, the record's "from" column, and dates. Meta rows, journal dates, chips, footer and contents run at 0.8125rem.
+- **Body** (Archivo 400, 1rem, 1.6): running text on a 44rem measure; the hero lead runs at 1.0625rem/1.5 on 58ch; field values that run to more than one line (the plugin descriptions, every value in the denial) take the body face at the field's size; UI text (top nav, side nav, actions, notes) at 0.9375rem; side-nav children, footnotes and "then" lines at 0.875rem.
+- **Type** (Courier Prime 400, 0.9375rem, 1.45, 0.01em): single-value fields in `dl.kit-fields`, the record's "from" column, and dates. Meta rows, journal dates, chips, footer and contents run at 0.8125rem.
 - **Label** (Courier Prime 400, 0.75rem, 0.06em to 0.08em, uppercase): field names (`dt`), table heads (`th`), the contents title, the denial title, prev/next captions, ADR tag pills, the scheme toggle; the lock gate line runs at 0.6875rem.
 - **Stamp** (900, 0.9375rem, 1, 0.12em, uppercase): the ADR status word.
 - **Code** (Red Hat Mono 400, 0.875rem, 1.55): code blocks; inline code at 0.875em of its context.
 
 ### Named Rules
-**The Printed / Typed Rule.** What the tag was printed with is Big Shoulders in caps (bands, section titles, stamps, lock names, minutes). What was typed onto it afterwards is Courier Prime (labels, fields, dates, meta). Archivo is for the reader, not the tag. Nothing on the page is set in a system face.
+**The Printed / Typed Rule.** What the tag was printed with is Big Shoulders in caps (bands, section titles, stamps, lock names, minutes). What was typed onto it afterwards is Courier Prime (labels, dates, single values, meta). Archivo is for the reader, not the tag: prose of more than one line is set in the body face even inside a field, because a typewriter paragraph reads as a form to fill in. Nothing on the page is set in a system face.
 
 **The Field Label Rule.** A Courier Prime uppercase label at 0.75rem sits above a value, a table column, or a list; it never sits above a heading.
 
@@ -303,7 +303,7 @@ The site's one object; everything else is a smaller tag or a ruled row.
 - **Grommet:** 16px circle at 12px from the top-left, ground-coloured hole with a 3px brass ring.
 - **Band:** tag red with white ink, 16px 24px 16px 48px padding (the left inset clears the grommet), a 1.5px ink rule beneath; the title is Display in caps. The install window's band is ink (g10) with card-coloured text at 1.5rem: an ink band means a tool, a red band means the tag.
 - **Body:** 24px padding; the hero body 24px 32px with a 20px gap.
-- **Fields (`dl.kit-fields`):** two-column grid `max-content 1fr` with no column gap (the `dt` carries 16px of right padding so the dotted line runs unbroken under label and value), Courier Prime 0.9375rem; `dt` uppercase 0.75rem 0.06em ink-soft; both cells 10px vertical padding over a 1px dotted g4 line; one column under 30rem. Inside the denial block (field grey, 1px g3 border, 16px 20px padding) the rows tighten to 7px and the last row loses its line.
+- **Fields (`dl.kit-fields`):** two-column grid `max-content 1fr` with no column gap (the `dt` carries 16px of right padding so the dotted line runs unbroken under label and value), Courier Prime 0.9375rem (values that wrap, as in the hero's plugin list and denial, in Archivo); `dt` uppercase 0.75rem 0.06em ink-soft; both cells 10px vertical padding over a 1px dotted g4 line; one column under 30rem. Inside the denial block (field grey, 1px g3 border, 16px 20px padding) the rows tighten to 7px and the last row loses its line.
 
 ### Chips
 A small tag used as a control: host tabs, the copy button.
