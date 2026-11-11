@@ -100,6 +100,17 @@ done
 [ -n "$BEFORE" ] || die "--before <file> is required (the pre-edit copy is the restore path)"
 [ -n "$AFTER" ]  || die "--after <file> is required"
 
+# $0 through any symlinks first, as guarded-commit.sh does: `pwd -P` canonicalizes the directory,
+# not the link, and macOS's readlink has no -f.
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _link=$(readlink -- "$SELF") || break
+  case "$_link" in
+    /*) SELF="$_link" ;;
+    *)  SELF="$(dirname -- "$SELF")/$_link" ;;
+  esac
+done
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P) || SCRIPT_DIR=$(dirname -- "$SELF")
 # -C (#794): work from the worktree being ticked, so every resolution below (tracker, host, `gh`'s
 # own origin lookup) reads that repository, never the caller's cwd. The file arguments are made
 # absolute first — they were written relative to the caller.
@@ -209,17 +220,6 @@ printf '%s' "$payload" | jq --rawfile after "$AFTER" -e '.body == $after' >/dev/
 # check above, so a refusal there still means gh was never called, and BEFORE the endpoint, so the
 # endpoint and the dry run both name the normalised OWNER/REPO.
 #
-# $0 through any symlinks first, as guarded-commit.sh does: `pwd -P` canonicalizes the directory,
-# not the link, and macOS's readlink has no -f.
-SELF="${BASH_SOURCE[0]}"
-while [ -L "$SELF" ]; do
-  _link=$(readlink -- "$SELF") || break
-  case "$_link" in
-    /*) SELF="$_link" ;;
-    *)  SELF="$(dirname -- "$SELF")/$_link" ;;
-  esac
-done
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P) || SCRIPT_DIR=$(dirname -- "$SELF")
 GH_HOST_LIB="$SCRIPT_DIR/../../_shared/scripts/_gh-host.sh"
 # CALLABLE, not merely readable: an empty or truncated helper sources cleanly and defines nothing.
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi

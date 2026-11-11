@@ -781,6 +781,22 @@ grep -q -- '-X PUT projects/g%2Fp/issues/42 -F description=@' "$GLAB_CALL_LOG" \
 [ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [gitlab-dash-c]: gh was called — the caller's cwd picked the backend"; cat "$GH_CALL_LOG"; exit 1; }
 echo "  ok: gitlab-dash-c — -C resolves the tracker from the worktree, whatever the caller's cwd"
 
+# A relative script path with -C: the script's own directory is fixed before the cd, so the helpers still load.
+fresh_log dash-c-relative-script; cp "$BEFORE" "$GLAB_STORE"; : > "$GLAB_CALL_LOG"
+( cd "$KIT_ROOT/skills/implement-issue/scripts" && ./tick-plan.sh -C "$CO_GL" --repo g/p --issue 42 \
+    --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.dash-c-rel" 2>&1 ) \
+  || { echo "FAIL [dash-c-relative-script]: a relative script path broke under -C"; cat "$WORK/out.dash-c-rel"; exit 1; }
+echo "  ok: dash-c-relative-script — -C does not break the script's own helper lookup"
+
+# -C naming a missing directory is refused, nothing sent.
+fresh_log dash-c-missing
+RC=0
+"$TICK" -C "$WORK/no-such-dir" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
+  > "$WORK/out.dash-c-missing" 2>&1 || RC=$?
+[ "$RC" -eq 1 ] && grep -qF -- '-C is not a directory' "$WORK/out.dash-c-missing" && [ ! -s "$GH_CALL_LOG" ] \
+  || { echo "FAIL [dash-c-missing]: a missing -C directory was not refused cleanly"; cat "$WORK/out.dash-c-missing"; exit 1; }
+echo "  ok: dash-c-missing — a missing -C directory is refused, gh never called"
+
 # 25. The body path on Azure DevOps (#751): the PATCH sets the description AND its Markdown format,
 #     the tick is read back through issue-view and verified; a non-checkbox edit is REFUSED with no
 #     az call. A stateful az stub: the workitems PATCH stores the patch, the GET serves it back.
