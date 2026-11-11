@@ -1345,9 +1345,18 @@ pr_case "gitlab pr-create --draft — Draft: title prefix, description read from
   pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
 grep -Fq -- '-f source_branch=feat/1-x -f target_branch=main' "$GLAB_CALL_LOG" \
   || note_fail "gitlab pr-create — branches not sent: $(cat "$GLAB_CALL_LOG")"
-pr_case "gitlab pr-list --state open --search 7 — state=opened, search in description" 0 \
+pr_case "gitlab pr-list --state open --search Closes — state=opened, search in description" 0 \
   '[{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
-  "merge_requests?state=opened&search=7&in=description" -- pr-list --state open --search 7
+  "merge_requests?state=opened&search=Closes&in=description" -- pr-list --state open --search Closes
+# A term under 3 characters is ignored by GitLab's search, so it is matched locally, never sent.
+pr_case "gitlab pr-list --search 7 — a short term is matched locally, not sent" 0 - \
+  "merge_requests?state=opened" -- pr-list --search 7
+grep -q 'search=' "$GLAB_CALL_LOG" && note_fail "gitlab pr-list --search 7 — a short term was sent: $(cat "$GLAB_CALL_LOG")"
+[ "$(printf '%s' "$OUT" | jq 'length' 2>/dev/null)" = 1 ] || note_fail "gitlab pr-list --search 7 — the matching MR was dropped: $OUT"
+pr_case "gitlab pr-list --search 9 — a non-matching short term returns nothing" 0 '[]' - -- pr-list --search 9
+# No --state means open (as gh's default): a merged MR on a reused branch must not read as open.
+pr_case "gitlab pr-list --head — defaults to state=opened" 0 - \
+  "merge_requests?source_branch=feat%2F7-x&state=opened" -- pr-list --head feat/7-x
 pr_case "gitlab pr-view — opened→open, sha→headSha, author.username→author" 0 \
   '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user"}' \
   "api projects/:id/merge_requests/51" -- pr-view 51

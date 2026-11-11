@@ -469,18 +469,22 @@ case "$VERB" in
     done
     qp=()
     [ -n "$HEAD" ] && qp+=("source_branch=$(_urlenc "$HEAD")")
+    # No --state means open, as `gh pr list` defaults: a merged MR on a reused branch name must not
+    # read as "a PR is already open" to open-pr.md §1.
     case "$ST" in
-      open)   qp+=("state=opened") ;;
-      merged) qp+=("state=merged") ;;
-      "") ;;
+      open|"") qp+=("state=opened") ;;
+      merged)  qp+=("state=merged") ;;
       *) echo "gitlab: pr-list: --state is open or merged" >&2; exit 2 ;;
     esac
-    [ -n "$Q" ] && qp+=("search=$(_urlenc "$Q")" "in=description")
+    # GitLab's `search` ignores a term under 3 characters (an issue number like 42), so a short term
+    # is matched here, against each description, instead of being sent.
+    if [ -n "$Q" ] && [ "${#Q}" -ge 3 ]; then qp+=("search=$(_urlenc "$Q")" "in=description"); fi
     [ -n "$LIM" ] && qp+=("per_page=$(_urlenc "$LIM")")
     ep="projects/$(_id)/merge_requests"
     [ "${#qp[@]}" -gt 0 ] && ep="$ep?$(_join_amp "${qp[@]}")"
     out=$(_api "$ep") || exit 1
-    printf '%s' "$out" | jq -c '[.[] | {number: .iid, title, url: .web_url,
+    printf '%s' "$out" | jq -c --arg q "$Q" '[.[] | select((.description // "") | contains($q))]
+      | [.[] | {number: .iid, title, url: .web_url,
       state: (if .state == "opened" then "open" else .state end),
       isDraft: (.draft // .work_in_progress // false), headBranch: .source_branch,
       body: .description, mergedAt: (.merged_at // null)}]'

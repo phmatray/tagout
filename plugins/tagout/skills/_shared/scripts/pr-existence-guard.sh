@@ -64,8 +64,15 @@ trap 'rm -rf "$WORK"' EXIT
 # Wide net first (a plain search can hit a PR that merely MENTIONS the issue), then narrow. --limit
 # above the default page size (30): an issue that has accumulated several stale/duplicate PRs — the
 # exact scenario this guard targets — could otherwise truncate the real closer off the first page.
+rc=0
 "$TRACKER_SH" pr-list --search "$ISSUE" --state open --limit 100 \
-  > "$WORK/mentions.json" 2> "$WORK/gh.err" || true
+  > "$WORK/mentions.json" 2> "$WORK/gh.err" || rc=$?
+
+# Exit 2 (bad invocation) and 3 (this host has no such verb) are not transient: say what the
+# dispatcher said, rather than advising a retry that can never succeed.
+case "$rc" in
+  2|3) refuse "tracker.sh pr-list cannot run here (exit $rc): $(tr '\n' ' ' < "$WORK/gh.err")" ;;
+esac
 
 [ -s "$WORK/mentions.json" ] \
   || refuse "the PR search returned nothing; retry rather than treat this as '0 found'"
