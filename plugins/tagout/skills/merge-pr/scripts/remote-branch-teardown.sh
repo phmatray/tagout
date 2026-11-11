@@ -19,17 +19,19 @@
 # both point the same way here, so there is no branch on the setting at all.
 #
 # Usage: remote-branch-teardown.sh <head-branch> [<host>/]<owner>/<repo>
-#   Checks whether <head-branch> still exists on `origin` and deletes it via the GitHub API when it
-#   does. Tolerant of the branch already being gone — either before the check (Step 5's
+#   Checks whether <head-branch> still exists on `origin` and deletes it through
+#   `scripts/tracker.sh branch-delete` (#752) when it does — `ok` prints deleted, `gone` (the race
+#   below, which each backend detects) prints already-gone. Tolerant of the branch already being gone — either before the check (Step 5's
 #   --delete-branch, GitHub's own delete_branch_on_merge) or in the race between the check and the
 #   delete call (the same 422/404 "Reference does not exist" gh's own deleteRemoteBranch tolerates).
 #   Any other delete failure is reported on stderr, not swallowed.
 #   <host>/ names a GitHub Enterprise host outright; with a bare <owner>/<repo> the host is the
 #   checkout's origin's, when origin is that repository. Resolved once, before the ls-remote, by
-#   skills/_shared/scripts/_gh-host.sh (#514).
+#   skills/_shared/scripts/_gh-host.sh (#514) — on GitHub only; another tracker gets the slug as given.
 #
 # Prints exactly one word to stdout and exits 0 on either non-error outcome: already-gone | deleted
-# Exits 2 on a usage/prerequisite error — a malformed slug and a missing host helper included —
+# Exits 2 on a usage/prerequisite error — a malformed slug, a missing host helper and a missing
+# scripts/tracker.sh included —
 # before touching the network.
 # Exits 1 on a genuine delete failure — the branch survived and still needs a human's attention.
 set -euo pipefail
@@ -48,10 +50,6 @@ fi
 
 command -v git > /dev/null 2>&1 || {
   echo "remote-branch-teardown: git is missing" >&2
-  exit 2
-}
-command -v gh > /dev/null 2>&1 || {
-  echo "remote-branch-teardown: gh is missing" >&2
   exit 2
 }
 command -v jq > /dev/null 2>&1 || {
@@ -74,16 +72,29 @@ while [ -L "$SELF" ]; do
     *)  SELF="$(dirname -- "$SELF")/$_link" ;;
   esac
 done
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P) || SCRIPT_DIR=$(dirname -- "$SELF")
-GH_HOST_LIB="$SCRIPT_DIR/../../_shared/scripts/_gh-host.sh"
+KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
+  || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+GH_HOST_LIB="$KIT_ROOT/skills/_shared/scripts/_gh-host.sh"
 # CALLABLE, not merely readable: an empty or truncated helper sources cleanly and defines nothing.
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve > /dev/null 2>&1 || {
   echo "remote-branch-teardown: REFUSED — cannot load $GH_HOST_LIB; reinstall the kit" >&2
   exit 2
 }
-gh_host_resolve "$REPO" || exit 2
-REPO="$KIT_REPO_SLUG"
+TRACKER_SH="$KIT_ROOT/scripts/tracker.sh"
+[ -x "$TRACKER_SH" ] || {
+  echo "remote-branch-teardown: REFUSED — cannot find $TRACKER_SH; reinstall the kit" >&2
+  exit 2
+}
+TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+[ -n "$TRACKER_NAME" ] || {
+  echo "remote-branch-teardown: REFUSED — tracker.sh state could not name this repository's tracker" >&2
+  exit 2
+}
+if [ "$TRACKER_NAME" = github ]; then
+  gh_host_resolve "$REPO" || exit 2
+  REPO="$KIT_REPO_SLUG"
+fi
 
 # Fully-qualified, not the bare branch name: `git ls-remote --heads origin <pattern>` matches a
 # pattern that is a SUFFIX of the full refname at a `/` boundary, not just an exact name — so a
@@ -100,32 +111,17 @@ if [ -z "$REMOTE_REF" ]; then
   exit 0
 fi
 
-# URI-encoded PER PATH SEGMENT: git branch names may legally contain characters that are
-# significant in a URL — `#` in particular delimits a fragment and gh silently drops it and
-# everything after, so an unencoded "feature/x#1" would DELETE the wrong (truncated, likely
-# nonexistent) ref while the real branch survives on origin. But the kit's own branch names are
-# themselves slash-separated ("fix/185-…" — the routine case, not an edge case here), and those
-# slashes are real path separators in the git-refs REST route, not data to escape: encoding the
-# whole string with a flat `@uri` would turn every `/` into `%2F`, which does not decode back to a
-# path separator, breaking the exact call this script exists to make. Split on `/`, encode each
-# segment, rejoin with a literal `/`. `git ls-remote` above needs none of this — passed straight to
-# git, never through a URL — so only this call does.
-ENCODED_BRANCH=$(jq -rn --arg b "$HEAD_BRANCH" '$b | split("/") | map(@uri) | join("/")')
-if ERR=$(gh api -X DELETE "repos/$REPO/git/refs/heads/$ENCODED_BRANCH" 2>&1); then
-  echo "deleted"
-  exit 0
+# The backend owns the encoding (GitHub's per-segment `@uri`, so a `#` cannot truncate the ref and
+# the kit's `fix/…` slashes stay path separators) and the race: a delete that lost to a concurrent
+# delete_branch_on_merge or a slow --delete-branch answers `gone` — on GitHub, the "Reference does
+# not exist" message on a 422 or a 404, never the status code alone, since a nonexistent repository
+# 404s too. Any other failure exits non-zero with the host's own text on stderr.
+if OUT=$("$TRACKER_SH" -R "$REPO" branch-delete "$HEAD_BRANCH" 2>&1); then
+  case "$(printf '%s\n' "$OUT" | tail -n 1)" in
+    ok)   echo "deleted"; exit 0 ;;
+    gone) echo "already-gone"; exit 0 ;;
+  esac
 fi
 
-# Same tolerance gh's own deleteRemoteBranch() applies: a delete that lost the race against a
-# concurrent delete_branch_on_merge or a slow --delete-branch answers "Reference does not exist",
-# on either a 422 or a 404. Matched on the MESSAGE, not the HTTP code alone — an early draft
-# matched any 422/404 regardless of text, which would also swallow a real failure that happens to
-# share a status (a malformed "$REPO" hitting a nonexistent repo 404s for a wholly different
-# reason). Anything without this exact phrase is a real failure.
-if grep -qF 'Reference does not exist' <<<"$ERR"; then
-  echo "already-gone"
-  exit 0
-fi
-
-echo "remote-branch-teardown: failed to delete origin/$HEAD_BRANCH: $ERR" >&2
+echo "remote-branch-teardown: failed to delete origin/$HEAD_BRANCH: $OUT" >&2
 exit 1

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# guarded-pr-merge.sh — merge a PR on GitHub, then decide the outcome from `gh pr view`'s
-# `state`, never from `gh pr merge`'s own exit code (#184).
+# guarded-pr-merge.sh — merge a PR on the tracker, then decide the outcome from the PR's `state`
+# read back through `tracker.sh pr-view`, never from the merge call's own exit code (#184).
+#
+# Both calls go through `scripts/tracker.sh` (#752): `pr-merge` to merge, `pr-view`'s lower-case
+# `state`, `mergedAt` and `mergeSha` to read the outcome back. On GitHub the backend sends the argv
+# this script used to send itself (`gh pr merge <n> [--repo …] <flags>`), so the text below, written
+# against gh, still describes the GitHub case exactly; another tracker answers the same two verbs.
 #
 # `gh pr merge` does two unrelated things: it merges the PR **on GitHub**, then tidies up
 # **locally** (check the base branch out, delete the merged head branch). One exit code covers
@@ -18,16 +23,20 @@
 # whether the `gh pr merge` call itself exited 0, and uses that to tell the two apart.
 #
 # Usage:
-#   guarded-pr-merge.sh [-R <[host/]owner/repo>] <PR-number> [-- <gh pr merge args…>]
+#   guarded-pr-merge.sh [-R <[host/]owner/repo>] <PR-number> [-- <merge flags…>]
 #
-#   -R <[host/]owner/repo>  passed to both `gh pr merge` and `gh pr view` — needed when this runs
-#                    outside a git checkout of the target repo (gh cannot infer it then). Routed
-#                    through skills/_shared/scripts/_gh-host.sh (#514/#530): a bare `owner/repo`
+#   -R <[host/]owner/repo>  passed to `tracker.sh` for both `pr-merge` and `pr-view` — needed when
+#                    this runs outside a git checkout of the target repo (gh cannot infer it then).
+#                    On GitHub, routed through skills/_shared/scripts/_gh-host.sh (#514/#530): a bare `owner/repo`
 #                    (no host prefix) used to reach `gh`'s own DEFAULT host — github.com — even
 #                    inside a GitHub Enterprise checkout; a `host/owner/repo` prefix now resolves
 #                    that host outright and GH_HOST is exported before either gh call either way.
 #   <PR-number>      the pull request to merge.
-#   --               everything after it goes to `gh pr merge` verbatim. Defaults to
+#   --               the merge flags, passed to `tracker.sh pr-merge`. Only `--squash`,
+#                    `--delete-branch`, `--subject <s>` and `--body-file <f>` are accepted;
+#                    anything else (`--admin`, `--auto`, …) is refused with exit 64 before any call
+#                    (#752) — a guard that forwarded any flag would forward the one that bypasses
+#                    branch protection. Defaults to
 #                    `--squash --delete-branch` when omitted OR given with nothing after it —
 #                    every caller in this kit wants squash-merge (enforced server-side here; see
 #                    the repo profile), so there is no caller-visible difference between the two.
@@ -53,7 +62,8 @@
 #                    with something this script does not recognise. Prints `UNCONFIRMED`. This is
 #                    inconclusive, not a rejection: do not tear anything down (branch, worktree,
 #                    worker slot) on this exit — re-run the readback later instead of guessing.
-#   64 usage/precondition error (bad arguments, gh/jq missing, a bad env override) — nothing was
+#   64 usage/precondition error (bad arguments or merge flags, the tracker dispatcher or jq
+#                    missing, a missing --body-file, a bad env override) — nothing was
 #                    attempted; stdout is empty. Deliberately its own code, distinct from every
 #                    outcome above (in particular 2/REJECTED): a caller branching on the exit code
 #                    alone must not read "I could not even try" as "GitHub said no".
@@ -62,7 +72,8 @@ set -euo pipefail
 TOOL=guarded-pr-merge
 
 usage() {
-  echo "usage: $TOOL.sh [-R <[host/]owner/repo>] <PR-number> [-- <gh pr merge args…>]" >&2
+  echo "usage: $TOOL.sh [-R <[host/]owner/repo>] <PR-number> [-- <merge flags…>]" >&2
+  echo "       merge flags: --squash --delete-branch --subject <s> --body-file <f>" >&2
 }
 
 refuse() { echo "$TOOL: $1" >&2; usage; exit 64; }
@@ -108,7 +119,7 @@ while [ $# -gt 0 ]; do
     --)        shift; MERGE_ARGS=("$@"); break ;;
     -*)        refuse "unknown option: $1" ;;
     *)
-      [ -z "$PR" ] || refuse "unexpected extra argument: $1 (gh pr merge args go after --)"
+      [ -z "$PR" ] || refuse "unexpected extra argument: $1 (merge flags go after --)"
       PR="$1"; shift ;;
   esac
 done
@@ -121,7 +132,20 @@ esac
 # No `--`, or `--` followed by nothing: both mean "no opinion", so both get the kit's default.
 [ "${#MERGE_ARGS[@]}" -eq 0 ] && MERGE_ARGS=(--squash --delete-branch)
 
-command -v gh > /dev/null 2>&1 || refuse "gh is missing — this script has no way to merge a PR without it"
+# The allow-list (#752): checked before anything is called, so a refused flag means nothing ran.
+set -- "${MERGE_ARGS[@]}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --squash|--delete-branch) shift ;;
+    --subject)   [ -n "${2:-}" ] || refuse "--subject needs a value"; shift 2 ;;
+    --body-file) [ -n "${2:-}" ] && [ -s "$2" ] || refuse "--body-file needs an existing, non-empty file, got '${2:-}'"
+                 shift 2 ;;
+    *) refuse "merge flag '$1' is not accepted — only --squash, --delete-branch, --subject <s>, --body-file <f>" ;;
+  esac
+done
+
+TRACKER_SH="$KIT_ROOT/scripts/tracker.sh"
+[ -x "$TRACKER_SH" ] || refuse "cannot find $TRACKER_SH; reinstall the kit"
 command -v jq > /dev/null 2>&1 || refuse "jq is missing — it is a \`required\` prerequisite in requirements.json"
 
 # The repository's own host (#514/#530): a bare `-R owner/repo` reaches gh's DEFAULT host —
@@ -130,40 +154,39 @@ command -v jq > /dev/null 2>&1 || refuse "jq is missing — it is a \`required\`
 # GH_HOST reaches both. A `host/owner/repo` prefix on -R names the host outright and is stripped
 # to OWNER/REPO for the flag gh itself receives; with no -R at all this falls through to the
 # checkout's own origin host, same as every other caller of this helper.
+# On GitHub only (#752, as #792 did): another tracker has no GH_HOST to resolve, so its -R is
+# handed to tracker.sh as given.
 GH_HOST_LIB="$KIT_ROOT/skills/_shared/scripts/_gh-host.sh"
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve > /dev/null 2>&1 || refuse "cannot load $GH_HOST_LIB; reinstall the kit"
-gh_host_resolve "$REPO" || exit 64
-REPO_FLAG=()
-[ -n "$REPO" ] && REPO_FLAG=(-R "$KIT_REPO_SLUG")
+TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+[ -n "$TRACKER_NAME" ] || refuse "tracker.sh state could not name this repository's tracker"
+if [ "$TRACKER_NAME" = github ]; then
+  gh_host_resolve "$REPO" || exit 64
+  REPO="$KIT_REPO_SLUG"   # empty in, empty out
+fi
 
 # ---------------------------------------------------------------- merge (exit code is a HINT,
 # not a verdict — kept only to disambiguate the OPEN case below, never trusted on its own)
-#
-# `${REPO_FLAG[@]+"${REPO_FLAG[@]}"}`, not a bare `"${REPO_FLAG[@]}"`: under `set -u`, bash 3.2
-# (still `/bin/bash` on stock macOS) treats an empty array's `[@]` expansion as an unbound
-# variable — the same pitfall already fixed this way in guarded-commit.sh/guarded-merge.sh.
-# REPO_FLAG is empty on every documented call in this kit (no caller passes -R), so this is the
-# routine case, not an edge one.
 #
 # stdout is discarded (`>/dev/null`) so a status line `gh pr merge` prints there can never land
 # ahead of this script's own verdict on a caller's captured stdout. stderr is captured via the
 # `2>&1 1>/dev/null` swap inside the command substitution — no temp file, so nothing to clean up
 # on an early exit either.
 set +e
-merge_err=$(gh pr merge "$PR" ${REPO_FLAG[@]+"${REPO_FLAG[@]}"} "${MERGE_ARGS[@]}" 2>&1 1>/dev/null)
+merge_err=$("$TRACKER_SH" ${REPO:+-R "$REPO"} pr-merge "$PR" "${MERGE_ARGS[@]}" 2>&1 1>/dev/null)
 merge_rc=$?
 set -e
 
-# ---------------------------------------------------------------- read GitHub's state back
+# ---------------------------------------------------------------- read the tracker's state back
 attempt=1
 state=""
 merged_at=""
 merge_sha=""
 while [ "$attempt" -le "$READBACK_ATTEMPTS" ]; do
   set +e
-  view_json=$(gh pr view "$PR" ${REPO_FLAG[@]+"${REPO_FLAG[@]}"} \
-    --json state,mergedAt,mergeCommit --jq '[.state, (.mergedAt // ""), (.mergeCommit.oid // "")] | @tsv' 2>/dev/null)
+  view_json=$("$TRACKER_SH" ${REPO:+-R "$REPO"} pr-view "$PR" 2>/dev/null \
+    | jq -r '[.state, (.mergedAt // ""), (.mergeSha // "")] | @tsv' 2>/dev/null)
   view_rc=$?
   set -e
   if [ "$view_rc" -eq 0 ] && [ -n "$view_json" ]; then
@@ -183,50 +206,50 @@ while [ "$attempt" -le "$READBACK_ATTEMPTS" ]; do
 done
 
 if [ -z "$state" ]; then
-  echo "$TOOL: UNCONFIRMED — gh pr view did not answer after $READBACK_ATTEMPTS attempts." >&2
-  echo "       gh pr merge exited $merge_rc; nothing here says whether it landed. Do not tear" >&2
+  echo "$TOOL: UNCONFIRMED — tracker.sh pr-view did not answer after $READBACK_ATTEMPTS attempts." >&2
+  echo "       the merge call exited $merge_rc; nothing here says whether it landed. Do not tear" >&2
   echo "       anything down on this — re-run the readback later instead of guessing." >&2
   echo "UNCONFIRMED"
   exit 4
 fi
 
 case "$state" in
-  MERGED)
-    echo "$TOOL: MERGED — landed on GitHub (mergedAt=$merged_at), whatever gh pr merge's own" >&2
+  merged)
+    echo "$TOOL: MERGED — landed on the tracker (mergedAt=$merged_at), whatever the merge call's own" >&2
     echo "       exit code said (it was $merge_rc). Local cleanup is the caller's job." >&2
     # gh pr merge's stderr is worth reporting even on a landed merge: this is exactly the #184
     # shape (the local-cleanup half failing after the merge already succeeded), and this text is
     # what tells the reader WHICH collision it was.
     if [ "$merge_rc" -ne 0 ] && [ -n "$merge_err" ]; then
-      echo "       gh pr merge's own stderr (informational — the merge landed regardless):" >&2
+      echo "       the merge call's own stderr (informational — the merge landed regardless):" >&2
       printf '%s\n' "$merge_err" | sed 's/^/       /' >&2
     fi
     echo "MERGED ${merge_sha:-<unknown-sha>}"
     exit 0
     ;;
-  OPEN)
+  open)
     if [ "$merge_rc" -eq 0 ]; then
-      echo "$TOOL: QUEUED — still OPEN, but gh pr merge exited 0: a successful merge-queue" >&2
+      echo "$TOOL: QUEUED — still OPEN, but the merge call exited 0: a successful merge-queue" >&2
       echo "       enqueue, not a rejection. Not landed yet — poll again later." >&2
       echo "QUEUED"
       exit 1
     else
-      echo "$TOOL: REJECTED — still OPEN and gh pr merge exited $merge_rc:" >&2
+      echo "$TOOL: REJECTED — still OPEN and the merge call exited $merge_rc:" >&2
       [ -n "$merge_err" ] && printf '%s\n' "$merge_err" | sed 's/^/       /' >&2
       echo "       Do not force-merge; surface this and stop." >&2
       echo "REJECTED"
       exit 2
     fi
     ;;
-  CLOSED)
+  closed)
     echo "$TOOL: CLOSED — the PR was closed without merging while this ran." >&2
     echo "       Stop and ask; merging a deliberately closed PR is not a safe default." >&2
     echo "CLOSED"
     exit 3
     ;;
   *)
-    echo "$TOOL: UNCONFIRMED — gh pr view returned an unrecognised state '$state'." >&2
-    echo "       gh pr merge exited $merge_rc; do not tear anything down on this." >&2
+    echo "$TOOL: UNCONFIRMED — tracker.sh pr-view returned an unrecognised state '$state'." >&2
+    echo "       the merge call exited $merge_rc; do not tear anything down on this." >&2
     echo "UNCONFIRMED"
     exit 4
     ;;

@@ -37,10 +37,10 @@ note_fail() { echo "FAIL: $1"; FAILED=1; }
 
 # A `gh` stub on PATH. `pr merge` and `pr view` are the only two subcommands this script ever
 # calls; every other invocation is a test bug and fails loudly rather than silently doing nothing.
-# `pr view`'s success output is a TSV line — state<TAB>mergedAt<TAB>mergeCommit-sha — matching
-# what the script's own `--jq '[.state, (.mergedAt // ""), (.mergeCommit.oid // "")] | @tsv'`
-# would produce from real `gh`; the stub emits it directly rather than re-deriving it from JSON,
-# since the stub stands in for gh-with-that-jq-filter-already-applied, not for jq itself.
+# Both reach it through `scripts/tracker.sh` (#752): `pr-merge` sends `gh pr merge <n> [--repo …]
+# <flags>` and `pr-view` sends `gh pr view <n> [--repo …] --json …,mergedAt,mergeCommit`, whose raw
+# JSON the GitHub backend normalises (lower-case `state`, `mergeSha` from `.mergeCommit.oid`). The
+# stub answers that raw JSON, so the backend's own normalisation is part of what each case reads.
 #
 #   GH_MERGE_RC          exit code `gh pr merge` returns (default 0)
 #   GH_MERGE_STDERR       one line it writes to stderr first (default: none)
@@ -71,6 +71,8 @@ elif [ "$1" = "pr" ] && [ "$2" = "merge" ]; then
   [ -n "${GH_MERGE_STDERR:-}" ] && echo "$GH_MERGE_STDERR" >&2
   exit "${GH_MERGE_RC:-0}"
 elif [ "$1" = "pr" ] && [ "$2" = "view" ]; then
+  case "$*" in *--json*mergedAt*mergeCommit*) ;; *)
+    echo "gh stub: pr view must ask for mergedAt and mergeCommit: $*" >&2; exit 99 ;; esac
   count=0
   [ -f "$GH_VIEW_COUNT_FILE" ] && count=$(cat "$GH_VIEW_COUNT_FILE")
   count=$((count + 1))
@@ -80,10 +82,12 @@ elif [ "$1" = "pr" ] && [ "$2" = "view" ]; then
   fi
   case "${GH_VIEW_MODE:-ok}" in
     fail)        exit "${GH_VIEW_RC:-1}" ;;
-    malformed)   printf 'not a TSV line at all, a wrapper on PATH mangled this\n' ;;
-    weird-state) printf 'DRAFT\t\t\n' ;;
-    *)           printf '%s\t%s\t%s\n' \
-                   "${GH_VIEW_STATE:-}" "${GH_VIEW_MERGED_AT:-}" "${GH_VIEW_SHA:-}" ;;
+    malformed)   printf 'not JSON at all, a wrapper on PATH mangled this\n' ;;
+    weird-state) printf '{"number":999,"state":"DRAFT","mergedAt":null,"mergeCommit":null}\n' ;;
+    *)           jq -cn --arg s "${GH_VIEW_STATE:-}" --arg m "${GH_VIEW_MERGED_AT:-}" --arg o "${GH_VIEW_SHA:-}" \
+                   '{number: 999, state: $s, isDraft: false, headRefName: "h", baseRefName: "main",
+                     mergedAt: (if $m == "" then null else $m end),
+                     mergeCommit: (if $o == "" then null else {oid: $o} end)}' ;;
   esac
 else
   echo "gh stub: unexpected invocation: $*" >&2
@@ -197,7 +201,7 @@ run_case unreadable 4 "UNCONFIRMED" \
 
 # ---------------------------------------------------------------------------- 8. malformed output
 #
-# gh pr view exits 0 but the payload is not a parseable TSV line (a wrapper on PATH, a truncated
+# gh pr view exits 0 but the payload is not parseable JSON (a wrapper on PATH, a truncated
 # response). Must not crash the script under set -e (the defect this suite's own authoring caught
 # — jq erroring on non-JSON input inside a bare `set -e` assignment used to abort the whole
 # script) and must not be misread as any real state — it is exactly as inconclusive as an outright
@@ -275,15 +279,42 @@ fi
 GH_MERGE_RC=0 GH_MERGE_STDERR="" \
 GH_VIEW_MODE=ok GH_VIEW_FAIL_FIRST_N=0 GH_VIEW_STATE=MERGED GH_VIEW_MERGED_AT=2026-08-20T00:00:00Z GH_VIEW_SHA=ghe1234 \
 run_case ghe-prefix 0 "MERGED ghe1234" \
-  '-R ghe.example.com/acme/widgets -> both gh calls run under GH_HOST=ghe.example.com, stripped to -R acme/widgets' \
+  '-R ghe.example.com/acme/widgets -> both gh calls run under GH_HOST=ghe.example.com, stripped to --repo acme/widgets' \
   -R ghe.example.com/acme/widgets 42 -- --squash --delete-branch
-grep -qF "GH_HOST=ghe.example.com ARGS: pr merge 42 -R acme/widgets --squash --delete-branch" "$WORK/gh-calls.ghe-prefix.log" \
+grep -qF "GH_HOST=ghe.example.com ARGS: pr merge 42 --repo acme/widgets --squash --delete-branch" "$WORK/gh-calls.ghe-prefix.log" \
   || note_fail "ghe-prefix — gh pr merge did not run under GH_HOST=ghe.example.com with -R acme/widgets:
 $(sed 's/^/    /' "$WORK/gh-calls.ghe-prefix.log")"
-grep -qF "GH_HOST=ghe.example.com ARGS: pr view 42 -R acme/widgets" "$WORK/gh-calls.ghe-prefix.log" \
+grep -qF "GH_HOST=ghe.example.com ARGS: pr view 42 --repo acme/widgets" "$WORK/gh-calls.ghe-prefix.log" \
   || note_fail "ghe-prefix — gh pr view did not run under GH_HOST=ghe.example.com with -R acme/widgets:
 $(sed 's/^/    /' "$WORK/gh-calls.ghe-prefix.log")"
 echo "ok: ghe-prefix — -R HOST/OWNER/REPO reaches both gh calls under GH_HOST=ghe.example.com"
+
+# ------------------------------------------------------------- 12. the accepted merge flags (#752)
+#
+# The guard's refusal path: after `--` only --squash, --delete-branch, --subject <s> and
+# --body-file <f> pass. `--admin` (bypass branch protection) is exactly what a guard exists to
+# stop, so it is refused with exit 64 before any call — not handed to the tracker.
+GH_MERGE_RC=0 GH_MERGE_STDERR="" GH_VIEW_MODE=ok GH_VIEW_FAIL_FIRST_N=0 GH_VIEW_STATE=MERGED \
+run_case refuses-admin 64 "" '999 -- --admin -> refuses (exit 64), no call' 999 -- --admin
+if [ -s "$WORK/gh-calls.refuses-admin.log" ]; then
+  note_fail "refuses-admin — refused but still called gh:
+$(sed 's/^/    /' "$WORK/gh-calls.refuses-admin.log")"
+fi
+
+# A --body-file that is missing is refused the same way: nothing was attempted, so it must not
+# come back as REJECTED (exit 2, "the tracker said no").
+GH_MERGE_RC=0 GH_MERGE_STDERR="" GH_VIEW_MODE=ok GH_VIEW_FAIL_FIRST_N=0 GH_VIEW_STATE=MERGED \
+run_case refuses-missing-body 64 "" '999 -- --squash --body-file <missing> -> refuses (exit 64), no call' \
+  999 -- --squash --body-file "$WORK/no-such-body.md"
+[ -s "$WORK/gh-calls.refuses-missing-body.log" ] && note_fail "refuses-missing-body — refused but still called gh"
+
+GH_MERGE_RC=0 GH_MERGE_STDERR="" \
+GH_VIEW_MODE=ok GH_VIEW_FAIL_FIRST_N=0 GH_VIEW_STATE=MERGED GH_VIEW_MERGED_AT=2026-08-20T00:00:00Z GH_VIEW_SHA=5ub7ec7 \
+run_case subject-passes 0 "MERGED 5ub7ec7" '999 -- --squash --subject x -> merged with exactly those flags' \
+  999 -- --squash --subject x
+grep -qF "ARGS: pr merge 999 --squash --subject x" "$WORK/gh-calls.subject-passes.log" \
+  || note_fail "subject-passes — gh pr merge did not receive '--squash --subject x':
+$(sed 's/^/    /' "$WORK/gh-calls.subject-passes.log")"
 
 # ---------------------------------------------------------------------------------------- verdict
 if [ "$FAILED" -ne 0 ]; then
