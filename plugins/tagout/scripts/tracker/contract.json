@@ -133,6 +133,14 @@
       "args": "<number>",
       "stdout": "a JSON array of the issue numbers the PR closes — added by #752 because merge-pr Step 5c reads them and no other verb prints them"
     },
+    "issue-list": {
+      "args": "[--state open] [--limit <n>]",
+      "stdout": "[{\"number\",\"title\",\"labels\",\"body\",\"comments\",\"createdAt\",\"blockedBy\",\"blocking\",\"subIssues\",\"assignees\"}] — labels bare names, assignees logins, comments an array of bodies or null when the host does not fetch them. Each edge is {\"nodes\":[{\"number\",\"state\"}],\"totalCount\"} — state OPEN, CLOSED or null when the host's list does not say — or null when the host has no such relation. A failed read exits 1 and prints nothing. Added by #753: auto-dev's survey reads the open backlog through it"
+    },
+    "issue-assign": {
+      "args": "<number> [--dry-run]",
+      "stdout": "ok | already-assigned — assigns the authenticated user. Added by #753: auto-dev holds a replan issue by assigning it, and no other verb writes an assignee. --dry-run prints one DRY-RUN line and calls nothing"
+    },
     "pr-comment": {
       "args": "<number> --body-file <f> [--dry-run]",
       "stdout": "nothing — refuses a missing or empty --body-file (exit 2) and sends nothing. Added by #752: merge-pr records observations as a PR comment. --dry-run prints one DRY-RUN line and calls nothing"
@@ -154,6 +162,16 @@
       "issue-comment", "pr-list", "pr-view", "pr-ready",
       "pr-merge-state", "pr-checks", "commit-checks", "pr-threads", "pr-thread-resolve",
       "pr-merge", "branch-delete", "issue-parent", "pr-closing-issues", "pr-comment"
+    ],
+    "auto-dev": [
+      "auth", "repo", "issue-view", "issue-search", "issue-comments", "issue-create",
+      "issue-edit-body", "issue-add-labels", "issue-remove-labels", "issue-reopen",
+      "issue-comment", "label-list", "label-create",
+      "issue-link-parent", "issue-link-blocked-by", "issue-children", "issue-blocked-by-count",
+      "pr-create", "pr-list", "pr-view", "pr-edit-body", "pr-ready", "pr-commits",
+      "pr-merge-state", "pr-checks", "commit-checks", "pr-threads", "pr-thread-resolve",
+      "pr-merge", "branch-delete", "issue-parent", "pr-closing-issues", "pr-comment",
+      "issue-list", "issue-assign"
     ]
   }
 }

@@ -46,7 +46,7 @@ if [ "$VERB" = verbs ]; then
     issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
     pr-create pr-list pr-view pr-edit-body pr-ready pr-commits \
     pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete \
-    issue-parent pr-closing-issues pr-comment
+    issue-parent pr-closing-issues pr-comment issue-list issue-assign
   exit 0
 fi
 
@@ -279,6 +279,77 @@ case "$VERB" in
     fi
     out=$(gh "${ARGS[@]}") || exit 1
     printf '%s' "$out" | jq -c '[.[] | {number, title, state: (.state | ascii_downcase)}]'
+    ;;
+
+  issue-list)
+    # auto-dev's survey (#753): today's `gh issue list` argv plus createdAt, so tests/survey's stub
+    # and its flag allow-list (#452) still match. `--limit`, never `--paginate`: gh issue list pages
+    # internally up to N and has no --paginate flag at all.
+    ST=""; LIM=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --state) ST="${2-}"; shift 2 ;;
+        --limit) LIM="${2-}"; shift 2 ;;
+        *) echo "github: issue-list: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$ST" in ''|open) ;; *) echo "github: issue-list: --state is open" >&2; exit 2 ;; esac
+    ARGS=(issue list --state open)
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    [ -n "$LIM" ] && ARGS+=(--limit "$LIM")
+    BASE_FIELDS=number,title,labels,body,comments,createdAt
+    # The dependency fields are not universal: gh validates --json field names itself and exits 1
+    # with `Unknown JSON field: "blockedBy"` on any build predating issue dependencies — before any
+    # jq runs. An empty survey reads as "backlog drained" (#213), so this asks once more with the
+    # base fields and degrades LOUDLY: every edge prints null, the frontier rule holds nothing, and
+    # the operator is told so on stderr. The error text is read by re-running the call rather than
+    # through a temp file — survey's case 9 shadows mktemp on PATH, and a hard $(mktemp) here would
+    # turn that infra fallback into an abort.
+    if out=$(gh "${ARGS[@]}" --json "$BASE_FIELDS,blockedBy,blocking,subIssues,assignees" 2>/dev/null); then
+      FULL=1
+    else
+      err=$(gh "${ARGS[@]}" --json "$BASE_FIELDS,blockedBy,blocking,subIssues,assignees" 2>&1 >/dev/null) || true
+      if printf '%s' "$err" | grep -qi 'unknown json field'; then
+        echo "github: issue-list: this gh cannot serve the dependency fields (blockedBy/blocking/subIssues) — falling back to $BASE_FIELDS. Every edge then reads null, so the frontier rule holds NOTHING and a blocked child can be dispatched ahead of its blocker (#317). Upgrade gh to restore it. gh said: $(printf '%s' "$err" | tr '\n' ' ')" >&2
+        out=$(gh "${ARGS[@]}" --json "$BASE_FIELDS") || exit 1
+        FULL=0
+      else
+        printf '%s\n' "${err:-github: issue-list: gh issue list failed}" >&2
+        exit 1
+      fi
+    fi
+    # Each edge becomes the contract's connection: gh serves GraphQL connections ({nodes,
+    # totalCount}), an older build plain arrays (counted by their length), and an absent field null.
+    printf '%s' "$out" | jq -c --argjson full "$FULL" '
+      def node: if type == "number" then {number: ., state: null}
+                else {number: (.number // null), state: (if .state then (.state | ascii_upcase) else null end)} end;
+      def edge: if $full == 0 then null
+                elif type == "object" then {nodes: [(.nodes // [])[] | node], totalCount: (.totalCount // ((.nodes // []) | length))}
+                elif type == "array" then {nodes: map(node), totalCount: length}
+                else null end;
+      [.[] | {number, title, labels: [(.labels // [])[].name], body, comments: [(.comments // [])[].body],
+              createdAt: (.createdAt // null),
+              blockedBy: (.blockedBy | edge), blocking: (.blocking | edge), subIssues: (.subIssues | edge),
+              assignees: (if $full == 0 then null else [(.assignees // [])[].login] end)}]' || exit 1
+    ;;
+
+  issue-assign)
+    n=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "github: issue-assign: unknown option: $a" >&2; exit 2 ;;
+        *) n="$a" ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "github: issue-assign needs an issue number" >&2; exit 2; }
+    # Today's call, unchanged. gh adds the assignee idempotently, so an assigned issue prints ok too.
+    ARGS=(issue edit "$n")
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    ARGS+=(--add-assignee @me)
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh ${ARGS[*]}"; exit 0; fi
+    gh "${ARGS[@]}" >/dev/null || exit 1
+    echo ok
     ;;
 
   issue-comments)

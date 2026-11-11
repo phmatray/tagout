@@ -161,7 +161,19 @@ else
     "auth token")   echo "gho_stubtoken"; exit 0 ;;
     "repo view")    payload='{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"}}' ;;
     "issue view")   payload='{"number":7,"title":"A stub issue","state":"OPEN","body":"body text","comments":[{"body":"first comment"},{"body":"second comment"}],"labels":[{"name":"bug"},{"name":"area: skills"}],"url":"https://example.invalid/o/r/issues/7"}' ;;
-    "issue list")   payload='[{"number":12,"title":"A stub closed issue","state":"CLOSED"}]' ;;
+    # issue-list (#753) asks for createdAt, issue-search never does. GH_LIST_MODE=oldgh rejects
+    # the dependency fields the way a gh predating them does, =fail is any other failure.
+    "issue list")
+      case "$*" in
+        *createdAt*)
+          case "${GH_LIST_MODE:-}" in
+            fail) echo "HTTP 401: Bad credentials" >&2; exit 1 ;;
+            oldgh) case "$*" in *blockedBy*) echo 'Unknown JSON field: "blockedBy"' >&2; exit 1 ;; esac
+                   payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"}],"body":"b","comments":[{"body":"c1"}],"createdAt":"2026-11-01T00:00:00Z"}]' ;;
+            *) payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"},{"name":"area: skills"}],"body":"b","comments":[{"body":"c1"},{"body":"c2"}],"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"open"}],"totalCount":2},"blocking":[{"number":4}],"assignees":[{"login":"octocat"}]}]' ;;
+          esac ;;
+        *) payload='[{"number":12,"title":"A stub closed issue","state":"CLOSED"}]' ;;
+      esac ;;
     "issue create") echo "https://example.invalid/o/r/issues/42"; exit 0 ;;
     "issue edit")   exit 0 ;;
     "issue reopen") exit 0 ;;
@@ -873,20 +885,72 @@ got=$(printf '%s' "$OUT" | jq -c '.implements -= ["pr-merge"]' \
   && ok "state merge-pr, a backend lacking pr-merge — missing/verb-not-implemented" \
   || note_fail "state merge-pr, a backend lacking pr-merge — want missing/verb-not-implemented, got $got"
 
+echo "== A6. the auto-dev verbs (#753)"
+
+# issue-list sends today's survey argv plus createdAt, and normalises gh's shapes to the contract's:
+# bare label names, comment bodies, assignee logins, and every edge a {nodes, totalCount} connection
+# — a plain array counted by its length, an absent field null, a node's state upper-cased.
+PR_TRACKER=github; PR_DIR="$PROFILED"; PR_LOG="$GH_CALL_LOG"
+want_list='[{"number":3,"title":"t3","labels":["effort: small","area: skills"],"body":"b","comments":["c1","c2"],"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"OPEN"}],"totalCount":2},"blocking":{"nodes":[{"number":4,"state":null}],"totalCount":1},"subIssues":null,"assignees":["octocat"]}]'
+pr_case "issue-list — today's argv plus createdAt, normalised to the contract" 0 "$want_list" \
+  "issue list --state open --limit 5 --json number,title,labels,body,comments,createdAt,blockedBy,blocking,subIssues,assignees" -- \
+  issue-list --state open --limit 5
+
+# A gh predating the dependency fields: a second call with the base fields, null edges and
+# assignees, and survey.sh's old stderr warning, moved here with the fallback.
+export GH_LIST_MODE=oldgh
+want_old='[{"number":3,"title":"t3","labels":["effort: small"],"body":"b","comments":["c1"],"createdAt":"2026-11-01T00:00:00Z","blockedBy":null,"blocking":null,"subIssues":null,"assignees":null}]'
+pr_case "issue-list — an Unknown JSON field gh falls back to the base fields" 0 "$want_old" \
+  "issue list --state open --limit 5 --json number,title,labels,body,comments,createdAt" -- issue-list --state open --limit 5
+grep -q 'cannot serve the dependency fields' <<<"$ERR" \
+  && ok "issue-list — the fallback says so on stderr" \
+  || note_fail "issue-list — the fallback did not warn on stderr: '$ERR'"
+export GH_LIST_MODE=fail
+pr_case "issue-list — any other gh failure exits 1 with empty stdout" 1 '' - -- issue-list --state open --limit 5
+grep -q 'HTTP 401' <<<"$ERR" \
+  && ok "issue-list — the failure's own text reaches stderr" \
+  || note_fail "issue-list — gh's error was swallowed: '$ERR'"
+unset GH_LIST_MODE
+
+pr_case "issue-assign — today's gh issue edit --add-assignee @me" 0 ok \
+  "issue edit 12 --add-assignee @me" -- issue-assign 12
+pr_case "issue-assign --dry-run — no gh call" 0 - EMPTY -- issue-assign 12 --dry-run
+if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+  note_fail "issue-assign --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+fi
+
+# skills.auto-dev is a superset of every skill it drives, so a verb added to one of them later
+# cannot leave auto-dev capable on a host that lacks it.
+if jq -e '((.skills["create-issue"] + .skills["implement-issue"] + .skills["merge-pr"]) - .skills["auto-dev"] == [])
+           and ((.skills["auto-dev"] | length) == (.skills["auto-dev"] | unique | length))' \
+     "$KIT_ROOT/scripts/tracker/contract.json" >/dev/null 2>&1; then
+  ok "skills.auto-dev contains every verb of create-issue, implement-issue and merge-pr"
+else
+  note_fail "skills.auto-dev is missing a verb of a skill it drives (or is absent)"
+fi
+
+for host_want in github:capable/github-reference gitlab:missing/verb-not-implemented; do
+  run_tracker "$PROFILED" --tracker "${host_want%%:*}" state auto-dev
+  got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+  [ "$got" = "${host_want#*:}" ] \
+    && ok "state auto-dev on ${host_want%%:*} — ${host_want#*:}" \
+    || note_fail "state auto-dev on ${host_want%%:*} — want ${host_want#*:}, got $got"
+done
+
 echo "== B. the state report, and the tracker.capable verdict"
 
-# The report itself: five facts, judging none of them. `needs` is null because auto-dev is not on
-# the contract yet (#753), and that is a different absence from `implements` being null — the
+# The report itself: five facts, judging none of them. `needs` is null because deliver-issue is not
+# on the contract (#753 left it under #750's Out of scope), and that is a different absence from `implements` being null — the
 # decision below is what tells them apart, which is only possible if the report keeps them distinct.
-run_tracker "$PROFILED" state auto-dev
+run_tracker "$PROFILED" state deliver-issue
 if [ "$RC" -ne 0 ]; then
   note_fail "state — exited $RC ($ERR)"
 else
   got=$(printf '%s' "$OUT" | jq -r '[.tracker, .skill, (.needs|tostring), (.implements|length|tostring)] | join("|")' 2>/dev/null) \
     || got="<unparseable: $OUT>"
-  if [ "$got" != 'github|auto-dev|null|34' ]; then
+  if [ "$got" != 'github|deliver-issue|null|36' ]; then
     note_fail "state — wrong report
-      want: github|auto-dev|null|34
+      want: github|deliver-issue|null|36
       got:  $got"
   else
     ok "state — reports {tracker, skill, needs, implements} and judges nothing"
