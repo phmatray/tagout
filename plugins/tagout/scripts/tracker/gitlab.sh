@@ -223,6 +223,14 @@ _parse_link_args() {
 # never an empty list.
 _list() { _api --paginate "$1" | jq -sc 'add // []'; }
 
+# One links read: stdout is the JSON alone (a glab stderr notice on a SUCCESSFUL read is dropped, #812);
+# on failure $out holds the stderr text the 403 test reads. Sets the globals out and err.
+_links() {
+  local ef; ef=$(mktemp "${TMPDIR:-/tmp}/gitlab-links.XXXXXX") || return 1
+  if out=$(_list "$1" 2>"$ef"); then rm -f "$ef"; return 0; fi
+  out=$(cat "$ef"); rm -f "$ef"; return 1
+}
+
 # The resolvable discussions of MR $1, as the contract's pr-threads array — the one read pr-threads
 # and pr-merge-state both answer from (github.sh's `_threads`). A system note is not resolvable.
 _threads() {
@@ -463,7 +471,7 @@ case "$VERB" in
   issue-blocked-by-count)
     n="${1-}"
     [ -n "$n" ] || { echo "gitlab: issue-blocked-by-count needs an issue number" >&2; exit 2; }
-    if out=$(_list "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
+    if _links "projects/$(_id)/issues/$n/links?per_page=100"; then
       printf '%s' "$out" | jq -c '[.[] | select(.link_type == "is_blocked_by" and .state == "opened")] | length'
     elif grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
       printf 'n/a\n'
@@ -497,7 +505,7 @@ case "$VERB" in
     edges='{}'; nolinks=0; first=1
     # ponytail: one links read per open issue — GitLab's list carries no blocked-by edges
     for n in $(printf '%s' "$issues" | jq -r '.[].iid'); do
-      if out=$(_list "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
+      if _links "projects/$(_id)/issues/$n/links?per_page=100"; then
         # Kept to the three fields read below: a link carries the whole linked issue, description too.
         edges=$(printf '%s\n%s' "$edges" "$out" | jq -sc --arg n "$n" \
           '.[0] + {($n): [.[1][] | {iid, state, link_type}]}') || exit 1

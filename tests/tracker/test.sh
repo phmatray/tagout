@@ -169,7 +169,7 @@ else
           case "${GH_LIST_MODE:-}" in
             fail) echo "HTTP 401: Bad credentials" >&2; exit 1 ;;
             oldgh) case "$*" in *blockedBy*) echo 'Unknown JSON field: "blockedBy"' >&2; exit 1 ;; esac
-                   payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"}],"body":"b","comments":[{"body":"c1"}],"createdAt":"2026-11-01T00:00:00Z"}]' ;;
+                   payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"}],"body":"b","comments":[{"body":"c1"}],"createdAt":"2026-11-01T00:00:00Z","assignees":[{"login":"octocat"}]}]' ;;
             *) payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"},{"name":"area: skills"}],"body":"b","comments":[{"body":"c1"},{"body":"c2"}],"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"open"}],"totalCount":2},"blocking":[{"number":4}],"assignees":[{"login":"octocat"}]}]' ;;
           esac ;;
         *) payload='[{"number":12,"title":"A stub closed issue","state":"CLOSED"}]' ;;
@@ -906,9 +906,9 @@ pr_case "issue-list — today's argv plus createdAt, normalised to the contract"
 # A gh predating the dependency fields: a second call with the base fields, null edges and
 # assignees, and survey.sh's old stderr warning, moved here with the fallback.
 export GH_LIST_MODE=oldgh
-want_old='[{"number":3,"title":"t3","labels":["effort: small"],"body":"b","comments":["c1"],"createdAt":"2026-11-01T00:00:00Z","blockedBy":null,"blocking":null,"subIssues":null,"assignees":null}]'
+want_old='[{"number":3,"title":"t3","labels":["effort: small"],"body":"b","comments":["c1"],"createdAt":"2026-11-01T00:00:00Z","blockedBy":null,"blocking":null,"subIssues":null,"assignees":["octocat"]}]'
 pr_case "issue-list — an Unknown JSON field gh falls back to the base fields" 0 "$want_old" \
-  "issue list --state open --limit 5 --json number,title,labels,body,comments,createdAt" -- issue-list --state open --limit 5
+  "issue list --state open --limit 5 --json number,title,labels,body,comments,createdAt,assignees" -- issue-list --state open --limit 5
 grep -q 'cannot serve the dependency fields' <<<"$ERR" \
   && ok "issue-list — the fallback says so on stderr" \
   || note_fail "issue-list — the fallback did not warn on stderr: '$ERR'"
@@ -1400,7 +1400,7 @@ case "$method $endpoint_dispatch" in
     payload=$(_pl GLAB_NOTES_JSON '[{"body":"first note","system":false},{"body":"a system note","system":true},{"body":"second note","system":false}]') ;;
   "GET projects/:id/issues/"[0-9]*"/links"|"GET projects/:id/issues/"[0-9]*"/links"\?*)
     s="${GLAB_LINKS_STATUS:-200}"
-    case "$s" in 2??) payload=$(_pl GLAB_LINKS_JSON '[]') ;; *) fail_http "$s" "${GLAB_LINKS_MESSAGE:-}" ;; esac ;;
+    case "$s" in 2??) [ -z "${GLAB_LINKS_NOTICE:-}" ] || echo "$GLAB_LINKS_NOTICE" >&2; payload=$(_pl GLAB_LINKS_JSON '[]') ;; *) fail_http "$s" "${GLAB_LINKS_MESSAGE:-}" ;; esac ;;
   "GET projects/:id/issues/"[0-9]*)
     payload=$(_pl GLAB_ISSUE_JSON '{"iid":9,"title":"A stub GitLab issue","state":"opened","description":"body text","labels":["bug","area: skills"],"web_url":"https://gitlab.example.invalid/acme/widgets/-/issues/9"}') ;;
   "GET projects/:id/labels"\?*)
@@ -2027,6 +2027,25 @@ pr_case "gitlab issue-list — a 403 on links is null edges, not a failure" 0 - 
 export GLAB_LINKS_STATUS=500
 pr_case "gitlab issue-list — a 500 on links exits 1 with empty stdout" 1 '' - -- issue-list --state open
 unset GLAB_LINKS_STATUS GLAB_LINKS_JSON GLAB_SEARCH_JSON
+
+# #812: a glab stderr notice on a SUCCESSFUL links read never reaches the JSON, on both verbs.
+export GLAB_LINKS_NOTICE='glab: a new version is available' GLAB_SEARCH_JSON='[{"iid":3,"title":"t3","labels":[],"description":"b3","created_at":"2026-11-01T00:00:00Z","assignees":[]}]' \
+  GLAB_LINKS_JSON='[{"iid":2,"state":"opened","link_type":"is_blocked_by"}]'
+pr_case "gitlab issue-list — a stderr notice on a good links read leaves the JSON clean" 0 - - -- issue-list --state open
+[ "$(printf '%s' "$OUT" | jq -c '.[0].blockedBy.totalCount' 2>/dev/null)" = 1 ] \
+  && ok "gitlab issue-list — notice kept out of stdout, edge parsed" || note_fail "gitlab issue-list — notice leaked: $OUT"
+run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-blocked-by-count 3
+[ "$RC" -eq 0 ] && [ "$OUT" = 1 ] && ok "gitlab issue-blocked-by-count — notice kept out of the count" \
+  || note_fail "gitlab issue-blocked-by-count — notice leaked: '$OUT' ($ERR)"
+unset GLAB_LINKS_NOTICE GLAB_SEARCH_JSON GLAB_LINKS_JSON
+
+# #812: survey.sh over a GitLab tier whose links answer 403 — end to end, not only at the verb.
+export GLAB_LINKS_STATUS=403 GLAB_SEARCH_JSON='[{"iid":3,"title":"t3","labels":["effort: small"],"description":"b3","created_at":"2026-11-01T00:00:00Z","assignees":[]}]'
+SURVEY_OUT=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" bash "$KIT_ROOT/skills/auto-dev/scripts/survey.sh" 2>"$WORK/survey-err.log"); SURVEY_RC=$?
+[ "$SURVEY_RC" -eq 0 ] && grep -Fq 'no linked issues (HTTP 403' "$WORK/survey-err.log" \
+  && ok "survey.sh over gitlab — a links 403 is named on stderr, the survey still answers" \
+  || note_fail "survey.sh over gitlab 403 — rc $SURVEY_RC; out: $SURVEY_OUT; err: $(cat "$WORK/survey-err.log")"
+unset GLAB_LINKS_STATUS GLAB_SEARCH_JSON
 
 export GLAB_ISSUE_JSON='{"iid":9,"title":"x","state":"opened","assignees":[{"username":"ann"}]}'
 pr_case "gitlab issue-assign — an assigned issue is already-assigned, no PUT" 0 already-assigned - -- issue-assign 9
