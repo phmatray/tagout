@@ -1403,6 +1403,15 @@ default_create='{"id":42,"_links":{"html":{"href":"https://dev.azure.com/o/p/_wo
 default_comments='{"comments":[]}'
 default_tags='{"value":[]}'
 
+# The PR verbs' JSON bodies travel in --in-file (#751): copy each to $AZ_INFILE_CAPTURE when set.
+if [ -n "${AZ_INFILE_CAPTURE:-}" ]; then
+  prev=""
+  for a in "$@"; do [ "$prev" = --in-file ] && cp "$a" "$AZ_INFILE_CAPTURE"; prev="$a"; done
+fi
+default_pr='{"pullRequestId":9,"title":"x","status":"active","isDraft":true,"description":"Closes #7","sourceRefName":"refs/heads/feat/7-x","targetRefName":"refs/heads/main","lastMergeSourceCommit":{"commitId":"abc123"},"createdBy":{"uniqueName":"me@acme.example"},"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+default_pr_list='[{"pullRequestId":9,"title":"x","status":"completed","isDraft":false,"sourceRefName":"refs/heads/feat/7-x","description":"Closes #7","closedDate":"2026-11-01T00:00:00Z","repository":{"name":"widgets","project":{"name":"Shop"}}}]'
+default_pr_create='{"pullRequestId":9,"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+
 # Pull the flags every dispatch below needs, regardless of position.
 resource=""; http_method="GET"; route_id=""; route_type=""; capture=0
 prev=""
@@ -1431,6 +1440,14 @@ case "${1-} ${2-}" in
     exit 0 ;;
   "repos show")
     printf '%s' "${AZ_REPO_JSON:-$default_repo}"
+    exit 0 ;;
+  "repos pr")
+    case "${3-}" in
+      list)   printf '%s' "${AZ_PR_LIST_JSON:-$default_pr_list}" ;;
+      show)   printf '%s' "${AZ_PR_JSON:-$default_pr}" ;;
+      update) printf '{}' ;;
+      *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
+    esac
     exit 0 ;;
   "devops invoke") : ;;
   "devops project")
@@ -1473,6 +1490,9 @@ case "$resource $http_method" in
   "tags GET")
     printf '%s' "${AZ_TAGS_JSON:-$default_tags}"
     ;;
+  "pullRequests POST") printf '%s' "$default_pr_create" ;;
+  "pullRequests PATCH") printf '{}' ;;
+  "pullRequestCommits GET") printf '%s' '{"value":[{"commitId":"aaa"},{"commitId":"bbb"}]}' ;;
   *) echo "az stub: unsupported invoke: resource=$resource method=$http_method" >&2; exit 1 ;;
 esac
 AZSTUB
@@ -1860,6 +1880,60 @@ else
 fi
 
 
+
+
+echo "== F2. the PR verbs on Azure DevOps (#751)"
+
+PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
+AZ_INFILE_CAPTURE="$WORK/az-infile.json"; export AZ_INFILE_CAPTURE
+pr_case "azure pr-create --draft — {number,url} with the web URL built" 0 \
+  '{"number":9,"url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9"}' \
+  "devops invoke" -- pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
+got=$(jq -c '[.isDraft, .sourceRefName, .targetRefName, .title, .description]' "$AZ_INFILE_CAPTURE" 2>/dev/null)
+if [ "$got" != '[true,"refs/heads/feat/1-x","refs/heads/main","T","Closes #7\n"]' ]; then
+  note_fail "azure pr-create — wrong --in-file body: $got"
+elif ! grep -Fq '"isDraft": true' "$AZ_INFILE_CAPTURE"; then
+  note_fail "azure pr-create — the body does not send \"isDraft\": true"
+else
+  ok "azure pr-create — --in-file carries isDraft, refs/heads/ refs and the file's description"
+fi
+pr_case "azure pr-ready — az repos pr update --id <n> --draft false" 0 '' \
+  "repos pr update --id 9 --draft false" -- pr-ready 9
+pr_case "azure pr-list --state merged — --status completed, closedDate→mergedAt" 0 \
+  '[{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
+  "--status completed" -- pr-list --state merged
+pr_case "azure pr-list --search — re-reads each candidate's full description" 0 - \
+  "repos pr show" -- pr-list --search 'Closes #7'
+[ "$(printf '%s' "$OUT" | jq -r '.[0].body' 2>/dev/null)" = "Closes #7" ] \
+  || note_fail "azure pr-list --search — the matching PR was not returned: $OUT"
+pr_case "azure pr-view — refs/heads/ stripped, web URL built, author a login" 0 \
+  '{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"me@acme.example"}' \
+  "repos pr show" -- pr-view 9
+pr_case "azure pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pullRequestCommits" -- pr-commits 9
+pr_case "azure pr-edit-body — PATCH {description} through --in-file" 0 '' "pullRequestId=9" -- \
+  pr-edit-body 9 --body-file "$PR_BODY"
+[ "$(jq -c . "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '{"description":"Closes #7\n"}' ] \
+  || note_fail "azure pr-edit-body — wrong --in-file body: $(cat "$AZ_INFILE_CAPTURE")"
+PR_LONG="$WORK/pr-long.md"; head -c 4001 /dev/zero | tr '\0' 'a' > "$PR_LONG"
+pr_case "azure pr-create — a 4001-character description is refused, no az call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_LONG"
+pr_case "azure pr-edit-body — a 4001-character description is refused, no az call" 2 - EMPTY -- \
+  pr-edit-body 9 --body-file "$PR_LONG"
+pr_case "azure pr-create — refuses an empty --body-file, no az call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_EMPTY"
+pr_case "azure pr-edit-body — refuses a missing --body-file, no az call" 2 - EMPTY -- \
+  pr-edit-body 9 --body-file "$WORK/no-such-file"
+pr_dry_runs "$PR_BODY"
+unset AZ_INFILE_CAPTURE
+
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+if [ "$out" != capable ]; then
+  note_fail "azure state implement-issue — expected 'capable', got '$out'"
+else
+  ok "azure state implement-issue — capable once the six PR verbs land"
+fi
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = missing ] || note_fail "azure state merge-pr — expected 'missing', got '$out'"
 
 if [ "$FAILED" -ne 0 ]; then
   echo

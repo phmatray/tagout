@@ -765,4 +765,54 @@ RC=0
 [ ! -s "$GLAB_CALL_LOG" ] || { echo "FAIL [gitlab-refuse]: glab was called"; cat "$GLAB_CALL_LOG"; exit 1; }
 echo "  ok: gitlab-refuse — a non-checkbox edit is REFUSED with an empty glab log"
 
+# 25. The body path on Azure DevOps (#751): the PATCH sets the description AND its Markdown format,
+#     the tick is read back through issue-view and verified; a non-checkbox edit is REFUSED with no
+#     az call. A stateful az stub: the workitems PATCH stores the patch, the GET serves it back.
+CO_AZ="$WORK/co-azure"
+mkdir -p "$CO_AZ/.claude/skills"
+git init -q "$CO_AZ"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** azure-devops (dev.azure.com/acme/Shop)' \
+  > "$CO_AZ/.claude/skills/repo-profile.md"
+AZ_CALL_LOG="$WORK/az-calls.log"; AZ_STORE="$WORK/az-store.md"; AZ_PATCH="$WORK/az-patch.json"
+export AZ_CALL_LOG AZ_STORE AZ_PATCH
+cat > "$WORK/bin/az" <<'AZ'
+#!/usr/bin/env bash
+echo "$*" >> "$AZ_CALL_LOG"
+method=GET; f=""; prev=""
+for a in "$@"; do
+  case "$prev" in --http-method) method="$a" ;; --in-file) f="$a" ;; esac
+  prev="$a"
+done
+if [ "$method" = PATCH ]; then
+  cp "$f" "$AZ_PATCH"
+  jq -j '.[] | select(.path == "/fields/System.Description") | .value' "$f" > "$AZ_STORE"
+  echo '{}'; exit 0
+fi
+jq -Rs '{id: 42, fields: {"System.Title": "t", "System.State": "Active", "System.Description": .},
+         multilineFieldsFormat: {"System.Description": "Markdown"}}' < "$AZ_STORE"
+AZ
+chmod +x "$WORK/bin/az"
+cp "$BEFORE" "$AZ_STORE"
+fresh_log azure-tick; : > "$AZ_CALL_LOG"
+( cd "$CO_AZ" && "$KIT_ROOT/$TICK" --repo acme/Shop --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
+    > "$WORK/out.azure-tick" 2>&1 ) \
+  || { echo "FAIL [azure-tick]: a legitimate Azure DevOps tick was refused"; cat "$WORK/out.azure-tick"; exit 1; }
+grep -q 'body verified intact' "$WORK/out.azure-tick" \
+  || { echo "FAIL [azure-tick]: no verified-intact verdict"; cat "$WORK/out.azure-tick"; exit 1; }
+cmp -s "$AZ_STORE" "$WORK/ticked.md" \
+  || { echo "FAIL [azure-tick]: Azure DevOps does not hold the ticked body byte for byte"; exit 1; }
+[ "$(jq -r '.[] | select(.path == "/multilineFieldsFormat/System.Description") | .value' "$AZ_PATCH")" = Markdown ] \
+  || { echo "FAIL [azure-tick]: the PATCH did not set the description format to Markdown"; cat "$AZ_PATCH"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [azure-tick]: gh was called on an Azure DevOps profile"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: azure-tick — PATCHed as Markdown, read back and verified, no gh call"
+
+fresh_log azure-refuse; : > "$AZ_CALL_LOG"
+RC=0
+( cd "$CO_AZ" && "$KIT_ROOT/$TICK" --repo acme/Shop --issue 42 --before "$BEFORE" --after "$WORK/mangled.md" \
+    > "$WORK/out.azure-refuse" 2>&1 ) || RC=$?
+[ "$RC" -ne 0 ] && grep -q 'REFUSED' "$WORK/out.azure-refuse" \
+  || { echo "FAIL [azure-refuse]: a non-checkbox edit was not REFUSED"; cat "$WORK/out.azure-refuse"; exit 1; }
+[ ! -s "$AZ_CALL_LOG" ] || { echo "FAIL [azure-refuse]: az was called"; cat "$AZ_CALL_LOG"; exit 1; }
+echo "  ok: azure-refuse — a non-checkbox edit is REFUSED with an empty az log"
+
 echo "tick-plan golden test OK"
