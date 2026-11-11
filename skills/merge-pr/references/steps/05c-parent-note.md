@@ -22,9 +22,9 @@ gh pr view "$PR" --json closingIssuesReferences --jq '.closingIssuesReferences[]
     done
 ```
 
-`parent-decision-note.sh` does everything from there: reads the issue's native `parent` field
-(`gh issue view <issue> --json parent` — the same field `#317`'s survey-side frontier logic reads for
-the reverse direction), and:
+`parent-decision-note.sh` does everything from there: reads the issue's parent over REST
+(`gh api repos/{owner}/{repo}/issues/{n}/parent --hostname <host>` — the `parent` JSON field of `gh issue view` is absent on some
+`gh` builds, #762), and:
 
 - **No parent** → prints `no-parent` and exits 0. This is the overwhelming majority of merges — say
   nothing about it in Step 8's recap either, the same way Step 6's "none" follow-up tally stays
