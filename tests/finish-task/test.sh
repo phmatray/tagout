@@ -290,7 +290,7 @@ printf '\n### Task 3: the third slice\n\n**Files:** create `c.txt`.\n\n- [ ] **S
 echo c > "$WT/c.txt"
 : > "$TRACKER_CALLS"; : > "$GH_LOG"
 rc=0; out=$("$CK/skills/implement-issue/scripts/finish-task.sh" --repo acme/widgets --issue 42 --task 3 \
-  --worktree "$WT" --branch fix/42 2>&1) || rc=$?
+  --worktree "$WT" --branch fix/42 -c user.email=t@t -c user.name=t 2>&1) || rc=$?
 [ "$rc" -eq 0 ] || fail resolve-once-run "the close failed ($rc): $out"
 grep -qF 'ticked (1 box(es))' <<<"$out" || fail resolve-once-tick "the close must really tick through tick-plan.sh: $out"
 n=$(grep -c '^state ' "$TRACKER_CALLS" || true)
