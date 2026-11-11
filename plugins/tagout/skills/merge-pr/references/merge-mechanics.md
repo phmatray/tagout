@@ -118,26 +118,29 @@ Keep `$WORKTREE` — Step 4's guarded writes take it, and Step 7 removes that pa
 
 ## 3. Waiting on CI
 
-The authority is the **check-runs on the PR's head SHA**, not `gh pr checks` — the latter can print a
-phantom `skipped` check-run alongside the real one for the same job (a known GitHub Actions behavior
-when a draft-gated job re-triggers), so its verdict can't be trusted directly:
+The authority is **every check on the PR's head SHA** — `commit-checks`, the tracker verb that reads
+GitHub's check-runs (GitLab's commit statuses, Azure DevOps' pipeline runs) into one normalised list
+(#752) — not `gh pr checks`, which can print a phantom `skipped` check-run alongside the real one for
+the same job (a known GitHub Actions behavior when a draft-gated job re-triggers), so its verdict
+can't be trusted directly:
 
 ```bash
-SHA=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
-# --slurp piped into the dispatcher (gh's --jq can't combine with --slurp) flattens every page's
-# {total_count, check_runs:[...]} into one list — safe even if check-runs ever exceed a page.
+SHA=$("<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r .headSha)
+# commit-checks prints every run on the sha — every page, superseded runs included — as
+# [{name, state, bucket, id, app, html_url}]. The #91 reduction is NOT the verb's job; it is the
+# decision's, below.
 #
 # The reduction and the rules are NOT pasted here any more (#208). `decide.sh` extracts them from
 # the marked block below and runs THAT, so the program applied to a real PR is byte-for-byte the
 # one tests/merge-gate/test.sh pins over fixtures — a pasted copy could drift from it, and a
 # drifted copy of a gate is the failure this whole reduction exists to prevent, wearing a passing
 # test. `--json` asks for the whole object, because the counts read below are part of it.
-verdict=$(gh api "repos/{owner}/{repo}/commits/$SHA/check-runs" --hostname <host> --paginate --slurp | "$DECIDE" ci.verdict --json)
+verdict=$("<kit>/scripts/tracker.sh" commit-checks "$SHA" | "$DECIDE" ci.verdict --json)
 
 # A failed query prints nothing, and without `pipefail` the pipeline still exits 0 — at which point
-# an empty verdict reads as "this SHA has no check-runs", i.e. as a pass. No verdict is not a pass.
+# an empty verdict reads as "this SHA has no checks", i.e. as a pass. No verdict is not a pass.
 # `decide.sh` makes the same refusal one layer down (exit 2 on empty input); this line is what
-# catches a `gh` that failed BEFORE the pipe, where the dispatcher was never reached at all.
+# catches a read that failed BEFORE the pipe, where the dispatcher was never reached at all.
 [ -n "$verdict" ] || { echo "check-runs query returned nothing — no verdict; do not merge"; exit 1; }
 
 latest=$(printf '%s' "$verdict"  | jq .latest)   # one run per job — the set the rules apply to
@@ -167,7 +170,8 @@ R1 refuses a second copy of these markers, because two homes for a gate is how a
   # >>> decision ci.verdict rule — extracted verbatim and run over fixtures by tests/merge-gate/test.sh >>>
   # One SHA carries a HISTORY PER JOB, not one run per job, so reduce before judging: keep the
   # newest run of each job and apply the rules to that alone.
-  [ .[].check_runs[] | {name, id, app: .app.id, started_at, html_url, state: (.conclusion // .status)} ]
+  # The input is the list `tracker.sh commit-checks` prints (#752): one entry per run, normalised.
+  [ .[] | {name, id, app, html_url, state} ]
   # A job is identified by the check name AND the app that posted it. Two products can both
   # publish a check called build — GitHub Actions and a CI app — and grouping on the name alone
   # would let whichever posted later silently retire the other one verdict.
@@ -197,8 +201,9 @@ R1 refuses a second copy of these markers, because two homes for a gate is how a
       # anything — merging on it would be merging on a job that never ran. This is an ENUMERATION
       # of the check-run status enum, not a proof: a status GitHub adds later still falls in the
       # unhandled default and reads as green. Re-check https://docs.github.com/rest/checks/runs
-      # when this gate is next touched.
-      pending: [ .[] | select(.state == "queued" or .state == "in_progress" or .state == "waiting" or .state == "requested" or .state == "pending") ] }
+      # when this gate is next touched. `UNKNOWN` (#752) is the word a backend prints for a host
+      # state it could not map: a state no backend could map waits, and never reads as clear.
+      pending: [ .[] | select(.state == "queued" or .state == "in_progress" or .state == "waiting" or .state == "requested" or .state == "pending" or .state == "UNKNOWN") ] }
   # Same program, one more question: the reduction above, and the verdict a caller acts on. Purely
   # additive — .latest, .failed and .pending are untouched, so every fixture assertion in
   # tests/merge-gate keeps its exact meaning. The rule name is what the event log attributes a
@@ -228,7 +233,8 @@ forever when a workflow path filter legitimately skips a job the PR's files don'
 `SKILL.md` Step 3 for the full breakdown of why a check-run may not be its job's verdict).
 
 **Why the runs are reduced first (#91).** GitHub attaches a *history per job* to a SHA, not one run
-per job — and this repo's own `ci.yml` manufactures those histories deliberately: `cancel-in-progress`
+per job, and `commit-checks` hands that history over whole, because the reduction is this decision's
+job and no backend's. This repo's own `ci.yml` manufactures those histories deliberately: `cancel-in-progress`
 (#27/#29) exists so a retitle cannot leave two runs racing to publish the same `kit` check. Its
 unavoidable consequence is that a **superseded `cancelled` stays attached to the head SHA forever**,
 beside the real `success` for the same job. Pushing twice in quick succession, editing a PR body, or

@@ -24,6 +24,7 @@
 #   no match, or the matched run has no conclusion yet
 #     (still queued/in_progress), or the lookup itself
 #     fails                                             -> unverified (timeout)
+#   a tracker other than GitHub (#752) — no call at all  -> unverified (timeout)
 #
 # Any other completed conclusion (`cancelled`, `skipped`, `neutral`, `timed_out`,
 # `action_required`, `stale`) falls into the last bucket too — this script's whole point is one
@@ -104,6 +105,16 @@ case "$SHA" in
 esac
 
 command -v jq > /dev/null 2>&1 || refuse "jq is missing — it is a \`required\` prerequisite in requirements.json"
+answer() { printf '%s\n' "$1"; exit 0; }
+
+# `gh run list` is a GitHub-only lookup (#752, kept direct like approve-runs.sh): on any other
+# tracker — or one `state` cannot name — there is nothing to ask, so the answer is the non-verdict
+# this script gives for every lookup that cannot speak, and nothing is called. `state` reads the
+# committed profile only; it costs no network.
+TRACKER_NAME=$("$KIT_ROOT/scripts/tracker.sh" state merge-pr 2>/dev/null | jq -r '.tracker // empty') \
+  || TRACKER_NAME=""
+[ "$TRACKER_NAME" = github ] || answer "unverified (timeout)"
+
 command -v gh > /dev/null 2>&1 || refuse "gh is missing — there is no other way to read run list"
 
 # The repository's own host (#514): `gh run list -R OWNER/REPO` takes gh's DEFAULT host even
@@ -116,8 +127,6 @@ if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve > /dev/null 2>&1 \
   || { echo "$TOOL: REFUSED — cannot load $GH_HOST_LIB; reinstall the kit" >&2; exit 64; }
 gh_host_resolve "$REPO" || exit 64
-
-answer() { printf '%s\n' "$1"; exit 0; }
 
 GH_ARGS=(run list --branch "$BASE" --json headSha,conclusion,workflowName,createdAt --limit 100)
 [ -n "$KIT_REPO_SLUG" ] && GH_ARGS=(-R "$KIT_REPO_SLUG" "${GH_ARGS[@]}")

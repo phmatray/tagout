@@ -611,6 +611,33 @@ out=$(followup_of main "$SHA")
 [ "$out" = "green (base-run)" ] || { echo "FAIL [followup-all-workflows-green]: expected 'green (base-run)', got '$out'"; exit 1; }
 echo "  ok: followup-all-workflows-green — green only once every workflow on the sha has succeeded"
 
+# `gh run list` is a GitHub-only lookup (#752): on another tracker the follow-up has nothing to ask,
+# so it answers the honest non-verdict and calls nothing — never a gh call against a host that is
+# not GitHub, whose failure would only spell the same `unverified (timeout)` after a wasted call.
+GITLAB_PROFILED="$WORK/gitlab-profiled"
+mkdir -p "$GITLAB_PROFILED/.claude/skills"
+printf '%s\n' '# Repo profile' '' '## Tracker' \
+  '- **Tracker:** gitlab (gitlab.com) — the lifecycle skills drive GitLab semantics through `glab`.' \
+  > "$GITLAB_PROFILED/.claude/skills/repo-profile.md"
+reset_case followup-gitlab
+SHA=e1f2e1f2e1f2e1f2e1f2e1f2e1f2e1f2e1f2e1f2
+export RUN_LIST_TRAP='[{"headSha":"'"$SHA"'","conclusion":"success","workflowName":"ci","createdAt":"2026-09-12T09:05:00Z"}]'
+out=$(cd "$GITLAB_PROFILED" && "$KIT_ROOT/skills/merge-pr/scripts/base-run-followup.sh" main "$SHA" 2>"$WORK/followup.err") || {
+  echo "FAIL [followup-gitlab]: exited non-zero:"; sed 's/^/      /' "$WORK/followup.err"; exit 1; }
+[ "$out" = "unverified (timeout)" ] || { echo "FAIL [followup-gitlab]: expected 'unverified (timeout)', got '$out'"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [followup-gitlab]: gh was called on a GitLab-profiled repository:"; sed 's/^/      /' "$GH_CALL_LOG"; exit 1; }
+echo "  ok: followup-gitlab — on a GitLab-profiled repository the follow-up prints 'unverified (timeout)' and calls no gh"
+
+# The same rule for base-run-verdict.sh's workflow-runs fallback (#479, GitHub-only): on a
+# GitLab-profiled repository whose read fails, the fallback is skipped — no gh call at all.
+reset_case verdict-gitlab-no-fallback
+SHA=f2a3f2a3f2a3f2a3f2a3f2a3f2a3f2a3f2a3f2a3
+out=$(cd "$GITLAB_PROFILED" && "$KIT_ROOT/skills/merge-pr/scripts/base-run-verdict.sh" "$SHA" --report-line --timeout 0 --poll-seconds 0 2>"$WORK/helper.err") || {
+  echo "FAIL [verdict-gitlab-no-fallback]: exited non-zero:"; sed 's/^/      /' "$WORK/helper.err"; exit 1; }
+[ "$out" = "unverified (query-failed)" ] || { echo "FAIL [verdict-gitlab-no-fallback]: expected 'unverified (query-failed)', got '$out'"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [verdict-gitlab-no-fallback]: gh was called on a GitLab-profiled repository:"; sed 's/^/      /' "$GH_CALL_LOG"; exit 1; }
+echo "  ok: verdict-gitlab-no-fallback — on a GitLab-profiled repository the GitHub-only workflow-runs fallback is never asked"
+
 # Restore the red trap the merge-train cases above (and any re-run of this file top to bottom) rely on.
 export RUN_LIST_TRAP='[{"databaseId":33346395704,"headSha":"'"$SIBLING_SHA"'","conclusion":"failure","status":"completed","name":"kit","url":"https://github.invalid/run/33346395704"}]'
 
