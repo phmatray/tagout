@@ -17,8 +17,8 @@
 #   call, by skills/_shared/scripts/_gh-host.sh (#514).
 #
 # What it does, in order:
-#   1. Reads the child issue's native `parent` field (`gh issue view <child> --json parent`).
-#      No parent → prints `no-parent` and exits 0. This is the common path.
+#   1. Reads the child's parent over REST (`gh api repos/{owner}/{repo}/issues/{n}/parent`).
+#      No parent (a 404) → prints `no-parent` and exits 0. This is the common path.
 #   2. Parent present → reads the merged PR's title and url, and the parent's current body.
 #   3. Idempotency: if the body already carries this PR's own marker (`[#<pr>]`), prints
 #      `already-noted` and exits 0 without writing anything — a re-run of `merge-pr` on an
@@ -140,13 +140,24 @@ REPO="$KIT_REPO_SLUG"
 
 # ---------------------------------------------------------------------- 1. does a parent exist?
 
-parent_json=$(gh issue view "$CHILD" -R "$REPO" --json parent 2>&1) \
-  || fail "gh issue view #$CHILD --json parent failed: $parent_json"
+# REST, not the `parent` JSON field of `gh issue view`: gh 2.87.3 lacks it (#762). A 404 means no parent.
+parent_rc=0
+parent_json=$(gh api -H "Accept: application/vnd.github+json" "repos/$REPO/issues/$CHILD/parent" 2>&1) \
+  || parent_rc=$?
+if [ "$parent_rc" -ne 0 ]; then
+  case "$parent_json" in
+    *"No parent issue found"*) echo "no-parent"; exit 0 ;;
+    *"HTTP 404"*)
+      echo "parent-decision-note: this host's sub-issues API is unavailable (HTTP 404); reading #$CHILD as parentless" >&2
+      echo "no-parent"; exit 0 ;;
+  esac
+  fail "gh api repos/$REPO/issues/$CHILD/parent failed: $parent_json"
+fi
 
 printf '%s' "$parent_json" | jq -e . > /dev/null 2>&1 \
-  || fail "gh issue view #$CHILD --json parent returned unparseable output: $parent_json"
+  || fail "gh api repos/$REPO/issues/$CHILD/parent returned unparseable output: $parent_json"
 
-PARENT=$(printf '%s' "$parent_json" | jq -r '.parent.number // empty')
+PARENT=$(printf '%s' "$parent_json" | jq -r '.number // empty')
 
 if [ -z "$PARENT" ]; then
   echo "no-parent"

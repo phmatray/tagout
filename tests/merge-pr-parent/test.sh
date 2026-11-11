@@ -35,9 +35,11 @@ STATE_BODY="$WORK/state-body.txt"
 # number — because the script queries the CHILD (`--json parent`) and the PARENT (`--json body`)
 # through the identically-shaped `gh issue view <n> -R <repo> --json <fields>` call.
 #
-#   GH_PARENT_JSON          raw JSON for `gh issue view <child> --json parent`  default {"parent":null}
-#   GH_PARENT_MALFORMED=1   that call answers with non-JSON garbage instead
-#   GH_PARENT_VIEW_STATUS   non-zero to make the parent-lookup call itself fail (gh exit code)
+#   GH_PARENT_REST_JSON     raw JSON for `gh api repos/<r>/issues/<child>/parent`; unset = 404 no parent
+#   GH_PARENT_REST_404      nofound | bare — answer 404 as "No parent issue found" / a bare "HTTP 404"
+#   GH_PARENT_MALFORMED=1   the parent lookup answers with non-JSON garbage instead
+#   GH_PARENT_REST_STATUS   an HTTP status (e.g. 500) to make the parent lookup fail with
+#   `gh issue view --json parent` answers `Unknown JSON field: "parent"` as gh 2.87.3 does (#762).
 #   GH_BODY_VIEW_STATUS     non-zero to make every `--json body` read fail
 #   GH_PR_JSON              raw JSON for `gh pr view <pr> --json title,url`     default {}
 #   GH_PR_VIEW_STATUS       non-zero to make the PR lookup fail
@@ -75,14 +77,9 @@ case "$noun" in
           esac
         done
         case "$fields" in
-          parent)
-            [ "${GH_PARENT_VIEW_STATUS:-0}" = 0 ] || { echo "gh: simulated failure" >&2; exit "$GH_PARENT_VIEW_STATUS"; }
-            if [ "${GH_PARENT_MALFORMED:-0}" = 1 ]; then
-              echo 'not-json-at-all {{{'
-              exit 0
-            fi
-            printf '%s\n' "${GH_PARENT_JSON:-NULL_PARENT}" | sed 's/^NULL_PARENT$/{"parent":null}/'
-            exit 0 ;;
+          parent)   # gh 2.87.3 has no such field (#762)
+            echo 'Unknown JSON field: "parent"' >&2
+            exit 1 ;;
           body)
             [ "${GH_BODY_VIEW_STATUS:-0}" = 0 ] || { echo "gh: simulated failure" >&2; exit "$GH_BODY_VIEW_STATUS"; }
             body=$(cat "$STATE_BODY" 2>/dev/null || true)
@@ -103,6 +100,23 @@ case "$noun" in
         printf '%s' "$newbody" > "$STATE_BODY"
         exit 0 ;;
       *) echo "unexpected issue verb: $verb" >&2; exit 99 ;;
+    esac ;;
+  api)
+    case "$*" in
+      *"/issues/"*"/parent")
+        [ "${GH_PARENT_REST_STATUS:-0}" = 0 ] || { echo "gh: Server Error (HTTP $GH_PARENT_REST_STATUS)" >&2; exit 1; }
+        case "${GH_PARENT_REST_404:-}" in
+          nofound) echo "gh: No parent issue found (HTTP 404)" >&2; exit 1 ;;
+          bare) echo "gh: HTTP 404" >&2; exit 1 ;;
+        esac
+        if [ "${GH_PARENT_MALFORMED:-0}" = 1 ]; then
+          echo 'not-json-at-all {{{'
+          exit 0
+        fi
+        if [ -z "${GH_PARENT_REST_JSON:-}" ]; then echo "gh: No parent issue found (HTTP 404)" >&2; exit 1; fi
+        printf '%s\n' "$GH_PARENT_REST_JSON"
+        exit 0 ;;
+      *) echo "unexpected api call: $*" >&2; exit 99 ;;
     esac ;;
   pr)
     verb="${1:-}"; shift || true
@@ -193,7 +207,7 @@ ok() { echo "ok   [$CASE] $1"; }
 REPO="o/r"
 
 # --------------------------------------------------------------------- 1. no parent: pure no-op
-GH_PARENT_JSON='{"parent":null}' \
+GH_PARENT_REST_404=nofound \
   run_case "no-parent" 42 99 "$REPO"
 expect_rc 0 && expect_stdout "no-parent" \
   && ok "a child with no parent is a no-op, exit 0, prints 'no-parent'"
@@ -205,7 +219,7 @@ fi
 
 # ---------------------------------------------------------- 2. first child appends the section
 printf '## Destination\n\nShip the epic.\n\n## Notes\n\nSome notes.\n' > "$STATE_BODY"
-GH_PARENT_JSON='{"parent":{"number":100,"title":"Tracking epic","url":"https://github.com/o/r/issues/100"}}' \
+GH_PARENT_REST_JSON='{"number":100}' \
   GH_PR_JSON='{"title":"feat(x): first slice (#42) (#76)","url":"https://github.com/o/r/pull/76"}' \
   run_case "first-child-appends-section" 42 76 "$REPO"
 expect_rc 0 \
@@ -215,7 +229,7 @@ expect_rc 0 \
   && ok "no existing section: the heading and the first line are both added"
 
 # --------------------------------------- 3. second child appends a line, not a second section
-GH_PARENT_JSON='{"parent":{"number":100,"title":"Tracking epic","url":"https://github.com/o/r/issues/100"}}' \
+GH_PARENT_REST_JSON='{"number":100}' \
   GH_PR_JSON='{"title":"fix(y): second slice (#55) (#88)","url":"https://github.com/o/r/pull/88"}' \
   run_case "second-child-appends-line" 55 88 "$REPO"
 expect_rc 0 \
@@ -225,7 +239,7 @@ expect_rc 0 \
   && ok "a second landed child adds a second line under the SAME heading, not a new section"
 
 # --------------------------------------------------------------- 4. idempotent re-run: no-op
-GH_PARENT_JSON='{"parent":{"number":100,"title":"Tracking epic","url":"https://github.com/o/r/issues/100"}}' \
+GH_PARENT_REST_JSON='{"number":100}' \
   GH_PR_JSON='{"title":"feat(x): first slice (#42) (#76)","url":"https://github.com/o/r/pull/76"}' \
   run_case "idempotent-rerun" 42 76 "$REPO"
 expect_rc 0 && expect_stdout "already-noted" \
@@ -247,6 +261,25 @@ else
   ok "nothing was written after a malformed parent-lookup response"
 fi
 
+# ---------------------------------------- 5b. 404 classification and a REST failure (#762)
+GH_PARENT_REST_404=nofound run_case "rest-404-nofound" 42 76 "$REPO"
+expect_rc 0 && expect_stdout "no-parent" \
+  && ok "REST 404 'No parent issue found' is no-parent, exit 0"
+if grep -qE 'ARGS: issue edit' "$GH_CALL_LOG"; then
+  echo "FAIL: [$CASE] an edit happened despite no parent"; fails=$((fails + 1))
+fi
+
+GH_PARENT_REST_404=bare run_case "rest-404-bare" 42 76 "$REPO"
+expect_rc 0 && expect_stdout "no-parent" && expect_stderr_contains "sub-issues API" \
+  && ok "a bare HTTP 404 (sub-issues off) is no-parent, exit 0, with one stderr note"
+if grep -qE 'ARGS: issue edit' "$GH_CALL_LOG"; then
+  echo "FAIL: [$CASE] an edit happened despite no parent"; fails=$((fails + 1))
+fi
+
+GH_PARENT_REST_STATUS=500 run_case "rest-500" 42 76 "$REPO"
+expect_rc 1 && expect_stderr_contains "parent-decision-note: gh api" \
+  && ok "an HTTP 500 is a refusal (exit 1), never read as no-parent"
+
 # --------------------------------------------------------------------------- 6. usage errors
 run_argv "usage-wrong-arg-count" 42 "$REPO"   # only 2 positionals — the 3rd (repo) is missing
 expect_rc 2 && expect_no_calls && ok "2 arguments instead of 3 is exit 2 and calls gh not at all"
@@ -267,7 +300,7 @@ expect_rc 2 && expect_no_calls && ok "a repo not shaped like owner/repo is exit 
 # reads all three in sequence — so the shape used a call ago was transferred to this one, which took
 # the slug positionally, and the turn was lost. Measured: 11 refusals across 5 scripts in 18 days,
 # three of them this exact call, all under 3.1.0.
-GH_PARENT_JSON='{"parent":{"number":100,"title":"Tracking epic","url":"https://github.com/o/r/issues/100"}}' \
+GH_PARENT_REST_JSON='{"number":100}' \
   GH_PR_JSON='{"title":"fix(z): third slice (#66) (#99)","url":"https://github.com/o/r/pull/99"}' \
   run_argv "flag-repo-appends" -R "$REPO" 66 99
 expect_rc 0 \
@@ -287,12 +320,12 @@ expect_rc 2 && expect_no_calls && expect_stderr_contains "unknown option" \
   && ok "an option the script does not have is named, not read as a positional"
 
 # ------------------------------------------------------ 7. a genuine gh failure is a real refusal
-GH_PARENT_VIEW_STATUS=1 run_case "parent-lookup-gh-failure" 42 76 "$REPO"
+GH_PARENT_REST_STATUS=500 run_case "parent-lookup-gh-failure" 42 76 "$REPO"
 expect_rc 1 && expect_stderr_contains "parent-decision-note:" \
   && ok "a failing parent-lookup gh call is a refusal (exit 1), never read as no-parent"
 
 printf '## Destination\n\nShip the epic.\n' > "$STATE_BODY"
-GH_PARENT_JSON='{"parent":{"number":200}}' GH_PR_VIEW_STATUS=1 \
+GH_PARENT_REST_JSON='{"number":200}' GH_PR_VIEW_STATUS=1 \
   run_case "pr-lookup-gh-failure" 42 76 "$REPO"
 expect_rc 1 && expect_stderr_contains "parent-decision-note:" \
   && ok "a failing PR lookup is a refusal, and the parent body is left untouched"
@@ -326,13 +359,13 @@ git -C "$CO_GHE" remote add origin git@ghe.example.com:acme/widgets.git
 printf '## Destination\n\nShip the epic.\n' > "$STATE_BODY"
 cd "$CO_GHE"
 GH_STUB_HOSTS=ghe.example.com \
-  GH_PARENT_JSON='{"parent":{"number":300}}' \
+  GH_PARENT_REST_JSON='{"number":300}' \
   GH_PR_JSON='{"title":"feat(z): ghe slice (#61) (#91)","url":"https://ghe.example.com/acme/widgets/pull/91"}' \
   run_case "ghe-origin" 61 91 "acme/widgets"
 cd "$KIT_ROOT"
 expect_rc 0 \
   && expect_stdout "appended #61's PR #91 to parent #300's Decisions so far" \
-  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue view 61 -R acme/widgets --json parent$' \
+  && expect_call '^GH_HOST=ghe\.example\.com ARGS: api -H Accept: application/vnd.github\+json repos/acme/widgets/issues/61/parent$' \
   && expect_call '^GH_HOST=ghe\.example\.com ARGS: pr view 91 -R acme/widgets --json title,url$' \
   && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue view 300 -R acme/widgets --json body$' \
   && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue edit 300 -R acme/widgets --body-file -$' \
@@ -342,12 +375,12 @@ expect_rc 0 \
 # A HOST/ prefix names the host outright — even from this checkout, whose origin is github.com —
 # and the calls get OWNER/REPO, never the prefixed slug.
 printf '## Destination\n\nShip the epic.\n' > "$STATE_BODY"
-GH_PARENT_JSON='{"parent":{"number":300}}' \
+GH_PARENT_REST_JSON='{"number":300}' \
   GH_PR_JSON='{"title":"feat(z): prefixed slice (#62) (#92)","url":"https://ghe.example.com/acme/widgets/pull/92"}' \
   run_case "ghe-prefix" 62 92 "ghe.example.com/acme/widgets"
 expect_rc 0 \
   && expect_stdout "appended #62's PR #92 to parent #300's Decisions so far" \
-  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue view 62 -R acme/widgets --json parent$' \
+  && expect_call '^GH_HOST=ghe\.example\.com ARGS: api -H Accept: application/vnd.github\+json repos/acme/widgets/issues/62/parent$' \
   && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue edit 300 -R acme/widgets --body-file -$' \
   && expect_all_hosted \
   && ok "HOST/OWNER/REPO is accepted: every call got -R acme/widgets under GH_HOST=ghe.example.com"
