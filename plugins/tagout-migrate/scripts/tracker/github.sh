@@ -43,7 +43,8 @@ if [ "$VERB" = verbs ]; then
   printf '%s\n' verbs auth repo issue-view \
     issue-search issue-comments issue-create issue-edit-body \
     issue-add-labels issue-remove-labels issue-reopen issue-comment label-list label-create \
-    issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count
+    issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
+    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits
   exit 0
 fi
 
@@ -431,6 +432,115 @@ case "$VERB" in
     else
       echo "github: issue-blocked-by-count: $out" >&2; exit 1
     fi
+    ;;
+
+  # The six PR verbs (#751) — implement-issue's draft PR, its plan mirror and its ready-flip. Each
+  # issues the same `gh pr …` command the scripts issued before the move, argv order included
+  # (number, then --repo, then --json), so a caller's recorded-argv assertion still matches.
+  pr-create)
+    BASE=""; HEAD=""; TITLE=""; BODY_FILE=""; DRAFT=0; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --base)      BASE="${2-}"; shift 2 ;;
+        --head)      HEAD="${2-}"; shift 2 ;;
+        --title)     TITLE="${2-}"; shift 2 ;;
+        --body-file) BODY_FILE="${2-}"; shift 2 ;;
+        --draft)     DRAFT=1; shift ;;
+        --dry-run)   DRY=1; shift ;;
+        *) echo "github: pr-create: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -n "$BASE" ] && [ -n "$HEAD" ] && [ -n "$TITLE" ] \
+      || { echo "github: pr-create needs --base, --head and --title" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "github: pr-create refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    ARGS=(pr create)
+    [ "$DRAFT" -eq 1 ] && ARGS+=(--draft)
+    ARGS+=(--base "$BASE" --head "$HEAD" --title "$TITLE" --body-file "$BODY_FILE")
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh ${ARGS[*]}"; exit 0; fi
+    url=$(gh "${ARGS[@]}") || exit 1
+    num=$(printf '%s' "$url" | grep -oE '[0-9]+$') || {
+      echo "github: pr-create: could not read a PR number off of: $url" >&2; exit 1; }
+    jq -nc --arg n "$num" --arg u "$url" '{number: ($n | tonumber), url: $u}'
+    ;;
+
+  pr-list)
+    HEAD=""; Q=""; ST=""; LIM=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --head)   HEAD="${2-}"; shift 2 ;;
+        --search) Q="${2-}"; shift 2 ;;
+        --state)  ST="${2-}"; shift 2 ;;
+        --limit)  LIM="${2-}"; shift 2 ;;
+        *) echo "github: pr-list: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$ST" in ''|open|merged) ;; *) echo "github: pr-list: --state is open or merged" >&2; exit 2 ;; esac
+    ARGS=(pr list)
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    [ -n "$HEAD" ] && ARGS+=(--head "$HEAD")
+    # The contract's --search matches the PR BODY (its one caller looks for closing keywords).
+    [ -n "$Q" ] && ARGS+=(--search "$Q in:body")
+    [ -n "$ST" ] && ARGS+=(--state "$ST")
+    [ -n "$LIM" ] && ARGS+=(--limit "$LIM")
+    ARGS+=(--json number,title,url,state,isDraft,headRefName,body,mergedAt)
+    out=$(gh "${ARGS[@]}") || exit 1
+    printf '%s' "$out" | jq -c '[.[] | {number, title, url, state: (.state | ascii_downcase),
+      isDraft, headBranch: .headRefName, body, mergedAt: (.mergedAt // null)}]'
+    ;;
+
+  pr-view)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: pr-view needs a PR number" >&2; exit 2; }
+    out=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} \
+            --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author) || exit 1
+    printf '%s' "$out" | jq -c '{number, title, url, state: (.state | ascii_downcase), isDraft, body,
+      headBranch: .headRefName, baseBranch: .baseRefName, headSha: .headRefOid,
+      author: (.author.login // null)}'
+    ;;
+
+  pr-edit-body)
+    n="${1-}"; shift || true
+    BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift 2 ;;
+        --dry-run)   DRY=1; shift ;;
+        *) echo "github: pr-edit-body: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "github: pr-edit-body needs a PR number" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "github: pr-edit-body refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    ARGS=(pr edit "$n")
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    ARGS+=(--body-file "$BODY_FILE")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh ${ARGS[*]}"; exit 0; fi
+    gh "${ARGS[@]}" || exit 1
+    ;;
+
+  pr-ready)
+    n=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "github: pr-ready: unknown option: $a" >&2; exit 2 ;;
+        *) n="$a" ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "github: pr-ready needs a PR number" >&2; exit 2; }
+    ARGS=(pr ready "$n")
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh ${ARGS[*]}"; exit 0; fi
+    gh "${ARGS[@]}" || exit 1
+    ;;
+
+  pr-commits)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: pr-commits needs a PR number" >&2; exit 2; }
+    out=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} --json commits) || exit 1
+    printf '%s' "$out" | jq -c '[.commits[].oid]'
     ;;
 
   *)

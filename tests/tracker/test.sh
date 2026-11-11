@@ -148,6 +148,12 @@ else
     "issue comment") exit 0 ;;
     "label list")   payload='[{"name":"bug"},{"name":"area: skills"}]' ;;
     "label create") exit 0 ;;
+    # The PR verbs (#751): gh-shaped answers the backend must normalise (headRefName, OPEN, author.login).
+    "pr create")    echo "https://example.invalid/o/r/pull/51"; exit 0 ;;
+    "pr list")      payload='[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"OPEN","isDraft":true,"headRefName":"feat/7-x","body":"Closes #7","mergedAt":null}]' ;;
+    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}]}' ;;
+    "pr edit")      exit 0 ;;
+    "pr ready")     exit 0 ;;
     *)              echo "gh stub: unsupported call: $*" >&2; exit 1 ;;
   esac
 fi
@@ -647,6 +653,70 @@ else
   ok "issue-blocked-by-count — a non-404 failure exits 1 rather than answering n/a"
 fi
 
+echo "== A4. the PR verbs (#751)"
+
+# pr_case <label> <want-rc> <want-stdout|-> <want-log-line|EMPTY|-> -- <tracker args…>
+# The recorded argv is what proves a flag reached gh; an EMPTY log is the proof a refusal or a
+# --dry-run called nothing at all. PR_TRACKER/PR_DIR/PR_LOG let sections E2 and F2 reuse it.
+PR_TRACKER=github; PR_DIR="$PROFILED"; PR_LOG="$GH_CALL_LOG"
+pr_case() {
+  local label="$1" want_rc="$2" want_out="$3" want_log="$4"; shift 5
+  : > "$PR_LOG"
+  run_tracker "$PR_DIR" --tracker "$PR_TRACKER" "$@"
+  if [ "$RC" -ne "$want_rc" ]; then
+    note_fail "$label — exited $RC, want $want_rc ($ERR)"
+  elif [ "$want_out" != - ] && [ "$OUT" != "$want_out" ]; then
+    note_fail "$label — wrong stdout
+      want: $want_out
+      got:  $OUT"
+  elif [ "$want_log" = EMPTY ] && [ -s "$PR_LOG" ]; then
+    note_fail "$label — expected no host call, got: $(cat "$PR_LOG")"
+  elif [ "$want_log" != - ] && [ "$want_log" != EMPTY ] && ! grep -Fq -- "$want_log" "$PR_LOG"; then
+    note_fail "$label — the host did not receive '$want_log'; log: $(cat "$PR_LOG")"
+  else
+    ok "$label"
+  fi
+}
+
+# pr_dry_runs <body-file> — --dry-run on the three write verbs prints one DRY-RUN line, calls nothing.
+pr_dry_runs() {
+  local dry
+  for dry in "pr-create --base main --head feat/1-x --title T --body-file $1 --dry-run" \
+             "pr-edit-body 51 --body-file $1 --dry-run" "pr-ready 42 --dry-run"; do
+    # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+    pr_case "$PR_TRACKER ${dry%% *} --dry-run — no host call" 0 - EMPTY -- $dry
+    if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+      note_fail "$PR_TRACKER ${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+    fi
+  done
+}
+
+PR_BODY="$WORK/pr-body.md"; printf 'Closes #7\n' > "$PR_BODY"
+PR_EMPTY="$WORK/pr-empty.md"; : > "$PR_EMPTY"
+
+pr_case "pr-create --draft — gh pr create, {number,url}" 0 \
+  '{"number":51,"url":"https://example.invalid/o/r/pull/51"}' \
+  "pr create --draft --base main --head feat/1-x --title T --body-file $PR_BODY" -- \
+  pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
+pr_case "pr-list --search — searches the body, normalises state and headBranch" 0 \
+  '[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"open","isDraft":true,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":null}]' \
+  "pr list --search 7 in:body --state open --limit 100 --json number,title,url,state,isDraft,headRefName,body,mergedAt" -- \
+  pr-list --search 7 --state open --limit 100
+pr_case "pr-view — the ten decided keys" 0 \
+  '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat"}' \
+  "pr view 51 --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author" -- \
+  pr-view 51
+pr_case "pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pr view 51 --json commits" -- pr-commits 51
+pr_case "pr-ready — exactly gh pr ready <n>" 0 '' "pr ready 42" -- pr-ready 42
+if [ "$(cat "$GH_CALL_LOG")" != "pr ready 42" ]; then note_fail "pr-ready — log is not exactly 'pr ready 42': $(cat "$GH_CALL_LOG")"; fi
+pr_case "pr-edit-body — gh pr edit --body-file" 0 '' "pr edit 51 --body-file $PR_BODY" -- \
+  pr-edit-body 51 --body-file "$PR_BODY"
+pr_case "pr-create — refuses an empty --body-file, exit 2, no gh call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_EMPTY"
+pr_case "pr-edit-body — refuses a missing --body-file, exit 2, no gh call" 2 - EMPTY -- \
+  pr-edit-body 51 --body-file "$WORK/no-such-file"
+pr_dry_runs "$PR_BODY"
+
 echo "== B. the state report, and the tracker.capable verdict"
 
 # The report itself: five facts, judging none of them. `needs` is null because no skill is on the
@@ -658,9 +728,9 @@ if [ "$RC" -ne 0 ]; then
 else
   got=$(printf '%s' "$OUT" | jq -r '[.tracker, .skill, (.needs|tostring), (.implements|length|tostring)] | join("|")' 2>/dev/null) \
     || got="<unparseable: $OUT>"
-  if [ "$got" != 'github|merge-pr|null|18' ]; then
+  if [ "$got" != 'github|merge-pr|null|24' ]; then
     note_fail "state — wrong report
-      want: github|merge-pr|null|18
+      want: github|merge-pr|null|24
       got:  $got"
   else
     ok "state — reports {tracker, skill, needs, implements} and judges nothing"
@@ -720,6 +790,18 @@ elif [ "$out" != "capable" ]; then
   note_fail "end-to-end — expected 'capable' from the Step 1 pipe, got '$out'"
 else
   ok "end-to-end — tracker.sh state | decide.sh tracker.capable answers capable here"
+fi
+
+# #751: implement-issue is on the contract — its report names the twelve verbs it needs.
+run_tracker "$PROFILED" state implement-issue
+got=$(printf '%s' "$OUT" | jq -r '.needs | join(" ")' 2>/dev/null) || got="<unparseable: $OUT>"
+want_needs='auth repo issue-view issue-search issue-comments issue-edit-body pr-create pr-list pr-view pr-edit-body pr-ready pr-commits'
+if [ "$RC" -ne 0 ] || [ "$got" != "$want_needs" ]; then
+  note_fail "state implement-issue — wrong needs (rc $RC)
+      want: $want_needs
+      got:  $got"
+else
+  ok "state implement-issue — needs names the twelve verbs (#751)"
 fi
 
 echo "== C. contract coverage over create-issue's prose (#506)"
