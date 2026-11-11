@@ -213,7 +213,7 @@ A `BASE:` value that is free text, missing, or otherwise fails the grammar above
 sight** — the same "already re-derives real state from GitHub rather than trusting an agent's
 silence" pattern this skill's Step 4 reconcile loop already uses elsewhere. Re-derive it yourself: run
 `skills/merge-pr/scripts/base-run-verdict.sh --report-line` against the same sha (recovered from the
-phase-2 report's PR number via `gh pr view <PR> --json mergeCommit --jq .mergeCommit.oid`) and record
+phase-2 report's PR number via `"<kit>/scripts/tracker.sh" pr-view <PR> | jq -r .mergeSha`) and record
 *that* line on the state board instead, noting the mismatch.
 
 Put a trusted (or re-derived) `BASE:` line on the **Completed** row of the state board rather than
@@ -230,19 +230,19 @@ instead of counting it, and once the streak is long enough to be a finding print
 under **Assumed · skipped · unverified** — twelve merges of one run each said `unverified
 (query-failed)` and filled the board with rows that read like diligence while the base went red
 twice. The token names the remedy: `query-failed`/`api-404` is the host (the helper's by-sha
-workflow-runs fallback should have answered — check `gh api` against it by hand), `no-run-yet`
+workflow-runs fallback should have answered — on GitHub only, check `gh api` against it by hand), `no-run-yet`
 means the base runs no CI on push or posts it late, `cancelled` is the train superseding itself.
 
 **Passing the PR number between phases** — belt and braces, because the whole pipeline stalls if this
 is lost: have phase 1 write the digits to the file you name in its prompt; fall back to the `PR:`
 field of the agent's final report (the sub-agent's last message IS its report, delivered to you
-when it returns); fall back again to `gh pr list --state open --json number,headRefName`
+when it returns); fall back again to `"<kit>/scripts/tracker.sh" pr-list --state open | jq -r '.[] | "\(.number) \(.headBranch)"'`
 matching the issue number in the branch name. If all three miss, there is nothing to merge — stop and
 report rather than dispatching phase 2 blind.
 
 <!-- one-way-door-hold:start -->
 **A one-way door is held for the owner, not landed (#694).** With the PR number in hand, read its
-body before anything else about phase 2: `gh pr view <n> --json body --jq .body`. A
+body before anything else about phase 2: `"<kit>/scripts/tracker.sh" pr-view <n> | jq -r .body`. A
 `### One-way door` heading there — `implement-issue` Step 7 writes it when the diff crosses a path a
 revert cannot undo — means **no phase-2 dispatch**: retire the slot, add
 `- #<issue> → PR #<n> — <the section's paths>` under `## Held for owner` in the state file, and name
@@ -358,8 +358,8 @@ Also tell the phase-2 worker to **skip its local `dotnet build`/`dotnet test` ga
 ran the full suite on that exact head commit — it is another ~16 min for no new information. Keep the
 local gate only when the branch was just re-synced and CI has not re-run.
 
-**`wait-ci.sh` waits on every gating check, not one hardcoded name (#188).** It reads `gh pr checks
---json name,state,bucket` and requires *every* check's `bucket` — gh's own pass/fail/pending/
+**`wait-ci.sh` waits on every gating check, not one hardcoded name (#188).** It reads
+`"<kit>/scripts/tracker.sh" pr-checks` and requires *every* check's `bucket` — gh's own pass/fail/pending/
 skipping/cancel classification — to leave `pending` before returning, so a repo with more than one
 independently-gating check (this kit's own `kit` + `title-gate`) is covered without picking which
 one name to hardcode. `CHECK` still exists, but only as an optional comma-separated allow-list for

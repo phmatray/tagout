@@ -164,4 +164,5 @@ This ensures commits are authored with the canonical identity (usually GitHub, n
 - `skills/merge-pr/references/steps/01-preconditions.md` — Step 1 of merge-pr, split out of its SKILL.md for progressive disclosure (#499)
 - `skills/create-pr/SKILL.md` — Step 1 loads the repo profile, verifies authentication, and prepares the commit-identity shorthand
 - `skills/create-pr/references/steps/01-preconditions.md` — Step 1 of create-pr, one step file at a time (#499)
+- `skills/auto-dev/references/steps/01-preconditions-and-profile.md` — Step 1 of auto-dev asks `tracker.capable` the way this file prescribes (#753)
 - `skills/_shared/tracker-contract.md` — explains the `tracker.capable` verdict this file asks for at Step 1, and what clears each answer (#505)

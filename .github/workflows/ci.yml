@@ -641,6 +641,9 @@ jobs:
       - name: Survey golden test (effort tiers by the manifest's own vocabulary, not S/M/L)
         run: ./tests/survey/test.sh
 
+      - name: Reconcile golden test (open and merged PRs through the tracker contract)
+        run: ./tests/reconcile/test.sh
+
       - name: Site-figures golden test (the home page's figures from a stubbed tracker, refusing when nothing was delivered, #788)
         run: ./tests/site-figures/test.sh
 

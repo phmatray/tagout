@@ -3,7 +3,7 @@
 #
 # Why this exists: the survey (list issues → check each for a plan → classify effort →
 # drop manual-QA → order small-before-medium) is a deterministic sequence the supervisor
-# otherwise re-reasons from natural language every few merges. One `gh issue list` that
+# otherwise re-reasons from natural language every few merges. One `tracker.sh issue-list` that
 # fetches bodies, then jq does plan-detection + effort/eligibility classification — so the
 # supervisor reads a ready-made, ordered queue instead of re-deriving it (fewer turns =
 # less per-turn cache re-read, the dominant cost). The model tier and the area are columns too,
@@ -74,8 +74,7 @@ fi
 # being re-armed at each one — re-arming drops whatever the previous trap held.
 PARSER_ERR_FILE=""
 VOCAB_TMP=""
-GH_ERR_FILE=""
-cleanup() { rm -f "${PARSER_ERR_FILE:-}" "${VOCAB_TMP:-}" "${GH_ERR_FILE:-}"; }
+cleanup() { rm -f "${PARSER_ERR_FILE:-}" "${VOCAB_TMP:-}"; }
 trap cleanup EXIT
 
 VOCAB_JSON=""
@@ -198,68 +197,30 @@ if [ -z "$VOCAB_JSON" ] || [ "$VOCAB_JSON" = "[]" ] || [ "$VOCAB_PIPE_FAILED" -e
   VOCAB_JSON='["small","medium","large"]'
 fi
 
-# The dependency fields are not universal: `gh` validates --json field names itself and exits 1 with
-# `Unknown JSON field: "blockedBy"` on any build predating issue-dependencies support — BEFORE jq
-# runs, so under `set -euo pipefail` the survey would print zero rows and exit 1. An empty survey is
-# read as "backlog drained" (that is #213's whole failure mode), so this asks once and degrades
-# loudly to the pre-#317 field list instead: every row then reads `deps=-`, the frontier rule holds
-# nothing, and the operator is told so on stderr. A `// []` guard cannot cover this — it guards a
-# field that is ABSENT from the JSON, not a CLI that refuses to produce the JSON at all.
-BASE_FIELDS=number,title,labels,body,comments
-DEP_FIELDS=$BASE_FIELDS,blockedBy,blocking,subIssues,assignees
-
-# `--limit`, not `--paginate` (#452): `--paginate` is not a flag `gh issue list` supports at all —
-# only `gh api`/`gh api graphql` have it (#367's fix modeled it on those and shipped an invalid
-# flag; every real invocation failed with "unknown flag: --paginate", and the golden suite's `gh`
-# stub stayed green because it accepted any flag unconditionally). `gh issue list --limit <N>`
-# paginates internally up to N and is the mechanism this command actually supports. The ceiling is
-# picked generously, not left unbounded, so it stays a realistic single value to raise later rather
-# than a silent truncation: 10000 open issues is far past any realistic backlog for this repo.
-GH_LIST_LIMIT=10000
-
-# gh's output is held in a shell variable, not a temp file: case 9 of the golden suite proves this
-# script still runs with `mktemp` shadowed by a stub that always fails, and a hard `$(mktemp)` here
-# would have turned that infra fallback into an outright abort. The stderr capture below is the one
-# thing that genuinely needs a file (a pipeline cannot separate a command's two streams into two
-# variables in one run), so it is optional and its absence is a named, degraded path.
+# The backlog comes from the tracker contract (#753): one `tracker.sh issue-list`, whichever host
+# the profile names. The verb prints labels as bare names, comments as bodies (or null where the
+# host does not fetch them) and every edge as a {nodes, totalCount} connection, or null where the
+# host has no such relation. The fallback for a gh that cannot serve the dependency fields lives in
+# scripts/tracker/github.sh now, because it is a fact about a gh build, not about the survey.
 #
-# `--limit $GH_LIST_LIMIT`, not a small bound like the old `--limit 300` (#367): a bounded page let
-# an OPEN body-line blocker sitting past the cut read as closed, since membership in `$open` is the
-# only signal a bare `#n` ref has. $GH_LIST_LIMIT is picked generously enough that no realistic
-# open-issue count for this repo truncates `$open` — a truncated `$open` is the bug this fixes, not
-# a performance knob worth tightening back down.
-if ! GH_ERR_FILE="$(mktemp 2>/dev/null)"; then
-  GH_ERR_FILE=""
-fi
-GH_RC=0
-if [ -n "$GH_ERR_FILE" ]; then
-  ISSUES_JSON="$(gh issue list --state open --limit "$GH_LIST_LIMIT" --json "$DEP_FIELDS" 2>"$GH_ERR_FILE")" || GH_RC=$?
-else
-  ISSUES_JSON="$(gh issue list --state open --limit "$GH_LIST_LIMIT" --json "$DEP_FIELDS")" || GH_RC=$?
-fi
+# A non-zero exit from the dispatcher is passed through with its stderr, never read as an empty
+# backlog: an empty survey is what Step 2 reads as "drained" (#213).
+#
+# `--limit`, not `--paginate` (#452): the GitHub backend sends `gh issue list --limit <N>`, which
+# paginates internally up to N (`--paginate` is not a flag `gh issue list` supports at all — #367's
+# fix modeled it on `gh api` and shipped an invalid flag). The ceiling is generous, not a small bound
+# like the old `--limit 300` (#367): a bounded page let an OPEN body-line blocker sitting past the
+# cut read as closed, since membership in `$open` is the only signal a bare `#n` ref has. 10000 open
+# issues is far past any realistic backlog — a truncated `$open` is the bug, not a knob to tighten.
+LIST_LIMIT=10000
 
-if [ "$GH_RC" -ne 0 ]; then
-  # Only an unknown-field rejection may fall back; anything else (not authenticated, no network, no
-  # repo) must surface as the failure it is rather than be retried into the same error twice. With
-  # no stderr file there is nothing to tell them apart, so the fallback runs and, for a non-field
-  # failure, fails again on its own — `set -e` then carries gh's status out, which is the safe end.
-  if [ -z "$GH_ERR_FILE" ] || grep -qi 'unknown json field' "$GH_ERR_FILE"; then
-    if [ -n "$GH_ERR_FILE" ]; then
-      GH_ERR_TEXT="$(tr '\n' ' ' < "$GH_ERR_FILE" 2>/dev/null || echo '<unreadable>')"
-    else
-      GH_ERR_TEXT="<stderr not captured: mktemp failed>"
-    fi
-    echo "survey.sh: this gh cannot serve the dependency fields (blockedBy/blocking/subIssues) — falling back to $BASE_FIELDS. Every row then reads deps=-, so the frontier rule holds NOTHING and a blocked child can be dispatched ahead of its blocker (#317). Upgrade gh to restore it. gh said: $GH_ERR_TEXT" >&2
-    ISSUES_JSON="$(gh issue list --state open --limit "$GH_LIST_LIMIT" --json "$BASE_FIELDS")"
-  else
-    cat "$GH_ERR_FILE" >&2
-    exit "$GH_RC"
-  fi
-fi
+# Held in a shell variable, not a temp file: case 9 of the golden suite proves this script still
+# runs with `mktemp` shadowed by a stub that always fails.
+ISSUES_JSON="$("$KIT_ROOT/scripts/tracker.sh" issue-list --state open --limit "$LIST_LIMIT")" || exit $?
 
 printf '%s\n' "$ISSUES_JSON" \
   | jq -r --argjson vocab "$VOCAB_JSON" '
-    def eff:       (.labels | map(.name) | map(select(startswith("effort:"))) | (.[0] // "effort: ?"));
+    def eff:       (.labels | map(select(startswith("effort:"))) | (.[0] // "effort: ?"));
     # `create-issue` writes a fresh issue plan into the BODY, but `implement-issue`s own locator
     # (references/github-mechanics.md §2) falls back to the latest plan COMMENT for older issues,
     # and `create-issue --seed`s own guard (#312/#334) already reads body-and-comments — so this
@@ -274,13 +235,13 @@ printf '%s\n' "$ISSUES_JSON" \
     # ordinary COMMENT (a status update, a stray checklist, a pasted snippet) must never be allowed to
     # grant the parent a plan and dispatch the whole decomposed job to one worker (#343 review).
     def istrackingparent: (bodyplan | not) and ((.body // "") | test("## Destination"));
-    # `gh issue list --json comments` returns at most the first ~100 comments (oldest-first) in this
-    # one call, with no totalCount to detect truncation the way blockedBy/blocking/subIssues below
+    # `comments` is an array of bodies — on GitHub, `gh issue list --json comments`, which returns at
+    # most the first ~100 comments (oldest-first) in this one call, with no totalCount to detect truncation the way blockedBy/blocking/subIssues below
     # do — a plan comment past that cap stays invisible here. Left as a known limit (the issue Spec
     # calls bounding/measuring the comment payload a separate change if it turns out to matter);
     # `or` below short-circuits so a body match never pays the join at all.
     def haveplan:  bodyplan or ((istrackingparent | not)
-                    and (((.comments // []) | map(.body) | join("\n"))
+                    and (((.comments // []) | join("\n"))
                          | test("Implementation plan|### Task|- \\[ \\]")));
     # A cap-truncated, unplanned issue is NOT the same fact as "no plan": `gh issue list --json
     # comments` observably caps at ~100 comments (measured: 100 of 602 on the issue that
@@ -292,9 +253,10 @@ printf '%s\n' "$ISSUES_JSON" \
     def commentscap: ((haveplan | not) and (istrackingparent | not)
                        and (((.comments // []) | length) >= 100));
     def manualqa:  ((.title // "") | test("visually|verify by hand|manual QA|by hand"; "i"));
-    # Dependency edges (#317). `gh issue list --json blockedBy,blocking,subIssues` serves GraphQL
-    # CONNECTIONS — {"nodes":[…],"totalCount":N} — measured on gh 2.98.0, while this repo'"'"'s own
-    # sketch of these fields assumed plain arrays. Reading only one shape would silently degrade the
+    # Dependency edges (#317). `tracker.sh issue-list` prints every edge as the contract'"'"'s
+    # connection — {"nodes":[{number,state}],"totalCount":N} — or null when the host has no such
+    # relation (on GitHub, gh itself serves GraphQL connections, measured on gh 2.98.0, while this
+    # repo'"'"'s first sketch of these fields assumed plain arrays). Reading only one shape would silently degrade the
     # other to "no edges", which IS the bug: a blocked child dispatched ahead of its blocker. So
     # accept both, and let anything else (null, a fixture predating this change) fall through to [].
     def edgenodes:
@@ -313,8 +275,8 @@ printf '%s\n' "$ISSUES_JSON" \
       | map(select(.number != null));
     # An edge counts as still-open when the node SAYS so — the connection carries each linked
     # issue'"'"'s `state` — and only otherwise falls back to membership in the open set this same call
-    # returned. That ordering matters: `$open` comes from a `gh issue list` bounded by a generous
-    # `--limit` ($GH_LIST_LIMIT above), so it is the FULL open set rather than a small bounded page
+    # returned. That ordering matters: `$open` comes from an issue-list bounded by a generous
+    # `--limit` ($LIST_LIMIT above), so it is the FULL open set rather than a small bounded page
     # (#367 — a `--limit 300` window used to let an OPEN blocker sitting past the cut look closed
     # under membership alone, dispatching its blockee). Reading `state` fails safe; membership is
     # the fallback for the plain-array shape,
@@ -351,7 +313,7 @@ printf '%s\n' "$ISSUES_JSON" \
     # predicted from labels: it is the reactive escalation `autodev.report` grants once, or the
     # supervisor'"'"'s own call for work it knows is cross-cutting. `small` is what the labels can
     # prove mechanical: a `documentation` issue, or the lowest priority at the smallest effort.
-    def labelnames: (.labels | map(.name));
+    def labelnames: .labels;
     def modeltier:
       (labelnames | map(ascii_downcase)) as $l
       | if   ($l | index("documentation")) != null                          then "small"
@@ -366,7 +328,7 @@ printf '%s\n' "$ISSUES_JSON" \
     # Every edge is resolved against this call'"'"'s own open set, or the state the connection carries.
     (map(.number)) as $open
     | map({n:.number, title:.title, e:eff, plan:haveplan, qa:manualqa,
-           labels:(.labels|map(.name)|join(",")), t:tier, cc:commentscap,
+           labels:(.labels|join(",")), t:tier, cc:commentscap,
            model:modeltier, area:areatag,
            # Native edges resolve by their own `state`; body-line refs are bare numbers with no
            # state to read, so those can only be filtered by membership in the open set.

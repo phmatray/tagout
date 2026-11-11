@@ -34,7 +34,7 @@ if [ "$VERB" = verbs ]; then
     issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
     pr-create pr-list pr-view pr-edit-body pr-ready pr-commits \
     pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete \
-    issue-parent pr-closing-issues pr-comment
+    issue-parent pr-closing-issues pr-comment issue-list issue-assign
   exit 0
 fi
 
@@ -586,6 +586,90 @@ PY
       [ -n "$st" ] && ! _is_closed_state "$st" && count=$((count + 1))
     done
     printf '%s\n' "$count"
+    ;;
+
+  # auto-dev's two verbs (#753). issue-list reads the open set by WIQL, then the work items with
+  # their relations in batches of up to 200 (workitemsbatch's own ceiling). A relation's linked item
+  # carries no state in this read, so every node prints `state: null`; survey.sh resolves it against
+  # this same open set, which is exact because the list is the full open set (#367).
+  issue-list)
+    ST=""; LIM=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --state) ST="${2-}"; shift 2 ;;
+        --limit) LIM="${2-}"; shift 2 ;;
+        *) echo "azure-devops: issue-list: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$ST" in ''|open) ;; *) echo "azure-devops: issue-list: --state is open" >&2; exit 2 ;; esac
+    case "$LIM" in
+      '') LIM=1000000 ;;
+      *[!0-9]*) echo "azure-devops: issue-list: --limit takes a number" >&2; exit 2 ;;
+    esac
+    WIQL="SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '$(_wiql_escape "$PROJECT")' AND [System.State] NOT IN ('Closed','Done','Removed') ORDER BY [System.Id]"
+    out=$(az boards query --org "$(_base_url)" --project "$PROJECT" --wiql "$WIQL" -o json) \
+      || { echo "azure-devops: issue-list: query failed" >&2; exit 1; }
+    ids=$(printf '%s' "$out" | jq -c --argjson l "$LIM" '[.[].id][:$l]') || exit 1
+    items='[]'
+    BATCH_FILE=$(mktemp) || exit 1
+    off=0; total=$(printf '%s' "$ids" | jq length)
+    while [ "$off" -lt "$total" ]; do
+      jq -n --argjson ids "$ids" --argjson o "$off" '{ids: $ids[$o:$o + 200], "$expand": "Relations"}' > "$BATCH_FILE"
+      page=$(_invoke "issue-list: workitemsbatch" --area wit --resource workitemsbatch \
+        --route-parameters project="$PROJECT" --http-method POST --api-version 7.1 \
+        --in-file "$BATCH_FILE") || { rm -f "$BATCH_FILE"; exit 1; }
+      # Both through stdin, never --argjson: a page of 200 descriptions can pass ARG_MAX.
+      items=$(printf '%s\n%s' "$items" "$page" | jq -sc '.[0] + (.[1].value // [])') || { rm -f "$BATCH_FILE"; exit 1; }
+      off=$((off + 200))
+    done
+    rm -f "$BATCH_FILE"
+    printf '%s' "$items" | jq -c '
+      def conn($r): [(.relations // [])[] | select(.rel == $r) | {number: (.url | split("/") | last | tonumber), state: null}]
+                    | {nodes: ., totalCount: length};
+      [.[] | .fields as $f
+       | {number: .id, title: $f."System.Title",
+          labels: (($f."System.Tags" // "") | if . == "" then [] else split("; ") end),
+          body: ($f."System.Description" // ""), comments: null, createdAt: ($f."System.CreatedDate" // null),
+          blockedBy: conn("System.LinkTypes.Dependency-Reverse"),
+          blocking: conn("System.LinkTypes.Dependency-Forward"),
+          subIssues: conn("System.LinkTypes.Hierarchy-Forward"),
+          assignees: (if $f."System.AssignedTo".uniqueName then [$f."System.AssignedTo".uniqueName] else [] end)}]
+      | sort_by(.number)'
+    ;;
+
+  issue-assign)
+    n=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "azure-devops: issue-assign: unknown option: $a" >&2; exit 2 ;;
+        *) n="$a" ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "azure-devops: issue-assign needs a work-item number" >&2; exit 2; }
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN az devops invoke --area wit --resource workitems PATCH id=$n add /fields/System.AssignedTo=<az account show user.name>, unless already assigned"
+      exit 0
+    fi
+    # An assigned work item is left alone: it already holds as deps=assigned.
+    cur=$(_invoke "issue-assign: read" --area wit --resource workitems \
+      --route-parameters project="$PROJECT" id="$n" --query-parameters 'fields=System.AssignedTo' \
+      --http-method GET --api-version 7.1) || exit 1
+    if [ -n "$(printf '%s' "$cur" | jq -r '.fields."System.AssignedTo" // empty | if type == "object" then (.uniqueName // .displayName // "x") else . end')" ]; then
+      echo already-assigned; exit 0
+    fi
+    me=$(az account show --query user.name -o tsv) && [ -n "$me" ] \
+      || { echo "azure-devops: issue-assign: az account show named no user" >&2; exit 1; }
+    PATCH_FILE=$(mktemp) || exit 1
+    jq -n --arg me "$me" '[{op:"add", path:"/fields/System.AssignedTo", value:$me}]' > "$PATCH_FILE"
+    _invoke "issue-assign" --area wit --resource workitems \
+      --route-parameters project="$PROJECT" id="$n" \
+      --http-method PATCH --api-version 7.1 \
+      --media-type application/json-patch+json --in-file "$PATCH_FILE" >/dev/null
+    rc=$?
+    rm -f "$PATCH_FILE"
+    [ "$rc" -eq 0 ] || exit 1
+    echo ok
     ;;
 
   # The six PR verbs (#751). Writes build their JSON with `jq -n --rawfile` into a temp file sent

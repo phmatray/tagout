@@ -161,7 +161,19 @@ else
     "auth token")   echo "gho_stubtoken"; exit 0 ;;
     "repo view")    payload='{"nameWithOwner":"o/r","defaultBranchRef":{"name":"main"}}' ;;
     "issue view")   payload='{"number":7,"title":"A stub issue","state":"OPEN","body":"body text","comments":[{"body":"first comment"},{"body":"second comment"}],"labels":[{"name":"bug"},{"name":"area: skills"}],"url":"https://example.invalid/o/r/issues/7"}' ;;
-    "issue list")   payload='[{"number":12,"title":"A stub closed issue","state":"CLOSED"}]' ;;
+    # issue-list (#753) asks for createdAt, issue-search never does. GH_LIST_MODE=oldgh rejects
+    # the dependency fields the way a gh predating them does, =fail is any other failure.
+    "issue list")
+      case "$*" in
+        *createdAt*)
+          case "${GH_LIST_MODE:-}" in
+            fail) echo "HTTP 401: Bad credentials" >&2; exit 1 ;;
+            oldgh) case "$*" in *blockedBy*) echo 'Unknown JSON field: "blockedBy"' >&2; exit 1 ;; esac
+                   payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"}],"body":"b","comments":[{"body":"c1"}],"createdAt":"2026-11-01T00:00:00Z"}]' ;;
+            *) payload='[{"number":3,"title":"t3","labels":[{"name":"effort: small"},{"name":"area: skills"}],"body":"b","comments":[{"body":"c1"},{"body":"c2"}],"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"open"}],"totalCount":2},"blocking":[{"number":4}],"assignees":[{"login":"octocat"}]}]' ;;
+          esac ;;
+        *) payload='[{"number":12,"title":"A stub closed issue","state":"CLOSED"}]' ;;
+      esac ;;
     "issue create") echo "https://example.invalid/o/r/issues/42"; exit 0 ;;
     "issue edit")   exit 0 ;;
     "issue reopen") exit 0 ;;
@@ -880,20 +892,76 @@ got=$(printf '%s' "$OUT" | jq -c '.implements -= ["pr-merge"]' \
   && ok "state merge-pr, a backend lacking pr-merge — missing/verb-not-implemented" \
   || note_fail "state merge-pr, a backend lacking pr-merge — want missing/verb-not-implemented, got $got"
 
+echo "== A6. the auto-dev verbs (#753)"
+
+# issue-list sends today's survey argv plus createdAt, and normalises gh's shapes to the contract's:
+# bare label names, comment bodies, assignee logins, and every edge a {nodes, totalCount} connection
+# — a plain array counted by its length, an absent field null, a node's state upper-cased.
+PR_TRACKER=github; PR_DIR="$PROFILED"; PR_LOG="$GH_CALL_LOG"
+want_list='[{"number":3,"title":"t3","labels":["effort: small","area: skills"],"body":"b","comments":["c1","c2"],"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"OPEN"}],"totalCount":2},"blocking":{"nodes":[{"number":4,"state":null}],"totalCount":1},"subIssues":null,"assignees":["octocat"]}]'
+pr_case "issue-list — today's argv plus createdAt, normalised to the contract" 0 "$want_list" \
+  "issue list --state open --limit 5 --json number,title,labels,body,comments,createdAt,blockedBy,blocking,subIssues,assignees" -- \
+  issue-list --state open --limit 5
+
+# A gh predating the dependency fields: a second call with the base fields, null edges and
+# assignees, and survey.sh's old stderr warning, moved here with the fallback.
+export GH_LIST_MODE=oldgh
+want_old='[{"number":3,"title":"t3","labels":["effort: small"],"body":"b","comments":["c1"],"createdAt":"2026-11-01T00:00:00Z","blockedBy":null,"blocking":null,"subIssues":null,"assignees":null}]'
+pr_case "issue-list — an Unknown JSON field gh falls back to the base fields" 0 "$want_old" \
+  "issue list --state open --limit 5 --json number,title,labels,body,comments,createdAt" -- issue-list --state open --limit 5
+grep -q 'cannot serve the dependency fields' <<<"$ERR" \
+  && ok "issue-list — the fallback says so on stderr" \
+  || note_fail "issue-list — the fallback did not warn on stderr: '$ERR'"
+export GH_LIST_MODE=fail
+pr_case "issue-list — any other gh failure exits 1 with empty stdout" 1 '' - -- issue-list --state open --limit 5
+grep -q 'HTTP 401' <<<"$ERR" \
+  && ok "issue-list — the failure's own text reaches stderr" \
+  || note_fail "issue-list — gh's error was swallowed: '$ERR'"
+unset GH_LIST_MODE
+
+pr_case "issue-assign — today's gh issue edit --add-assignee @me" 0 ok \
+  "issue edit 12 --add-assignee @me" -- issue-assign 12
+pr_case "issue-assign --dry-run — no gh call" 0 - EMPTY -- issue-assign 12 --dry-run
+if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+  note_fail "issue-assign --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+fi
+
+# skills.auto-dev is a superset of every skill it drives, so a verb added to one of them later
+# cannot leave auto-dev capable on a host that lacks it.
+if jq -e '((.skills["create-issue"] + .skills["implement-issue"] + .skills["merge-pr"]) - .skills["auto-dev"] == [])
+           and ((.skills["auto-dev"] | length) == (.skills["auto-dev"] | unique | length))' \
+     "$KIT_ROOT/scripts/tracker/contract.json" >/dev/null 2>&1; then
+  ok "skills.auto-dev contains every verb of create-issue, implement-issue and merge-pr"
+else
+  note_fail "skills.auto-dev is missing a verb of a skill it drives (or is absent)"
+fi
+
+run_tracker "$PROFILED" --tracker github state auto-dev
+got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+[ "$got" = capable/github-reference ] && ok "state auto-dev on github — capable/github-reference" \
+  || note_fail "state auto-dev on github — want capable/github-reference, got $got"
+# Every real backend answers both verbs since #753, so "missing" is azure-devops' own report with
+# one auto-dev verb struck from `implements` — the same synthetic A5 uses for merge-pr.
+run_tracker "$PROFILED" --tracker azure-devops state auto-dev
+got=$(printf '%s' "$OUT" | jq -c '.implements -= ["issue-list"]' \
+  | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+[ "$got" = missing/verb-not-implemented ] && ok "state auto-dev, a backend lacking issue-list — missing/verb-not-implemented" \
+  || note_fail "state auto-dev, a backend lacking issue-list — want missing/verb-not-implemented, got $got"
+
 echo "== B. the state report, and the tracker.capable verdict"
 
-# The report itself: five facts, judging none of them. `needs` is null because auto-dev is not on
-# the contract yet (#753), and that is a different absence from `implements` being null — the
+# The report itself: five facts, judging none of them. `needs` is null because deliver-issue is not
+# on the contract (#753 left it under #750's Out of scope), and that is a different absence from `implements` being null — the
 # decision below is what tells them apart, which is only possible if the report keeps them distinct.
-run_tracker "$PROFILED" state auto-dev
+run_tracker "$PROFILED" state deliver-issue
 if [ "$RC" -ne 0 ]; then
   note_fail "state — exited $RC ($ERR)"
 else
   got=$(printf '%s' "$OUT" | jq -r '[.tracker, .skill, (.needs|tostring), (.implements|length|tostring)] | join("|")' 2>/dev/null) \
     || got="<unparseable: $OUT>"
-  if [ "$got" != 'github|auto-dev|null|34' ]; then
+  if [ "$got" != 'github|deliver-issue|null|36' ]; then
     note_fail "state — wrong report
-      want: github|auto-dev|null|34
+      want: github|deliver-issue|null|36
       got:  $got"
   else
     ok "state — reports {tracker, skill, needs, implements} and judges nothing"
@@ -1171,6 +1239,64 @@ if [ -n "$real_gh_out" ]; then
       $real_gh_out"
 else
   ok "D3 real tree — no direct gh tracker call in merge-pr's migrated scripts or wait-ci.sh"
+fi
+
+echo "== C4. contract coverage over auto-dev's prose and its commands (#753)"
+
+AD_TREE="$WORK/auto-dev-tree"
+mkdir -p "$AD_TREE"
+cp -R "$KIT_ROOT/skills/auto-dev" "$AD_TREE/"
+cp "$KIT_ROOT"/commands/auto-dev-*.md "$AD_TREE/"
+FIXTURE_AD="$WORK/auto-dev-fixture"
+mkdir -p "$FIXTURE_AD"
+cp "$KIT_ROOT/skills/auto-dev/references/steps/04-supervise.md" "$FIXTURE_AD/"
+printf '\n"<kit>/scripts/tracker.sh" issue-frobnicate 5\n' >> "$FIXTURE_AD/04-supervise.md"
+fixture_out=$(check_coverage "$FIXTURE_AD" auto-dev)
+if ! grep -Fq 'issue-frobnicate' <<<"$fixture_out"; then
+  note_fail "C4 fixture — a verb absent from the contract was not named: '$fixture_out'"
+else
+  ok "C4 fixture — a verb absent from the contract fails coverage, named"
+fi
+real_out=$(check_coverage "$AD_TREE" auto-dev)
+missing_spelled=""
+for v in auth state issue-list pr-list pr-view pr-merge-state pr-checks issue-view issue-assign; do
+  collect_verbs "$AD_TREE" | grep -Fxq "$v" || missing_spelled="$missing_spelled $v"
+done
+# `state` is the dispatcher's own report, not a verb on the table — strip it before judging gaps.
+real_out=$(grep -v 'gap: state ' <<<"$real_out" || true)
+if [ -n "$real_out" ]; then
+  note_fail "C4 real tree — coverage reported gaps:
+      $real_out"
+elif [ -n "$missing_spelled" ]; then
+  note_fail "C4 real tree — auto-dev's prose never spells these through \"<kit>/scripts/tracker.sh\":$missing_spelled"
+else
+  ok "C4 real tree — every tracker.sh verb auto-dev's prose and commands invoke is on skills.auto-dev, and each migrated call site spells one"
+fi
+
+echo "== D4. no direct gh tracker call in survey.sh or reconcile.sh (#753)"
+
+GUARD_PATTERN_AD='\bgh (issue|label|repo|pr)\b'
+d4_grep() {
+  grep -nE "$GUARD_PATTERN_AD" "$@" 2>/dev/null | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true
+}
+FIXTURE_GH_AD="$WORK/auto-dev-gh-fixture"
+mkdir -p "$FIXTURE_GH_AD"
+cp "$KIT_ROOT/skills/auto-dev/scripts/reconcile.sh" "$FIXTURE_GH_AD/"
+printf '\ngh pr list --state open --json number\n' >> "$FIXTURE_GH_AD/reconcile.sh"
+cp "$KIT_ROOT/skills/auto-dev/scripts/survey.sh" "$FIXTURE_GH_AD/"
+printf '\nISSUES_JSON=$(gh issue list --state open --json number)\n' >> "$FIXTURE_GH_AD/survey.sh"
+fixture_gh_out=$(d4_grep "$FIXTURE_GH_AD/reconcile.sh" "$FIXTURE_GH_AD/survey.sh")
+if ! grep -Fq 'reconcile.sh' <<<"$fixture_gh_out" || ! grep -Fq 'survey.sh' <<<"$fixture_gh_out"; then
+  note_fail "D4 fixture — a reintroduced 'gh pr list' line was not named: '$fixture_gh_out'"
+else
+  ok "D4 fixture — a direct gh pr list in reconcile.sh and gh issue list in survey.sh each fail the guard, named"
+fi
+real_gh_out=$(d4_grep "$KIT_ROOT/skills/auto-dev/scripts/survey.sh" "$KIT_ROOT/skills/auto-dev/scripts/reconcile.sh")
+if [ -n "$real_gh_out" ]; then
+  note_fail "D4 real tree — a direct gh call survives:
+      $real_gh_out"
+else
+  ok "D4 real tree — no gh issue|label|repo|pr outside comments in survey.sh or reconcile.sh"
 fi
 
 echo "== E. the gitlab backend (#508)"
@@ -1852,6 +1978,55 @@ fi
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 [ "$out" = capable ] || note_fail "gitlab state implement-issue — expected 'capable' still, got '$out'"
 
+echo "== E4. the auto-dev verbs on gitlab (#753)"
+
+PR_TRACKER=gitlab; PR_DIR="$GITLAB_PROFILED"; PR_LOG="$GLAB_CALL_LOG"
+# Two pages of open issues (glab --paginate prints one array per page), each issue's links read.
+export GLAB_SEARCH_JSON='[{"iid":3,"title":"t3","labels":["effort: small"],"description":"b3","created_at":"2026-11-01T00:00:00Z","assignees":[{"username":"ann"}]},{"iid":4,"title":"t4","labels":[],"description":"b4","created_at":"2026-11-02T00:00:00Z","assignees":[]}]
+[{"iid":5,"title":"t5","labels":[],"description":"b5","created_at":"2026-11-03T00:00:00Z","assignees":[]},{"iid":6,"title":"t6","labels":[],"description":"b6","created_at":"2026-11-04T00:00:00Z","assignees":[]},{"iid":7,"title":"t7","labels":[],"description":"b7","created_at":"2026-11-05T00:00:00Z","assignees":[]}]'
+export GLAB_LINKS_JSON='[{"iid":2,"state":"opened","link_type":"is_blocked_by"},{"iid":9,"state":"closed","link_type":"blocks"},{"iid":8,"state":"opened","link_type":"relates_to"}]'
+pr_case "gitlab issue-list — every page, state=opened, links read per issue" 0 - \
+  "api --paginate projects/:id/issues?state=opened" -- issue-list --state open --limit 10
+got=$(printf '%s' "$OUT" | jq -c '.[0]' 2>/dev/null)
+want='{"number":3,"title":"t3","labels":["effort: small"],"body":"b3","comments":null,"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"OPEN"}],"totalCount":1},"blocking":{"nodes":[{"number":9,"state":"CLOSED"}],"totalCount":1},"subIssues":null,"assignees":["ann"]}'
+[ "$got" = "$want" ] && ok "gitlab issue-list — iid→number, description→body, usernames, null comments and subIssues, link edges" \
+  || note_fail "gitlab issue-list — wrong row
+      want: $want
+      got:  $got"
+[ "$(printf '%s' "$OUT" | jq length)" = 5 ] && ok "gitlab issue-list — both pages joined" \
+  || note_fail "gitlab issue-list — pages not joined: $OUT"
+[ "$(grep -c '/links' "$GLAB_CALL_LOG")" = 5 ] && ok "gitlab issue-list — one links read per issue" \
+  || note_fail "gitlab issue-list — links reads: $(grep -c '/links' "$GLAB_CALL_LOG")"
+pr_case "gitlab issue-list --limit 3 — three of five" 0 - - -- issue-list --state open --limit 3
+[ "$(printf '%s' "$OUT" | jq -c 'map(.number)')" = '[3,4,5]' ] && ok "gitlab issue-list --limit 3 — cut to three" \
+  || note_fail "gitlab issue-list --limit 3 — got $OUT"
+
+export GLAB_LINKS_STATUS=403
+pr_case "gitlab issue-list — a 403 on links is null edges, not a failure" 0 - - -- issue-list --state open
+[ "$(printf '%s' "$OUT" | jq -c '[.[] | [.blockedBy, .blocking]] | unique')" = '[[null,null]]' ] \
+  && ok "gitlab issue-list — every row's edges null under a 403" || note_fail "gitlab issue-list 403 — got $OUT"
+[ "$(printf '%s\n' "$ERR" | grep -c 'HTTP 403')" = 1 ] && ok "gitlab issue-list — the 403 is said once on stderr" \
+  || note_fail "gitlab issue-list 403 — stderr: $ERR"
+export GLAB_LINKS_STATUS=500
+pr_case "gitlab issue-list — a 500 on links exits 1 with empty stdout" 1 '' - -- issue-list --state open
+unset GLAB_LINKS_STATUS GLAB_LINKS_JSON GLAB_SEARCH_JSON
+
+export GLAB_ISSUE_JSON='{"iid":9,"title":"x","state":"opened","assignees":[{"username":"ann"}]}'
+pr_case "gitlab issue-assign — an assigned issue is already-assigned, no PUT" 0 already-assigned - -- issue-assign 9
+grep -q '^api -X PUT' "$GLAB_CALL_LOG" && note_fail "gitlab issue-assign — wrote to an assigned issue: $(cat "$GLAB_CALL_LOG")"
+export GLAB_ISSUE_JSON='{"iid":9,"title":"x","state":"opened","assignees":[]}'
+export GLAB_USER_JSON='{"username":"glab_stub_user","id":77}'
+pr_case "gitlab issue-assign — unassigned: the user's id, then the PUT" 0 ok \
+  "api -X PUT projects/:id/issues/9 -F assignee_id=77" -- issue-assign 9
+grep -qx 'api user' "$GLAB_CALL_LOG" || note_fail "gitlab issue-assign — no user read: $(cat "$GLAB_CALL_LOG")"
+unset GLAB_ISSUE_JSON GLAB_USER_JSON
+pr_case "gitlab issue-assign --dry-run — no glab call" 0 - EMPTY -- issue-assign 9 --dry-run
+[ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" = 1 ] || note_fail "gitlab issue-assign --dry-run — got: $OUT"
+
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state auto-dev 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] && ok "gitlab state auto-dev — capable once issue-list and issue-assign land" \
+  || note_fail "gitlab state auto-dev — expected 'capable', got '$out'"
+
 echo "== F. the Azure DevOps backend (#509)"
 
 # Every az call the stub answers is logged here, one line per call — AC2/AC4's recorded argv and
@@ -1951,6 +2126,7 @@ case "${1-} ${2-}" in
     printf '%s' "${AZ_WI_SHOW_JSON:-$default_wi_show}"
     exit 0 ;;
   "devops invoke") : ;;
+  "account show") echo "${AZ_ACCOUNT_USER:-me@acme.example}"; exit 0 ;;
   "devops project")
     if [ -n "${AZ_PROJECT_FAIL:-}" ]; then
       echo "az stub: ERROR: Please run 'az login' to setup account." >&2
@@ -1991,6 +2167,15 @@ case "$resource $http_method" in
   "tags GET")
     printf '%s' "${AZ_TAGS_JSON:-$default_tags}"
     ;;
+  # #753: issue-list's batch read. Each call's id count is appended to $AZ_BATCH_SIZES; the reply is
+  # $AZ_BATCH_JSON, or one bare work item per id in the --in-file.
+  "workitemsbatch POST")
+    [ -z "${AZ_BATCH_FAIL:-}" ] || fail 500 "workitemsbatch"
+    inf=""; prev=""
+    for a in "$@"; do [ "$prev" = --in-file ] && inf="$a"; prev="$a"; done
+    [ -n "${AZ_BATCH_SIZES:-}" ] && jq '.ids | length' "$inf" >> "$AZ_BATCH_SIZES"
+    if [ -n "${AZ_BATCH_JSON:-}" ]; then printf '%s' "$AZ_BATCH_JSON"
+    else jq -c '{value: [.ids[] | {id: ., fields: {"System.Title": "t\(.)"}}]}' "$inf"; fi ;;
   "pullRequests POST") printf '%s' "$default_pr_create" ;;
   "pullRequests PATCH") printf '{}' ;;
   "pullRequestCommits GET") printf '%s' '{"value":[{"commitId":"aaa"},{"commitId":"bbb"}]}' ;;
@@ -2615,6 +2800,54 @@ else
 fi
 out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 [ "$out" = capable ] || note_fail "azure state implement-issue — expected 'capable' still, got '$out'"
+
+echo "== F4. the auto-dev verbs on Azure DevOps (#753)"
+
+PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
+export AZ_QUERY_JSON='[{"id":31},{"id":32}]'
+export AZ_BATCH_JSON='{"count":2,"value":[{"id":32,"fields":{"System.Title":"t32"}},{"id":31,"fields":{"System.Title":"t31","System.Tags":"effort: small; area: skills","System.Description":"<p>b</p>","System.CreatedDate":"2026-11-01T00:00:00Z","System.AssignedTo":{"uniqueName":"ann@acme.example"}},"relations":[{"rel":"System.LinkTypes.Dependency-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/20"},{"rel":"System.LinkTypes.Dependency-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/40"},{"rel":"System.LinkTypes.Hierarchy-Forward","url":"https://dev.azure.com/acme/_apis/wit/workItems/41"},{"rel":"System.LinkTypes.Related","url":"https://dev.azure.com/acme/_apis/wit/workItems/42"}]}]}'
+pr_case "azure issue-list — open WIQL, then one workitemsbatch POST" 0 - "--resource workitemsbatch" -- issue-list --state open --limit 10
+grep -q "NOT IN ('Closed','Done','Removed')" "$AZ_CALL_LOG" || note_fail "azure issue-list — the WIQL is not the open set: $(cat "$AZ_CALL_LOG")"
+want='{"number":31,"title":"t31","labels":["effort: small","area: skills"],"body":"<p>b</p>","comments":null,"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":20,"state":null}],"totalCount":1},"blocking":{"nodes":[{"number":40,"state":null}],"totalCount":1},"subIssues":{"nodes":[{"number":41,"state":null}],"totalCount":1},"assignees":["ann@acme.example"]}'
+got=$(printf '%s' "$OUT" | jq -c '.[0]' 2>/dev/null)
+[ "$got" = "$want" ] && ok "azure issue-list — tags split, AssignedTo, Dependency and Hierarchy relations as edges" \
+  || note_fail "azure issue-list — wrong row
+      want: $want
+      got:  $got"
+[ "$(printf '%s' "$OUT" | jq -c '.[1] | [.number, .labels, .assignees, .blockedBy.totalCount]')" = '[32,[],[],0]' ] \
+  && ok "azure issue-list — rows in id order, an untagged item has empty labels" || note_fail "azure issue-list — second row: $OUT"
+unset AZ_BATCH_JSON
+
+export AZ_QUERY_JSON
+AZ_QUERY_JSON=$(jq -nc '[range(1; 202) | {id: .}]')
+export AZ_BATCH_SIZES="$WORK/az-batch-sizes"
+: > "$AZ_BATCH_SIZES"
+pr_case "azure issue-list — 201 open ids" 0 - - -- issue-list --state open
+[ "$(tr '\n' ' ' < "$AZ_BATCH_SIZES")" = "200 1 " ] && ok "azure issue-list — 201 ids make two batch POSTs, of 200 and 1" \
+  || note_fail "azure issue-list — batch sizes: $(tr '\n' ' ' < "$AZ_BATCH_SIZES")"
+[ "$(printf '%s' "$OUT" | jq length)" = 201 ] || note_fail "azure issue-list — expected 201 rows"
+unset AZ_BATCH_SIZES
+export AZ_BATCH_FAIL=1
+pr_case "azure issue-list — a failing batch exits 1 with empty stdout" 1 '' - -- issue-list --state open
+unset AZ_BATCH_FAIL AZ_QUERY_JSON
+
+export AZ_WORKITEM_JSON='{"id":9,"fields":{"System.AssignedTo":{"uniqueName":"ann@acme.example"}}}'
+pr_case "azure issue-assign — an assigned item is already-assigned, no PATCH" 0 already-assigned - -- issue-assign 9
+grep -q -- '--http-method PATCH' "$AZ_CALL_LOG" && note_fail "azure issue-assign — patched an assigned item: $(cat "$AZ_CALL_LOG")"
+export AZ_WORKITEM_JSON='{"id":9,"fields":{}}'
+export AZ_INFILE_CAPTURE="$WORK/az-assign-infile.json"
+rm -f "$AZ_INFILE_CAPTURE"
+pr_case "azure issue-assign — unassigned: a PATCH, prints ok" 0 ok "--http-method PATCH" -- issue-assign 9
+[ "$(jq -c '.[0] | [.op, .path, .value]' "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '["add","/fields/System.AssignedTo","me@acme.example"]' ] \
+  && ok "azure issue-assign — the in-file adds /fields/System.AssignedTo as the az account user" \
+  || note_fail "azure issue-assign — in-file: $(cat "$AZ_INFILE_CAPTURE" 2>/dev/null)"
+unset AZ_WORKITEM_JSON AZ_INFILE_CAPTURE
+pr_case "azure issue-assign --dry-run — no az call" 0 - EMPTY -- issue-assign 9 --dry-run
+[ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" = 1 ] || note_fail "azure issue-assign --dry-run — got: $OUT"
+
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state auto-dev 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] && ok "azure state auto-dev — capable once issue-list and issue-assign land" \
+  || note_fail "azure state auto-dev — expected 'capable', got '$out'"
 
 if [ "$FAILED" -ne 0 ]; then
   echo
