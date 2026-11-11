@@ -304,7 +304,7 @@ case "$VERB" in
       err=$(gh "${ARGS[@]}" --json "$BASE_FIELDS,blockedBy,blocking,subIssues,assignees" 2>&1 >/dev/null) || true
       if grep -qi 'unknown json field' <<<"$err"; then
         echo "github: issue-list: this gh cannot serve the dependency fields (blockedBy/blocking/subIssues) — falling back to $BASE_FIELDS. Every edge then reads null, so the frontier rule holds NOTHING and a blocked child can be dispatched ahead of its blocker (#317). Upgrade gh to restore it. gh said: $(printf '%s' "$err" | tr '\n' ' ')" >&2
-        out=$(gh "${ARGS[@]}" --json "$BASE_FIELDS") || exit 1
+        out=$(gh "${ARGS[@]}" --json "$BASE_FIELDS,assignees") || exit 1
         FULL=0
       else
         printf '%s\n' "${err:-github: issue-list: gh issue list failed}" >&2
@@ -323,7 +323,7 @@ case "$VERB" in
       [.[] | {number, title, labels: [(.labels // [])[].name], body, comments: [(.comments // [])[].body],
               createdAt: (.createdAt // null),
               blockedBy: (.blockedBy | edge), blocking: (.blocking | edge), subIssues: (.subIssues | edge),
-              assignees: (if $full == 0 then null else [(.assignees // [])[].login] end)}]' || exit 1
+              assignees: [(.assignees // [])[].login]}]' || exit 1
     ;;
 
   issue-assign)
