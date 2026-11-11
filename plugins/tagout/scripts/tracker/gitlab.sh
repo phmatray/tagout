@@ -224,9 +224,10 @@ _parse_link_args() {
 _list() { _api --paginate "$1" | jq -sc 'add // []'; }
 
 # One links read: stdout is the JSON alone (a glab stderr notice on a SUCCESSFUL read is dropped, #812);
-# on failure $out holds the stderr text the 403 test reads. Sets the globals out and err.
+# on failure $out holds the stderr text the 403 test reads. Sets the global out.
 _links() {
-  local ef; ef=$(mktemp "${TMPDIR:-/tmp}/gitlab-links.XXXXXX") || return 1
+  local ef; out=""
+  ef=$(mktemp "${TMPDIR:-/tmp}/gitlab-links.XXXXXX") || { out="gitlab: could not create a temp file for the links read"; return 1; }
   if out=$(_list "$1" 2>"$ef"); then rm -f "$ef"; return 0; fi
   out=$(cat "$ef"); rm -f "$ef"; return 1
 }
