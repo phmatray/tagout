@@ -1558,6 +1558,9 @@ if "data-kit-scheme" not in head or "kit-scheme" not in head:
     print("FAIL: docs/_includes/head.html does not restore the stored scheme onto data-kit-scheme before first paint"); sys.exit(1)
 if 'class="kit-scheme-toggle"' not in topbar:
     print("FAIL: docs/_includes/topbar.html carries no kit-scheme-toggle button"); sys.exit(1)
+# The topbar names four product entries; the kit's internal record (journal, platforms) stays in the side navigation.
+if not all(x in topbar for x in ("/install.html", "/methodology.html#", "/migrate.html", "github.com/phmatray/tagout")) or "/journal/" in topbar or "/platforms.html" in topbar:
+    print("FAIL: docs/_includes/topbar.html must link install, the commands table, the .NET add-on and the repository, and nothing from the kit's internals"); sys.exit(1)
 if not sitejs.exists() or "kit-scheme-toggle" not in sitejs.read_text(encoding="utf-8"):
     print("FAIL: docs/assets/js/site.js does not wire the kit-scheme-toggle"); sys.exit(1)
 tokens = (docs / "_sass" / "kit" / "_tokens.scss").read_text(encoding="utf-8")
