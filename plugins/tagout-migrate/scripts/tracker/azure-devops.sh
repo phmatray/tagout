@@ -797,14 +797,20 @@ PY
   commit-checks)
     sha="${1-}"
     [ -n "$sha" ] || { echo "azure-devops: commit-checks needs a commit sha" >&2; exit 2; }
-    # ponytail: the project's 100 most recent runs, filtered here — the runs API cannot filter on a
-    # commit. A sha whose runs fell out of that window reads as no runs; page with --skip if it bites.
+    # The project's 100 most recent runs, filtered here — `az pipelines runs list` can neither filter on
+    # a commit nor page. A full window with no run on the sha cannot tell "no CI" from "older than the
+    # window", so it answers one UNKNOWN (pending) entry — never [], which merge-pr reads as no CI (#806).
     # A PR validation build's sourceVersion is the test merge commit, so a PR head sha (pr-view's
     # headSha, what merge-pr passes) matches on triggerInfo."pr.sourceSha" instead.
     out=$(az pipelines runs list --top 100 --org "$(_base_url)" --project "$PROJECT" -o json) \
       || { echo "azure-devops: commit-checks: az pipelines runs list failed" >&2; exit 1; }
     printf '%s' "$out" | jq -c --arg sha "$sha" "$JQ_BUCKET"'
-      [.[] | select(.sourceVersion == $sha or .triggerInfo."pr.sourceSha" == $sha) | .status as $st | .result as $r
+      length as $n
+      | [.[] | select(.sourceVersion == $sha or .triggerInfo."pr.sourceSha" == $sha)] as $m
+      | if ($m | length) == 0 and $n >= 100
+        then [{name: "commit-checks: sha not in the 100 newest runs", state: "UNKNOWN", bucket: "pending",
+               id: null, app: null, html_url: null}]
+        else [$m[] | .status as $st | .result as $r
        | (if $st == "notStarted" then "queued"
           elif $st == "inProgress" or $st == "cancelling" then "in_progress"
           elif $st == "postponed" then "waiting"
@@ -815,7 +821,7 @@ PY
              else "UNKNOWN" end)
           else "UNKNOWN" end) as $s
        | {name: .definition.name, state: $s, bucket: ($s | bucket), id, app: null,
-          html_url: (._links.web.href // null)}]'
+          html_url: (._links.web.href // null)}] end'
     ;;
 
   pr-thread-resolve)
