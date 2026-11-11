@@ -222,12 +222,14 @@ case "$VERB" in
   repo)
     out=$(_api "projects/$(_id)") || exit 1
     origin_url=$(git remote get-url origin 2>/dev/null) || origin_url=""
+    # The whole project path of origin (scheme, userinfo, host and :port dropped), so a subgroup
+    # project keeps every segment (#799); fewer than two segments is JSON null.
     origin_arg=$(printf '%s' "$origin_url" \
-      | sed -E -e 's#(\.git)?/*$##' -e 's#.*[:/]([^/:]+)/([^/:]+)$#\1/\2#')
+      | sed -E -e 's#(\.git)?/*$##' -e 's#^([A-Za-z][A-Za-z0-9+.-]*://[^/]*/|[^:/]*:)##')
     printf '%s' "$out" | jq -c --arg host "${GITLAB_HOST:-gitlab.com}" --arg origin "$origin_arg" \
       '($origin | split("/")) as $p |
        {slug: .path_with_namespace, host: $host, defaultBranch: (.default_branch // null),
-        originSlug: (if ($p | length) == 2 and ($p[0] | length) > 0 and ($p[1] | length) > 0
+        originSlug: (if ($p | length) >= 2 and all($p[]; length > 0)
                      then $origin else null end)}'
     ;;
 
