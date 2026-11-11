@@ -345,6 +345,48 @@ _first=$(head -1 "$WORK/out.usage-merge")
   || fail usage-merge "the refusal's first line changed: $_first"
 echo "  ok: a refusal teaches the shape — the usage line under it, the first line unchanged"
 
+# ---------------------------------------------------------------- 6b. the post-`--` misshapes (#765)
+#
+# Everything after `--` is opaque to the option parser, so three plain-git transfers used to reach
+# `git commit` and fail THERE with exit 1 — the code the guard documents as "git itself failed".
+# Each is now refused (2) with a hint and the usage line, and nothing is committed.
+R=$(new_repo postdash)
+git -C "$R" checkout -q a
+echo "pending" >> "$R/seed.txt"
+before_a=$(tip "$R" a)
+postdash_refused() {   # <name> <hint> <guard invocation…>
+  local name="$1" hint="$2"; shift 2
+  run "$name" "$@"
+  [ "$RC" -eq 2 ] || fail "$name" "must refuse (2), got $RC"
+  grep -qF -- "$hint" "$OUT" || fail "$name" "the refusal does not carry its hint: $hint"
+  grep -qF -- 'usage: guarded-' "$OUT" || fail "$name" "the refusal does not carry the usage line"
+  [ "$(tip "$R" a)" = "$before_a" ] || fail "$name" "a refused call still moved the branch"
+}
+postdash_refused post-dash-subcommand "guarded-commit: REFUSED — 'commit' after -- is passed to git as a pathspec" \
+  "$COMMIT" -C "$R" a -- commit -m x
+postdash_refused post-dash-stage-all "git -C <repo> add -A" "$COMMIT" -C "$R" a -- -A -m x
+postdash_refused post-dash-identity "put -c <key>=<value> before <expected-branch>" \
+  "$COMMIT" -C "$R" a -- -c user.name=x -m x
+postdash_refused post-dash-reuse "put -c <key>=<value> before <expected-branch>" "$COMMIT" -C "$R" a -- -C HEAD
+postdash_refused post-dash-merge "guarded-merge: REFUSED — 'merge' after -- is passed to git as a ref" \
+  "$MERGE" -C "$R" a -- merge b
+# The spellings that must keep working: -am, a message mentioning -A, a message that IS the word
+# `commit`, -F; plus --abort reaching git (which then fails on its own terms).
+run post-dash-passthrough-am "$COMMIT" -C "$R" a -- -am "fix: a message mentioning -A and merge"
+[ "$RC" -eq 0 ] || fail post-dash-passthrough-am "-am was refused (exit $RC)"
+echo "more" >> "$R/seed.txt"
+run post-dash-passthrough-word "$COMMIT" -C "$R" a -- -am commit
+[ "$RC" -eq 0 ] || fail post-dash-passthrough-word "-m commit was refused (exit $RC)"
+[ "$(git -C "$R" log -1 --format=%s a)" = commit ] || fail post-dash-passthrough-word "message did not reach git"
+echo "again" >> "$R/seed.txt"
+printf 'from a file\n' > "$WORK/msg.txt"
+run post-dash-passthrough-F "$COMMIT" -C "$R" a -- -aF "$WORK/msg.txt"
+[ "$RC" -eq 0 ] || fail post-dash-passthrough-F "-F was refused (exit $RC)"
+run post-dash-passthrough-abort "$MERGE" -C "$R" a -- --abort
+[ "$RC" -ne 2 ] || fail post-dash-passthrough-abort "--abort was refused by the guard"
+grep -qF -- 'git merge failed' "$OUT" || fail post-dash-passthrough-abort "--abort never reached git"
+echo "  ok: post-dash — commit / -A / -c / -C / merge refused (2) with hint + usage; -am, -m commit, -F, --abort pass"
+
 # ---------------------------------------------------------------- 7b. --help documents the codes
 #
 # `usage()` prints the header block. It used to be a hardcoded `sed -n '2,42p'`, which silently
