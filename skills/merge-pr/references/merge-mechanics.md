@@ -369,75 +369,69 @@ only one side is a red build rather than a guard that silently stops guarding.
 
 ```bash
 # >>> decision merge.step4 shape >>>
-# The thread read is its OWN statement with its OWN failure branch, deliberately not a fourth line
-# inside the group below: a query that fails there contributes nothing, `unresolved_threads`
-# defaults to empty, and empty reads as "no threads" — which merges. That is #294 wearing the
-# fix's clothes. On a GitHub Enterprise host add `--hostname <host>`; without it this query fails
-# with "Could not resolve to a Repository", and the `||` branch is what stops that reading as a
-# clean bill of health.
-threads=$( set -o pipefail
-           gh api graphql --paginate -f query='
-  query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){ repository(owner:$owner,name:$repo){
-    pullRequest(number:$pr){ reviewThreads(first:100, after:$endCursor){
-      pageInfo{ hasNextPage endCursor }
-      nodes{ isResolved comments(first:1){ nodes{ path } } } } } } }' \
-             -F owner='{owner}' -F repo='{repo}' -F pr="$PR" \
-             --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-                   | select(.isResolved == false)
-                   | .comments.nodes[0].path // "(pr-level)"' \
-           | jq -Rsc 'split("\n") | map(select(length > 0))' ) \
-  || { echo "merge-pr: the reviewThreads query failed — an unanswered query is not 'no threads'" >&2
+# The merge-state read is its OWN statement with its OWN failure branch, deliberately not a line
+# inside the group below: a read that fails there contributes nothing, `unresolved_threads` goes
+# missing, and a missing list reads as "no threads" — which merges. That is #294 wearing the fix's
+# clothes. The verb exits 1 with nothing printed when any of its reads fails, and the `||` branch
+# is what stops that reading as a clean bill of health.
+ms=$("<kit>/scripts/tracker.sh" pr-merge-state "$PR") \
+  || { echo "merge-pr: pr-merge-state did not answer — an unanswered read is not a clean state" >&2
        exit 1; }
-state=$( { gh api "repos/{owner}/{repo}/compare/$BASE...$BRANCH" --hostname <host> \
-             --jq '{behind_by, ahead_by}'
-           gh pr view "$PR" --json mergeStateStatus,isDraft,reviewDecision \
-             --jq '{mergeStateStatus, isDraft, reviewDecision}'
+state=$( { printf '%s' "$ms" | jq '{behind_by, mergeStateStatus, isDraft, reviewDecision, unresolved_threads}'
            printf '%s' "$ci" | jq '{failed: [.failed[].name], pending: [.pending[].name]}'
-           printf '%s' "$threads" | jq '{unresolved_threads: .}'
          } | jq -s add )
-printf '%s' "$state" | jq -e 'has("unresolved_threads")' > /dev/null \
-  || { echo "merge-pr: the assembled state carries no unresolved_threads key — the read above did" >&2
-       echo "  not reach it (empty \$threads, or a different shell). Do NOT decide on this state." >&2
+printf '%s' "$state" | jq -e '.unresolved_threads | type == "array"' > /dev/null \
+  || { echo "merge-pr: the assembled state carries no unresolved_threads list — the read above did" >&2
+       echo "  not reach it (empty \$ms, or a different shell). Do NOT decide on this state." >&2
        exit 1; }
 # <<< decision merge.step4 shape <<<
 verdict=$(printf '%s' "$state" | "$DECIDE" merge.step4)
 ```
 
-`$ci` is §3's `$verdict`, the check-runs object. That is what gives the two decisions a real
+`$ci` is §3's `$verdict`, the `ci.verdict` object. That is what gives the two decisions a real
 composition instead of two unrelated reads of the same PR: the CI gate's *reduced* `failed` and
 `pending` sets are inputs to the merge-state precedence, not a separate question asked afterwards.
 
-`$BASE...$BRANCH` — three dots — gives `behind_by` relative to the base; reversing it silently
-inverts the answer.
+`pr-merge-state` (#752) prints the five merge-state fields in the words of the
+contract (`scripts/tracker/contract.json`): GitHub's own on GitHub, each backend's mapping elsewhere,
+and `UNKNOWN` for a state a host cannot map — which `merge.step4` answers with `wait` (rule
+`unknown`), never `merge`. The block projects the five by name rather than passing `$ms` through, so
+R6 still sees every field the program reads constructed here. On GitHub the verb sends the reads
+this block used to send itself: `gh pr view` for the state, the `compare` endpoint for `behind_by`
+(`base...head`, three dots — reversing it silently inverts the answer), and the paginated
+`reviewThreads` query for the threads.
 
 `unresolved_threads` carries the threads' **paths**, not a count — the same way `failed` and
 `pending` carry job names rather than a tally, so the Step 8 recap can say *which* threads were
 cleared. Only the length decides; the strings are for the human. A thread with no inline path (a
 PR-level conversation) still counts, under `(pr-level)`.
 
-⚠️ **A failed thread query must abort the state build, never yield an empty list.** This is
+⚠️ **A failed thread read must abort the state build, never yield an empty list.** This is
 `decide.sh`'s own doctrine — *no verdict is not a pass* — applied one layer earlier: a failed query
 and a PR with nothing open spell the same `[]`, and one of them merges unreviewed. That equivalence
-is what made #294 survivable for two PRs, so the read is a separate statement with an explicit
-`|| … exit 1`, and `set -o pipefail` is what carries `gh`'s exit status across the `jq` after it.
+is what made #294 survivable for two PRs, so the verb exits 1 with an empty stdout when its thread
+read fails (each backend pins it), and the read here is a separate statement with an explicit
+`|| … exit 1`.
 
-⚠️ **The `has("unresolved_threads")` assertion is not belt-and-braces — it is the only check that
-survives this block being run in pieces.** `printf '%s' "" | jq '{unresolved_threads: .}'` prints
-*nothing* and exits 0, so an empty `$threads` does not yield an empty list: it drops the key
-entirely, and `// []` then reads that as "no threads". An agent that runs the read and the assembly
-as two separate commands loses `$threads` between them and lands exactly there. The assertion
-inspects the artifact actually being handed to the decision, which no amount of care upstream
-substitutes for.
+⚠️ **The `type == "array"` assertion is not belt-and-braces — it is the only check that survives
+this block being run in pieces.** `printf '%s' "" | jq '{…}'` prints *nothing* and exits 0, so an
+empty `$ms` does not yield an empty list: it drops the keys entirely, and `// []` then reads that as
+"no threads". An agent that runs the read and the assembly as two separate commands loses `$ms`
+between them and lands exactly there. And it asserts the *type*, not `has(…)`: projecting a key
+that `$ms` lacks yields `null`, which `has` would pass. The assertion inspects the artifact actually
+being handed to the decision, which no amount of care upstream substitutes for.
 
-⚠️ **`--paginate` is load-bearing.** `reviewThreads(first:100)` sits at GitHub's page maximum, so
-without it a PR whose 101st thread is the unresolved one reads as fully resolved and merges — a
-fail-open of precisely the shape this section exists to close. `--paginate` needs *both* the
-`$endCursor` variable and the `pageInfo` selection; drop either and it quietly fetches one page.
+⚠️ **Pagination is load-bearing, and now lives in the backend.** `reviewThreads(first:100)` sits at
+GitHub's page maximum, so without `--paginate` a PR whose 101st thread is the unresolved one reads as
+fully resolved and merges — a fail-open of precisely the shape this section exists to close.
+`scripts/tracker/github.sh` carries the paginated query (`$endCursor` *and* the `pageInfo`
+selection; drop either and it quietly fetches one page); a backend that reads threads must read
+every page.
 
-⚠️ **The compare read and the pr-view read are sequential and not atomic.** A sibling PR merging
-between them yields `behind_by: 0` beside a merge state of `BEHIND`, which is precisely why the
-program carries a `behind-state` rule as well as a `behind` one. Neither read can be made to answer
-for the other, so the program answers for both.
+⚠️ **The verb's reads are sequential and not atomic.** A sibling PR merging between the state read
+and the `behind_by` read yields `behind_by: 0` beside a merge state of `BEHIND`, which is precisely
+why the program carries a `behind-state` rule as well as a `behind` one. Neither read can be made to
+answer for the other, so the program answers for both.
 
 `mergeable` is deliberately **not** fetched. Step 4 used to ask for it and nothing ever read it —
 and a field that is fetched and unread is the same shape as a field that is read and never fetched,

@@ -27,8 +27,10 @@
 #   $ gh pr checks 291 --json name,state,bucket ; echo $?
 #     (stdout empty) / stderr: no checks reported on the 'release-please--...' branch / exit 1
 # That is indistinguishable on stdout alone from a TRANSIENT gh failure (rate limit, network
-# blip), so cases 6-7 below pin that the script tells them apart by stderr text rather than
-# folding every non-zero exit into "zero checks".
+# blip). Since #752 telling them apart is scripts/tracker/github.sh's job (`pr-checks` prints `[]`
+# for that wording and fails on anything else): cases 6-7 pin the end-to-end outcome through the
+# real backend, and cases 14-15 pin that the script itself reads only the verb's exit code and
+# stdout, never folding a failure into "zero checks".
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 
@@ -42,20 +44,25 @@ KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 kit_init "$KIT_ROOT"
 WORK=$(kit_scratch)
 
-# A `gh` stub on PATH. `pr checks <pr> --json ...` (the poll query) serves the Nth canned response
-# under $GH_RESPONSES, clamped to the highest response actually written — a poll count beyond what
-# a case scripted just repeats the last one, which is what "checks stay the same" or "no checks
-# ever appear" both need. A response file starting with "ERR:" instead simulates gh FAILING: the
-# rest of its content goes to stderr and the stub exits 1, matching real gh's shape for both a
-# genuine zero-checks branch and a transient failure. `pr checks <pr>` (no --json, the final
-# summary) and `pr view` (ditto) are fixed lines: the summary's exact text is not what this suite
-# pins.
+# A `gh` stub on PATH, answering the argv scripts/tracker/github.sh sends (#752: wait-ci.sh polls
+# `tracker.sh pr-checks`, and github.sh makes the `gh pr checks` call the script used to make).
+# `pr checks <pr> --json ...` (the poll query, and the final summary's) serves the Nth canned
+# response under $GH_RESPONSES, clamped to the highest response actually written — a poll count
+# beyond what a case scripted just repeats the last one, which is what "checks stay the same" or
+# "no checks ever appear" both need. A response file starting with "ERR:" instead simulates gh
+# FAILING: the rest of its content goes to stderr and the stub exits 1, matching real gh's shape for
+# both a genuine zero-checks branch and a transient failure. `pr view` (pr-view's argv, the final
+# summary) is a fixed reply: the summary's exact text is not what this suite pins.
+#
+# The same stub doubles as a `tracker.sh` stand-in (installed as <fake kit>/scripts/tracker.sh by
+# cases 14-15): called as `pr-checks <pr>`, it serves the queue the same way, so a case can pin what
+# wait-ci.sh does with the VERB's exit code and stdout, whatever text its stderr carries.
 mkdir -p "$WORK/bin"
 cat > "$WORK/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 echo "ARGS: $*" >> "$GH_CALL_LOG"
 case "$*" in
-  *"pr checks"*"--json"*)
+  *"pr checks"*"--json"*|"pr-checks "*)
     n=$(( $(cat "$GH_CALL_COUNT" 2>/dev/null || echo 0) + 1 ))
     echo "$n" > "$GH_CALL_COUNT"
     max=$(cat "$GH_RESPONSES/max" 2>/dev/null || echo 1)
@@ -72,11 +79,8 @@ case "$*" in
         ;;
     esac
     ;;
-  *"pr checks"*)
-    printf 'kit\tpass\t1s\thttps://example.invalid\t\n'
-    ;;
   *"pr view"*)
-    echo "  state=OPEN draft=false mergeState=CLEAN"
+    echo '{"number":1,"title":"t","url":"u","state":"OPEN","isDraft":false,"body":"","headRefName":"h","baseRefName":"main","headRefOid":"abc","author":{"login":"a"},"mergedAt":null,"mergeCommit":null}'
     ;;
   *)
     echo "STUB: unhandled gh invocation: $*" >&2
@@ -309,5 +313,63 @@ out=$(POLL_SECONDS=0 MAX_POLLS=6 "$WAIT" 55 2>&1) || rc=$?
 has_poll "$out" 3 || { echo "FAIL [same-count-swap]: exited before poll 3 — a same-count swap ('old-check' -> 'Build & Test') was wrongly read as stable at poll 2"; echo "$out"; exit 1; }
 has_poll "$out" 4 && { echo "FAIL [same-count-swap]: polled a 4th time — should have stopped once the swapped set repeated unchanged at poll 3"; echo "$out"; exit 1; }
 echo "  ok: same-count-swap — a same-size swap of check names is not read as stable; the identity, not just the count, must repeat"
+
+# ---------------------------------------------------------------- 13. the poll goes through the
+# tracker (#752): the old direct `gh pr checks <pr>` summary call (no --json) is gone, and every
+# `pr checks` the stub saw is github.sh's `--json name,state,bucket` argv.
+
+reset_case through-tracker '[{"name":"kit","state":"SUCCESS","bucket":"pass"}]'
+rc=0
+out=$(POLL_SECONDS=0 MAX_POLLS=4 "$WAIT" 13 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL [through-tracker]: expected exit 0, got $rc"; echo "$out"; exit 1; }
+if grep 'pr checks' "$GH_CALL_LOG" | grep -qv -- '--json name,state,bucket'; then
+  echo "FAIL [through-tracker]: a \`gh pr checks\` call did not come from tracker.sh pr-checks:"
+  cat "$GH_CALL_LOG"; exit 1
+fi
+grep -q "kit"$'\t'"SUCCESS" <<<"$out" || {
+  echo "FAIL [through-tracker]: the final table does not list the check and its state"; echo "$out"; exit 1; }
+echo "  ok: through-tracker — every checks read is tracker.sh pr-checks' argv, the summary included"
+
+# A fake kit: a COPY of wait-ci.sh (a copy, not a link — the script resolves KIT_ROOT through
+# symlinks, so a link would reach the real tracker.sh) beside a stub tracker.sh that is the stub
+# above. Cases 14-15 pin what the script does with the verb's exit code and stdout alone.
+FAKE="$WORK/fake-kit"
+mkdir -p "$FAKE/skills/auto-dev/scripts" "$FAKE/scripts"
+cp "$WAIT" "$FAKE/skills/auto-dev/scripts/wait-ci.sh"
+cp "$WORK/bin/gh" "$FAKE/scripts/tracker.sh"
+chmod +x "$FAKE/skills/auto-dev/scripts/wait-ci.sh" "$FAKE/scripts/tracker.sh"
+FWAIT="$FAKE/skills/auto-dev/scripts/wait-ci.sh"
+
+# ---------------------------------------------------------------- 14. pr-checks exiting 1 is
+# transient, WHATEVER its stderr says — even gh's old "no checks reported" wording. Telling a genuine
+# zero apart is github.sh's concern now (it prints `[]`), so the script must never count a failed
+# verb toward MAX_ZERO_POLLS: three failures in a row, then a recovery, exits 0.
+
+reset_case verb-fails \
+  "ERR:no checks reported on the 'some-branch' branch" \
+  "ERR:no checks reported on the 'some-branch' branch" \
+  'ERR:anything at all' \
+  '[{"name":"kit","state":"SUCCESS","bucket":"pass"}]'
+rc=0
+out=$(POLL_SECONDS=0 MAX_POLLS=6 "$FWAIT" 14 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || {
+  echo "FAIL [verb-fails]: expected exit 0 once pr-checks recovers, got $rc (a failed verb is transient)"; echo "$out"; exit 1; }
+grep -q 'gh error, retrying' <<<"$out" || {
+  echo "FAIL [verb-fails]: a failed pr-checks was not logged as a transient poll"; echo "$out"; exit 1; }
+grep -q '^ARGS: pr-checks 14$' "$GH_CALL_LOG" || {
+  echo "FAIL [verb-fails]: wait-ci.sh did not call tracker.sh pr-checks 14"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: verb-fails — pr-checks exiting 1 is a transient poll whatever its stderr, never a zero-checks one"
+
+# ---------------------------------------------------------------- 15. pr-checks printing `[]` is
+# a zero-checks poll: it counts toward MAX_ZERO_POLLS and fails fast (exit 2).
+
+reset_case verb-empty '[]'
+rc=0
+out=$(POLL_SECONDS=0 MAX_POLLS=6 "$FWAIT" 15 2>&1) || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL [verb-empty]: expected exit 2 on pr-checks answering [], got $rc"; echo "$out"; exit 1; }
+has_poll "$out" 3 && { echo "FAIL [verb-empty]: should have failed fast, well before MAX_POLLS=6"; echo "$out"; exit 1; }
+grep -q '^ARGS: pr-checks 15$' "$GH_CALL_LOG" || {
+  echo "FAIL [verb-empty]: wait-ci.sh did not call tracker.sh pr-checks 15"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: verb-empty — pr-checks answering [] is a zero-checks poll and trips the bound"
 
 echo "wait-ci golden test OK"

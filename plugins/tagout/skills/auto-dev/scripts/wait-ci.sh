@@ -27,19 +27,21 @@
 # returning a verdict. A guard that stalls or half-fires is worse than one that is obviously
 # absent, because it looks like protection.
 #
-# So this waits on EVERY check `gh pr checks <pr> --json name,state,bucket` reports, with no
-# per-repo CHECK override required for correctness. `bucket` is gh's OWN classification of a
-# check's state into `pass`/`fail`/`pending`/`skipping`/`cancel` (pinned against `gh pr checks
-# --help` and a real PR — see tests/wait-ci/test.sh's header): a check is final once its bucket
-# leaves `pending`, matching this script's pre-existing all_final semantics one level down.
+# So this waits on EVERY check `scripts/tracker.sh pr-checks <pr>` reports (#752: the verb, so the
+# wait runs on any tracker the profile names; on GitHub it is `gh pr checks <pr> --json
+# name,state,bucket`), with no per-repo CHECK override required for correctness. `bucket` is the
+# contract's classification of a check's state into `pass`/`fail`/`pending`/`skipping`/`cancel` —
+# gh's OWN on GitHub (pinned against `gh pr checks --help` and a real PR — see
+# tests/wait-ci/test.sh's header), each backend's mapping elsewhere: a check is final once its
+# bucket leaves `pending`, matching this script's pre-existing all_final semantics one level down.
 # Reading `bucket` rather than re-deriving it from raw `state` strings (QUEUED, IN_PROGRESS,
-# STALE, ACTION_REQUIRED, whatever gh adds next) means this script never has to track gh's own
+# STALE, ACTION_REQUIRED, whatever a host adds next) means this script never has to track a host's
 # state vocabulary — that classification is exactly what the field exists for.
 #
-# Why `--json` + jq rather than the old plain-table parse: that table is TAB-separated and check
+# Why JSON + jq rather than the old plain-table parse: that table is TAB-separated and check
 # names can contain spaces ("Build & Test"), a column-alignment ambiguity a careless edit could
-# get wrong again. `--json name,state,bucket` names each field, so there is nothing left to
-# misalign no matter how a check is named. `jq` is a `required` prerequisite (requirements.json).
+# get wrong again. The verb names each field, so there is nothing left to misalign no matter how
+# a check is named. `jq` is a `required` prerequisite (requirements.json).
 #
 # FINAL IS NECESSARY BUT NOT SUFFICIENT (#413). "Every reported check left `pending`" only holds if
 # the reported set is complete — and GitHub creates a check run when its job STARTS, not when the
@@ -56,7 +58,7 @@
 # late-materializing required check would otherwise produce.
 #
 # Usage:
-#   scripts/wait-ci.sh <pr> [pr...]                # waits on every check GitHub reports
+#   scripts/wait-ci.sh <pr> [pr...]                # waits on every check the tracker reports
 #   CHECK="kit,title-gate" scripts/wait-ci.sh 42    # optional allow-list: ignore any check whose
 #                                                    # name is not in this comma-separated list —
 #                                                    # for a repo that deliberately wants to skip
@@ -67,20 +69,33 @@
 # no CI configured on this branch, not worth a silent hour-long stall); 1 on timeout (MAX_POLLS
 # reached with at least one check still pending).
 #
-# GENUINE zero checks vs a TRANSIENT `gh` failure (rate limit, network blip, an auth hiccup) look
-# identical on stdout alone — both leave it empty — so counting either one toward MAX_ZERO_POLLS
-# would let a couple of unlucky API calls produce the same wrong "no CI configured" verdict this
-# script exists to avoid, after as little as ~2 polls instead of a real MAX_POLLS timeout. gh's own
-# source (cli/cli pkg/cmd/pr/checks: `populateStatusChecks`) only ever fails a `--json` call BEFORE
-# printing anything for exactly one reason — zero checks exist — and always with the same message,
-# "no checks reported on the '<branch>' branch" (measured on PR #291 of this repo, a
-# release-please branch with no CI wired: exit 1, that text on stderr, nothing on stdout, WITH
-# --json). So gh failing with that exact wording is treated as a genuine zero-checks poll (counts
-# toward MAX_ZERO_POLLS); gh failing any other way is treated as transient — logged, not counted
-# either way, and the poll just continues — matching the old script's fallback of folding any
-# failure into "unknown" and polling on rather than giving up early with a wrong verdict.
+# GENUINE zero checks vs a TRANSIENT host failure (rate limit, network blip, an auth hiccup) must
+# not be confused: counting a failure toward MAX_ZERO_POLLS would let a couple of unlucky API calls
+# produce the same wrong "no CI configured" verdict this script exists to avoid, after as little as
+# ~2 polls instead of a real MAX_POLLS timeout. The contract keeps them apart: `pr-checks` prints
+# `[]` and exits 0 for a genuine zero, and exits non-zero only on a failed read. (On GitHub that is
+# github.sh's concern since #752 — gh FAILS a `--json` call with "no checks reported on the
+# '<branch>' branch" when zero checks exist, measured on PR #291 of this repo, and the backend turns
+# exactly that wording into `[]`.) So `[]` is a zero-checks poll (counts toward MAX_ZERO_POLLS), and
+# ANY non-zero exit is transient, whatever its stderr says — logged, not counted either way, and the
+# poll just continues, rather than giving up early with a wrong verdict.
 
 set -uo pipefail
+
+# KIT_ROOT through symlinks, the way skills/merge-pr/scripts/base-run-followup.sh does it: a plugin
+# install reaches this file by link, and `pwd -P` alone canonicalizes the directory, not the link,
+# so it would look for scripts/tracker.sh beside the LINK. No `readlink -f`: macOS lacks it.
+SELF="$0"
+while [ -L "$SELF" ]; do
+  _link=$(readlink -- "$SELF") || break
+  case "$_link" in
+    /*) SELF="$_link" ;;
+    *)  SELF="$(dirname -- "$SELF")/$_link" ;;
+  esac
+done
+KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
+  || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+TRACKER="$KIT_ROOT/scripts/tracker.sh"
 
 command -v jq > /dev/null 2>&1 || {
   echo "wait-ci: jq is missing — it is a \`required\` prerequisite in requirements.json" >&2
@@ -110,9 +125,8 @@ PREV_COUNT=()
 PREV_NAMES=()
 for _pr in "${PRS[@]}"; do PREV_COUNT+=(-1); PREV_NAMES+=(''); done
 
-# Captures each `gh pr checks --json` call's stderr so a genuine "no checks reported" can be told
-# apart from any other failure (see the header). Guarded the way survey.sh/guarded-push.sh capture
-# stderr elsewhere in this kit: a failing mktemp must not be misread as "gh printed nothing".
+# Captures each `pr-checks` call's stderr for the transient-poll log line (see the header). Guarded
+# the way survey.sh/guarded-push.sh capture stderr elsewhere in this kit.
 GH_ERR_FILE=""
 if GH_ERR_FILE="$(mktemp 2>/dev/null)"; then
   trap 'rm -f "$GH_ERR_FILE"' EXIT
@@ -139,24 +153,13 @@ for i in $(seq 1 "$MAX_POLLS"); do
   line=""
   idx=0
   for pr in "${PRS[@]}"; do
-    if json=$(gh pr checks "$pr" --json name,state,bucket 2>"${GH_ERR_FILE:-/dev/null}"); then
-      gh_rc=0
-    else
-      gh_rc=$?
-    fi
+    transient=0
+    json=$("$TRACKER" pr-checks "$pr" 2>"${GH_ERR_FILE:-/dev/null}") || transient=1
     gh_err=''
     [ -n "$GH_ERR_FILE" ] && gh_err=$(cat -- "$GH_ERR_FILE" 2>/dev/null)
-
-    transient=0
-    if [ "$gh_rc" -ne 0 ]; then
-      if grep -qi 'no checks reported' <<<"$gh_err"; then
-        json='[]'   # genuine zero checks — see the header
-      else
-        transient=1
-      fi
-    fi
     [ -n "$json" ] || json='[]'
 
+    # Any non-zero exit is a failed read, never "zero checks" — the verb prints `[]` for that.
     if [ "$transient" -eq 1 ]; then
       # Neither confirms nor disconfirms "zero checks": ZERO_POLLS is left exactly as it was, so a
       # blip can't manufacture progress toward MAX_ZERO_POLLS, and can't erase real progress either.
@@ -215,9 +218,9 @@ for i in $(seq 1 "$MAX_POLLS"); do
     fi
     for pr in "${PRS[@]}"; do
       echo "--- PR ${pr} ---"
-      gh pr checks "$pr" 2>&1 | head -10
-      gh pr view "$pr" --json number,state,isDraft,mergeStateStatus \
-        --jq '"  state=\(.state) draft=\(.isDraft) mergeState=\(.mergeStateStatus)"' 2>/dev/null
+      "$TRACKER" pr-checks "$pr" 2>/dev/null | jq -r '.[] | "\(.name)\t\(.state)"' 2>/dev/null | head -10
+      "$TRACKER" pr-view "$pr" 2>/dev/null \
+        | jq -r '"  state=\(.state) draft=\(.isDraft)"' 2>/dev/null
     done
     exit 0
   fi

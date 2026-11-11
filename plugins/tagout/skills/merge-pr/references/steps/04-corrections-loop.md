@@ -67,11 +67,11 @@ that deferring the worktree does not defer the guard past the thing it guards �
 [`../_shared/worktree-ignore-check.md`](../../../_shared/worktree-ignore-check.md). Reading the check in
 Step 2 and then obtaining the worktree here is how it ends up never running at all.
 
-Build the state and run the decision. The state block — four reads folded into one object — is
+Build the state and run the decision. The state block — `pr-merge-state` and the CI verdict folded into one object — is
 [`references/merge-mechanics.md` §4](../merge-mechanics.md), which is its single home
 because the program reads those seven fields **by name** and a rename on one side only is the exact
 bug this replaced. **Run it as one command**: it ends in an assertion that the assembled state
-really carries `unresolved_threads`, and that assertion is worth nothing if `$threads` was built in
+really carries an `unresolved_threads` list, and that assertion is worth nothing if `$ms` was built in
 a different shell. Then:
 
 ```bash
