@@ -1585,6 +1585,10 @@ if "](install.md)" not in itext or "kit-picker" not in itext or "site.data.hosts
     print("FAIL: docs/index.md must link install.md and carry a kit-picker rendered from site.data.hosts"); sys.exit(1)
 if "claude_code.install[" in itext:
     print("FAIL: docs/index.md types an install command in the hero — the picker is the one place a command appears"); sys.exit(1)
+_product = (root / "PRODUCT.md").read_text(encoding="utf-8")
+_users = _product.split("## Users", 1)[1].split("\n## ", 1)[0]
+if "undecided" not in _users:
+    print("FAIL: PRODUCT.md § Users does not name the undecided visitor — the home page is designed for them since 2026-11-11"); sys.exit(1)
 # ...and every command on those pages comes from the table too: a command typed into a page goes
 # stale the day its host's row changes, and nothing else notices. Install shows the rule-file
 # hosts' shared clone line once, then each one's last line, so each such row has exactly that shape.
@@ -1617,7 +1621,7 @@ python3 "$_pscratch/pages-check.py" "$KIT_ROOT" || exit 1
 # The red halves: a full copy of docs/ per case, one file broken the way its check exists to catch,
 # refused by name. ONE check file, run on each.
 _red_docs() {  # <case> — a fresh copy of docs/ under $_pscratch/<case>
-  rm -rf "${_pscratch:?}/$1"; mkdir -p "$_pscratch/$1"; cp -R "$KIT_ROOT/docs" "$_pscratch/$1/docs"
+  rm -rf "${_pscratch:?}/$1"; mkdir -p "$_pscratch/$1"; cp -R "$KIT_ROOT/docs" "$_pscratch/$1/docs"; cp "$KIT_ROOT/PRODUCT.md" "$_pscratch/$1/PRODUCT.md"
 }
 _red_refused() {  # <case> <text the refusal must name> <what was broken>
   if python3 "$_pscratch/pages-check.py" "$_pscratch/$1" > "$_pscratch/$1.out" 2>&1; then
@@ -1645,6 +1649,9 @@ _red_refused theme "kit-theme" "a scheme restore reading a storage key the toggl
 _red_docs typed
 printf '%s\n' 'git clone https://github.com/phmatray/tagout ~/.tagout' >> "$_pscratch/typed/docs/install.md"
 _red_refused typed "docs/install.md types" "an install command typed into a page"
+_red_docs undecided
+sed 's/undecided/other/g' "$KIT_ROOT/PRODUCT.md" > "$_pscratch/undecided/PRODUCT.md"
+_red_refused undecided "PRODUCT.md" "a PRODUCT.md whose Users section names no undecided visitor"
 _red_docs gets
 sed 's/, hooks: "yes"//' "$KIT_ROOT/docs/_data/hosts.yml" > "$_pscratch/gets/docs/_data/hosts.yml"
 _red_refused gets "claude-code gets" "a host row missing a capability"
