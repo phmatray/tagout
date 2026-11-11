@@ -1138,6 +1138,7 @@ gl_origin_case() { # <label> <origin-url|""> <want-json-literal>
 gl_origin_case sub-https "https://gitlab.com/group/sub/proj.git" '"group/sub/proj"'
 gl_origin_case sub-scp "git@gitlab.com:group/sub/proj.git" '"group/sub/proj"'
 gl_origin_case sub-ssh "ssh://git@gitlab.example.com:2222/group/sub/proj.git" '"group/sub/proj"'
+gl_origin_case sub-userinfo "https://user:tok@gitlab.com/group/sub/proj.git/" '"group/sub/proj"'
 gl_origin_case two-case "https://gitlab.com/Acme/Widgets.git" '"Acme/Widgets"'
 gl_origin_case one-seg "https://gitlab.com/proj.git" 'null'
 gl_origin_case no-origin "" 'null'
