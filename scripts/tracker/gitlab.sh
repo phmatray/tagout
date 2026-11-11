@@ -56,7 +56,8 @@ if [ "$VERB" = verbs ]; then
   printf '%s\n' verbs auth repo issue-view \
     issue-search issue-comments issue-create issue-edit-body \
     issue-add-labels issue-remove-labels issue-reopen issue-comment label-list label-create \
-    issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count
+    issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
+    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits
   exit 0
 fi
 
@@ -425,6 +426,122 @@ case "$VERB" in
     else
       echo "gitlab: issue-blocked-by-count: $out" >&2; exit 1
     fi
+    ;;
+
+  # The six PR verbs (#751), on merge requests. A draft is GitLab's `Draft: ` title prefix: pr-create
+  # adds it, pr-ready strips it (any of `Draft:`, `[Draft]`, `(Draft)`, case-insensitive). `-f`
+  # (raw field) for every string, so a title or branch that looks like a number stays a string.
+  pr-create)
+    BASE=""; HEAD=""; TITLE=""; BODY_FILE=""; DRAFT=0; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --base)      BASE="${2-}"; shift 2 ;;
+        --head)      HEAD="${2-}"; shift 2 ;;
+        --title)     TITLE="${2-}"; shift 2 ;;
+        --body-file) BODY_FILE="${2-}"; shift 2 ;;
+        --draft)     DRAFT=1; shift ;;
+        --dry-run)   DRY=1; shift ;;
+        *) echo "gitlab: pr-create: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -n "$BASE" ] && [ -n "$HEAD" ] && [ -n "$TITLE" ] \
+      || { echo "gitlab: pr-create needs --base, --head and --title" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "gitlab: pr-create refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    [ "$DRAFT" -eq 1 ] && TITLE="Draft: $TITLE"
+    ARGS=(-X POST "projects/$(_id)/merge_requests" -f "source_branch=$HEAD" -f "target_branch=$BASE"
+          -f "title=$TITLE" -F "description=@$BODY_FILE")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN glab api ${ARGS[*]}"; exit 0; fi
+    out=$(_api "${ARGS[@]}") || exit 1
+    printf '%s' "$out" | jq -c '{number: .iid, url: .web_url}'
+    ;;
+
+  pr-list)
+    HEAD=""; Q=""; ST=""; LIM=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --head)   HEAD="${2-}"; shift 2 ;;
+        --search) Q="${2-}"; shift 2 ;;
+        --state)  ST="${2-}"; shift 2 ;;
+        --limit)  LIM="${2-}"; shift 2 ;;
+        *) echo "gitlab: pr-list: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    qp=()
+    [ -n "$HEAD" ] && qp+=("source_branch=$(_urlenc "$HEAD")")
+    case "$ST" in
+      open)   qp+=("state=opened") ;;
+      merged) qp+=("state=merged") ;;
+      "") ;;
+      *) echo "gitlab: pr-list: --state is open or merged" >&2; exit 2 ;;
+    esac
+    [ -n "$Q" ] && qp+=("search=$(_urlenc "$Q")" "in=description")
+    [ -n "$LIM" ] && qp+=("per_page=$(_urlenc "$LIM")")
+    ep="projects/$(_id)/merge_requests"
+    [ "${#qp[@]}" -gt 0 ] && ep="$ep?$(_join_amp "${qp[@]}")"
+    out=$(_api "$ep") || exit 1
+    printf '%s' "$out" | jq -c '[.[] | {number: .iid, title, url: .web_url,
+      state: (if .state == "opened" then "open" else .state end),
+      isDraft: (.draft // .work_in_progress // false), headBranch: .source_branch,
+      body: .description, mergedAt: (.merged_at // null)}]'
+    ;;
+
+  pr-view)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: pr-view needs a merge request iid" >&2; exit 2; }
+    out=$(_api "projects/$(_id)/merge_requests/$n") || exit 1
+    printf '%s' "$out" | jq -c '{number: .iid, title, url: .web_url,
+      state: (if .state == "opened" then "open" else .state end),
+      isDraft: (.draft // .work_in_progress // false), body: .description,
+      headBranch: .source_branch, baseBranch: .target_branch, headSha: .sha,
+      author: (.author.username // null)}'
+    ;;
+
+  pr-edit-body)
+    n="${1-}"; shift || true
+    BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift 2 ;;
+        --dry-run)   DRY=1; shift ;;
+        *) echo "gitlab: pr-edit-body: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "gitlab: pr-edit-body needs a merge request iid" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "gitlab: pr-edit-body refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    ARGS=(-X PUT "projects/$(_id)/merge_requests/$n" -F "description=@$BODY_FILE")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN glab api ${ARGS[*]}"; exit 0; fi
+    _api "${ARGS[@]}" > /dev/null || exit 1
+    ;;
+
+  pr-ready)
+    n=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "gitlab: pr-ready: unknown option: $a" >&2; exit 2 ;;
+        *) n="$a" ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "gitlab: pr-ready needs a merge request iid" >&2; exit 2; }
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN glab api -X PUT projects/$(_id)/merge_requests/$n -f title=<the title without its Draft: prefix>"
+      exit 0
+    fi
+    out=$(_api "projects/$(_id)/merge_requests/$n") || exit 1
+    title=$(printf '%s' "$out" | jq -r '.title') || exit 1
+    ready=$(printf '%s' "$out" | jq -r '.title | sub("^(\\[draft\\]|\\(draft\\)|draft:)\\s*"; ""; "i")') || exit 1
+    # A merge request that is not a draft is already ready: nothing to send.
+    [ "$ready" = "$title" ] && exit 0
+    _api -X PUT "projects/$(_id)/merge_requests/$n" -f "title=$ready" > /dev/null || exit 1
+    ;;
+
+  pr-commits)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: pr-commits needs a merge request iid" >&2; exit 2; }
+    out=$(_api "projects/$(_id)/merge_requests/$n/commits?per_page=100") || exit 1
+    printf '%s' "$out" | jq -c '[.[].id]'
     ;;
 
   *)

@@ -1052,6 +1052,17 @@ case "$method $endpoint_dispatch" in
     s="${GLAB_LINK_STATUS:-201}"
     case "$s" in 2??) : ;; *) fail_http "$s" "${GLAB_LINK_MESSAGE:-}" ;; esac ;;
   "POST projects/:id/labels") : ;;
+  # The merge request endpoints behind the six PR verbs (#751). /commits before the bare GET: the
+  # bare pattern's `[0-9]*` would swallow it.
+  "POST projects/:id/merge_requests")
+    payload=$(_pl GLAB_MR_CREATE_JSON '{"iid":51,"web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51"}') ;;
+  "GET projects/:id/merge_requests"|"GET projects/:id/merge_requests"\?*)
+    payload=$(_pl GLAB_MR_LIST_JSON '[{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","draft":false,"source_branch":"feat/7-x","description":"Closes #7","merged_at":"2026-11-01T00:00:00Z"}]') ;;
+  "GET projects/:id/merge_requests/"[0-9]*"/commits"*)
+    payload='[{"id":"aaa"},{"id":"bbb"}]' ;;
+  "GET projects/:id/merge_requests/"[0-9]*)
+    payload=$(_pl GLAB_MR_JSON '{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"opened","draft":true,"description":"Closes #7","source_branch":"feat/7-x","target_branch":"main","sha":"abc123","author":{"username":"gl_user"}}') ;;
+  "PUT projects/:id/merge_requests/"[0-9]*) : ;;
   *) echo "glab stub: unexpected api call: $method $endpoint" >&2; exit 1 ;;
 esac
 
@@ -1324,6 +1335,47 @@ elif [ "$OUT" = n/a ]; then
 else
   ok "issue-blocked-by-count — a non-403 failure exits 1 rather than answering n/a"
 fi
+
+echo "== E2. the PR verbs on gitlab (#751)"
+
+PR_TRACKER=gitlab; PR_DIR="$GITLAB_PROFILED"; PR_LOG="$GLAB_CALL_LOG"
+pr_case "gitlab pr-create --draft — Draft: title prefix, description read from the file" 0 \
+  '{"number":51,"url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51"}' \
+  "-f title=Draft: T -F description=@$PR_BODY" -- \
+  pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
+grep -Fq -- '-f source_branch=feat/1-x -f target_branch=main' "$GLAB_CALL_LOG" \
+  || note_fail "gitlab pr-create — branches not sent: $(cat "$GLAB_CALL_LOG")"
+pr_case "gitlab pr-list --state open --search 7 — state=opened, search in description" 0 \
+  '[{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
+  "merge_requests?state=opened&search=7&in=description" -- pr-list --state open --search 7
+pr_case "gitlab pr-view — opened→open, sha→headSha, author.username→author" 0 \
+  '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user"}' \
+  "api projects/:id/merge_requests/51" -- pr-view 51
+pr_case "gitlab pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "merge_requests/51/commits?per_page=100" -- pr-commits 51
+pr_case "gitlab pr-edit-body — PUT description=@file" 0 '' "-X PUT projects/:id/merge_requests/51 -F description=@$PR_BODY" -- \
+  pr-edit-body 51 --body-file "$PR_BODY"
+pr_case "gitlab pr-ready on a draft — PUTs the title back without Draft:" 0 '' \
+  "-X PUT projects/:id/merge_requests/51 -f title=x" -- pr-ready 51
+export GLAB_MR_JSON='{"iid":52,"title":"x","state":"opened","draft":false}'
+pr_case "gitlab pr-ready on a non-draft MR — no PUT" 0 '' - -- pr-ready 52
+grep -q -- '-X PUT' "$GLAB_CALL_LOG" && note_fail "gitlab pr-ready — a non-draft MR was PUT: $(cat "$GLAB_CALL_LOG")"
+export GLAB_MR_JSON='{"iid":53,"title":"[DRAFT]   y","state":"opened","draft":true}'
+pr_case "gitlab pr-ready strips [DRAFT] case-insensitively" 0 '' "-f title=y" -- pr-ready 53
+unset GLAB_MR_JSON
+pr_case "gitlab pr-create — refuses an empty --body-file, no glab call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_EMPTY"
+pr_case "gitlab pr-edit-body — refuses a missing --body-file, no glab call" 2 - EMPTY -- \
+  pr-edit-body 51 --body-file "$WORK/no-such-file"
+pr_dry_runs "$PR_BODY"
+
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+if [ "$out" != capable ]; then
+  note_fail "gitlab state implement-issue — expected 'capable', got '$out'"
+else
+  ok "gitlab state implement-issue — capable once the six PR verbs land"
+fi
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = missing ] || note_fail "gitlab state merge-pr — expected 'missing', got '$out'"
 
 echo "== F. the Azure DevOps backend (#509)"
 

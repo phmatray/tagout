@@ -722,4 +722,47 @@ grep -qF 'a plan hosted in a comment is a GitHub-only shape (#750)' "$WORK/out.g
   || { echo "FAIL [gitlab-comment]: a host was called"; cat "$GH_CALL_LOG" "$GLAB_CALL_LOG"; exit 1; }
 echo "  ok: gitlab-comment — --comment-id on GitLab is refused by name, nothing sent"
 
+# 24. The body path on GitLab (#751): a tick is PUT as the issue description, read back through
+#     issue-view and verified; an edit that is not a checkbox flip is REFUSED with no glab call.
+#     A stateful glab stub: PUT stores the description file, GET serves it back as GitLab's JSON.
+GLAB_STORE="$WORK/glab-store.md"; export GLAB_STORE
+cat > "$WORK/bin/glab" <<'GLAB'
+#!/usr/bin/env bash
+echo "$*" >> "$GLAB_CALL_LOG"
+[ "${1:-}" = api ] || exit 1
+method=GET; f=""; prev=""
+for a in "$@"; do
+  case "$prev" in
+    -X) method="$a" ;;
+    -F) case "$a" in description=@*) f="${a#description=@}" ;; esac ;;
+  esac
+  prev="$a"
+done
+if [ "$method" = PUT ]; then cp "$f" "$GLAB_STORE"; echo '{}'; exit 0; fi
+jq -Rs '{iid: 42, title: "t", state: "opened", labels: [], web_url: "u", description: .}' < "$GLAB_STORE"
+GLAB
+chmod +x "$WORK/bin/glab"
+cp "$BEFORE" "$GLAB_STORE"
+fresh_log gitlab-tick; : > "$GLAB_CALL_LOG"
+( cd "$CO_GL" && "$KIT_ROOT/$TICK" --repo g/p --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
+    > "$WORK/out.gitlab-tick" 2>&1 ) \
+  || { echo "FAIL [gitlab-tick]: a legitimate GitLab tick was refused"; cat "$WORK/out.gitlab-tick"; exit 1; }
+grep -q 'body verified intact' "$WORK/out.gitlab-tick" \
+  || { echo "FAIL [gitlab-tick]: no verified-intact verdict"; cat "$WORK/out.gitlab-tick"; exit 1; }
+cmp -s "$GLAB_STORE" "$WORK/ticked.md" \
+  || { echo "FAIL [gitlab-tick]: GitLab does not hold the ticked body byte for byte"; exit 1; }
+grep -q -- '-X PUT projects/g%2Fp/issues/42 -F description=@' "$GLAB_CALL_LOG" \
+  || { echo "FAIL [gitlab-tick]: the description was not PUT"; cat "$GLAB_CALL_LOG"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [gitlab-tick]: gh was called on a GitLab profile"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-tick — PUT as the description, read back and verified, no gh call"
+
+fresh_log gitlab-refuse; : > "$GLAB_CALL_LOG"
+RC=0
+( cd "$CO_GL" && "$KIT_ROOT/$TICK" --repo g/p --issue 42 --before "$BEFORE" --after "$WORK/mangled.md" \
+    > "$WORK/out.gitlab-refuse" 2>&1 ) || RC=$?
+[ "$RC" -ne 0 ] && grep -q 'REFUSED' "$WORK/out.gitlab-refuse" \
+  || { echo "FAIL [gitlab-refuse]: a non-checkbox edit was not REFUSED"; cat "$WORK/out.gitlab-refuse"; exit 1; }
+[ ! -s "$GLAB_CALL_LOG" ] || { echo "FAIL [gitlab-refuse]: glab was called"; cat "$GLAB_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-refuse — a non-checkbox edit is REFUSED with an empty glab log"
+
 echo "tick-plan golden test OK"
