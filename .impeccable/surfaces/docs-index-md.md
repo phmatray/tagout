@@ -28,8 +28,8 @@ red #d1202f owns every header band; safety yellow #ffd100 marks the locked state
 brass #b08d57 is the grommet; ink #111111 the text. Neutrals come from one eleven-step grey ramp
 (g0 white to g10 ink), nothing else. Display and tag headers in Big Shoulders Display black caps;
 body in Archivo; typewritten labels, dates and single values in Courier Prime; prose of more than one line in the body face; code in Red Hat
-Mono. Controls are tags and punched windows; state is a mark, never a hue: chosen renders solid,
-alternatives dashed. Every dimension is a whole 8px grommet module; seams are drawn as 1px rules,
+Mono. Controls are tags and punched windows; state is a mark, never a hue: chosen renders filled in ink,
+alternatives outlined. Every dimension is a whole 8px grommet module; seams are drawn as 1px rules,
 never hidden. No gradient, no glass, no eyebrow labels over headings.
 
 STORY: The visitor reads a real refusal (the roseline gate denying a Read of a .cs file and naming
@@ -41,8 +41,8 @@ scheme toggle. Left two thirds: one tag at monumental scale, its red band readin
 ("Every step runs behind a gate that refuses by name"), its body the denial as typewritten fields:
 LOCKED BY roseline-gate.sh · ON Read of Program.cs · REASON C# is analysed through RoselineMCP ·
 USE INSTEAD mcp__roseline__search_symbols / get_symbol_info. A brass grommet punched top-left.
-Right third: the install window, a white punched card: the host tabs (Claude Code solid, the rest
-dashed), the chosen host's command in Red Hat Mono with a copy button, "then" line under it. This
+Right third: the install window, a white punched card: the host tabs (Claude Code filled, the rest
+outlined), the chosen host's command in Red Hat Mono with a copy button, "then" line under it. This
 window is the primary action. Below both, full width: the group hasp, a yellow bar with seven
 padlocks named assess to deliver, and the measured minutes (18 min, ~30 min, ~1 h) set at the
 largest size on the page after the tag band.
@@ -50,7 +50,7 @@ largest size on the page after the tag band.
 FORM: Lock-out / tag-out tag, candidate 4 of 7 on the grounded list, seed key b9ea9e8e, code-led.
 Signature interaction: on load the hasp's seven locks release in sequence, left to right, one
 authored moment with exponential ease-out and a physical settle; with reduced motion they render
-released. The host picker swaps solid and dashed with a 160ms settle. Inner pages carry the world
+released. The host picker swaps filled and outlined with a 160ms settle. Inner pages carry the world
 as a thin red header rule, Courier Prime meta fields, ADR status stamps, and the journal as tags
 stapled over earlier tags, newest on top and older ones still legible.
 

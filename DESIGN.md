@@ -105,6 +105,7 @@ spacing:
   u9: "72px"
   u10: "80px"
   u12: "96px"
+  section-gap: "clamp(64px, 8vw, 112px)"
 components:
   tag:
     backgroundColor: "{colors.g0}"
@@ -204,7 +205,7 @@ The build is Pages-native Jekyll with libsass: one stylesheet, custom properties
 - One object, the tag, reused at every scale: hero, install window, ADR header, journal entry, chip, toggle.
 - One grey ramp (g0 white to g10 ink) for every neutral; red, yellow, and brass each have one job.
 - Four faces with four jobs: Big Shoulders Display for what is printed on the tag, Archivo for reading, Courier Prime for what is typed onto it, Red Hat Mono for code.
-- State is a mark, not a hue: chosen is solid, unchosen dashed; accepted is ink, rejected red, superseded faded, proposed dashed.
+- State is a mark, not a hue: chosen is filled in ink, unchosen outlined; accepted is ink, rejected red, superseded faded, proposed dashed.
 - Sections are ruled, not boxed; tables are ruled, not gridded; the tag is the only thing with a border and a shadow.
 - One authored motion moment (the locks release) and 160ms settles everywhere else.
 
@@ -230,7 +231,7 @@ The ramp is the whole neutral vocabulary; semantic aliases bind steps to roles, 
 - **g3**: rules (light), the dotted lines under denial fields.
 - **g4**: the dotted field line under every `dd`, `td`, record and refusal row; comments in code; dark ink-soft.
 - **g6**: ink-faint in the light scheme and inside any tag: contents title, nav counts, superseded stamp, hidden heading anchors. Measured 5.36:1 on card and 4.78:1 on ground (AA at every size it is used at).
-- **g5**: ink-faint in the dark scheme (4.89:1 on g9, 5.79:1 on the bench), and in both schemes the chip's dashed border and the scrollbar thumb, which are marks, not text.
+- **g5**: ink-faint in the dark scheme (4.89:1 on g9, 5.79:1 on the bench), and in both schemes the chip's outline and the scrollbar thumb, which are marks, not text.
 - **g6**: defined, not bound to any role.
 - **g7**: ink-soft (light): section leads, field labels, table heads, meta, the typed "from" column.
 - **g8**: hasp secondary text on yellow (8.68:1); dark rules and dark field grey.
@@ -272,9 +273,9 @@ The ramp is the whole neutral vocabulary; semantic aliases bind steps to roles, 
 
 ## Layout
 
-A single 8px unit (`--unit`) with two widths: the reading measure 44rem (`--measure`, about 72 characters), and the page 84rem (`--wide`) for the top bar, home, footer and the Read grid. Section rhythm is set in whole units: sections on the home page are 80px apart, section heads close with a 1.5px ink rule 24px below and 16px of padding; article heads carry 32px below and a 1.5px rule; h2 gets 56px above; prev/next 64px above. Component interiors step in half and quarter units (4, 6, 7, 10, 12, 14, 20, 22px) for field rows, chips, and toggles.
+A single 8px unit (`--unit`) with two widths: the reading measure 44rem (`--measure`, about 72 characters), and the page 84rem (`--wide`) for the top bar, home, footer and the Read grid. Section rhythm is set in whole units: sections on the home page are `--section-gap` apart (`clamp(64px, 8vw, 112px)`: 112px on a desktop, 64px on a phone), the one section-spacing token, section heads close with a 1.5px ink rule 24px below and 16px of padding; article heads carry 32px below and a 1.5px rule; h2 gets 56px above; prev/next 64px above. Component interiors step in half and quarter units (4, 6, 7, 10, 12, 14, 20, 22px) for field rows, chips, and toggles.
 
-The Read grid is one column under 60rem, `15rem minmax(0,1fr)` from 60rem with the side navigation sticky at 80px, and `15rem minmax(0,1fr) 13rem` from 84rem with the on-page contents sticky on the right. The home hero is cut in three, in DOM order: the tag's pitch (band, lead, tagline), the install window, then `.kit-hero-more` (the plugin list, the refusal, the actions). From 64rem it is `2fr minmax(20rem,1fr)` over `auto 1fr` with the areas `"tag install" "more install"` and no row gap: the pitch and `.kit-hero-more` join into one tag (no border, no radius and no shadow across the seam, the lower half's shadow clipped at it) and the install window runs beside both. Under 64rem the three stack 16px apart in DOM order, so on a phone the command follows the pitch; under 40rem the band tightens to 16px 20px 16px 40px, the pitch body to 16px 20px with a 12px gap, and the page's top padding to 16px, which puts the install command inside the first 390x844 viewport. The hasp is `minmax(15rem,1.4fr) repeat(7, 1fr)`; under 64rem the label spans the row and the locks wrap in fours; under 30rem in twos. Under 40rem the root drops to 16px, the record table collapses to two-column rows with the minutes on the right, and prev/next stacks. Under 48rem the top nav reduces to Docs and GitHub. Under 30rem field lists drop to one column.
+The Read grid is one column under 60rem, `15rem minmax(0,1fr)` from 60rem with the side navigation sticky at 80px, and `15rem minmax(0,1fr) 13rem` from 84rem with the on-page contents sticky on the right. The home hero is cut in three, in DOM order: the tag's pitch (band, lead, tagline), the install window, then `.kit-hero-more` (the plugin list, the refusal, the actions). From 64rem it is `2fr minmax(20rem,1fr)` over `auto 1fr` with the areas `"tag install" "more install"` and no row gap: the pitch and `.kit-hero-more` join into one tag (no border, no radius and no shadow across the seam, the lower half's shadow clipped at it) and the install window runs beside both. Under 64rem the three stack 16px apart in DOM order, so on a phone the command follows the pitch; under 40rem the band tightens to 16px 20px 16px 40px, the pitch body to 16px 20px with a 12px gap, and the page's top padding to 16px, which puts the install command inside the first 390x844 viewport. Under 40rem the rest of the home page tightens so it stays a pitch (at most 5,600px tall at 390px): the run's numerals sit in a 40px column beside their step, the three figures stay side by side at 2.25rem, section heads close 16px below with 12px of padding, section leads and command rows run at 0.9375rem/1.45, refusal, command and site-index rows drop to 16px, 8px and 8px of vertical padding, and site-index descriptions to 0.875rem/1.45. The hasp is `minmax(15rem,1.4fr) repeat(7, 1fr)`; under 64rem the label spans the row and the locks wrap in fours; under 30rem in twos. Under 40rem the root drops to 16px, the record table collapses to two-column rows with the minutes on the right, and prev/next stacks. Under 48rem the top nav reduces to Docs and GitHub. Under 30rem field lists drop to one column.
 
 The body's children are capped at the measure; tables, code, figures, tags, and mermaid diagrams may take the full column. Page padding is 24px horizontal; the top bar is 56px tall, sticky, on the ground colour with a 1px rule beneath. Scroll padding is 80px.
 
@@ -293,7 +294,7 @@ The page is flat. The only thing that leaves the ground is the tag: one diffuse 
 
 ## Shapes
 
-Square with the corners knocked off: one radius of 2px on tags, chips, code, inline code, the toggle, and ADR tag pills (the stamp alone rounds to 3px, the favicon to 4). Circles are reserved for holes and marks: the grommet (16px, 3px brass ring), the side-nav current dot (6px red), the toggle's state dot (9px), the refusal mark (32px red circle with a 45-degree slash). Borders are 1.5px ink on any tag and any strong seam, 1px g3 on soft seams, 1.5px dashed g5 on an unchosen chip and a proposed stamp, 2.5px on a stamp. The stamp is rotated -4 degrees from its bottom-left corner and masked with an inline SVG turbulence so its ink breaks up. Padlocks are 44x56 SVGs: a 5px round-capped shackle stroke, a 36x28 body with a 2px radius, a yellow keyway. Chevrons are 8px or 9px borders rotated, not glyphs. No icon fonts and no raster anywhere in the interface; a case-study report may embed its own screenshot as content.
+Square with the corners knocked off: one radius of 2px on tags, chips, code, inline code, the toggle, and ADR tag pills (the stamp alone rounds to 3px, the favicon to 4). Circles are reserved for holes and marks: the grommet (16px, 3px brass ring), the side-nav current dot (6px red), the toggle's state dot (9px), the refusal mark (32px red circle with a 45-degree slash). Borders are 1.5px ink on any tag and any strong seam, 1px g3 on soft seams, 1.5px solid g5 on an unchosen chip, 2.5px on a stamp (dashed only when proposed). The stamp is rotated -4 degrees from its bottom-left corner and masked with an inline SVG turbulence so its ink breaks up. Padlocks are 44x56 SVGs: a 5px round-capped shackle stroke, a 36x28 body with a 2px radius, a yellow keyway. Chevrons are 8px or 9px borders rotated, not glyphs. No icon fonts and no raster anywhere in the interface; a case-study report may embed its own screenshot as content.
 
 ## Components
 
@@ -307,8 +308,8 @@ The site's one object; everything else is a smaller tag or a ruled row.
 
 ### Chips
 A small tag used as a control: host tabs, the copy button.
-- **Style:** Courier Prime 0.8125rem uppercase 0.02em, 6px 10px padding, 1.5px dashed g5 border, ink-soft text, transparent ground, 2px radius; 160ms ease-out on border, background and colour.
-- **State:** hover turns the border and text ink; chosen (`.is-solid`, `:active`, or the checked radio's label) is a solid ink fill with card text. On the ink code ground the copy chip is g5 dashed with g2 text, brightening to g0 on hover, and turns solid safety yellow with ink text for 1.6s once copied.
+- **Style:** Courier Prime 0.8125rem uppercase 0.02em, 6px 10px padding, 1.5px solid g5 border, ink-soft text, transparent ground, 2px radius; 160ms ease-out on border, background and colour.
+- **State:** hover turns the border and text ink; chosen (`.is-solid`, `:active`, or the checked radio's label) is a solid ink fill with card text. On the ink code ground the copy chip is outlined in g5 with g2 text, brightening to g0 on hover, and turns solid safety yellow with ink text for 1.6s once copied.
 
 ### Stamp
 Status as a mark, never a hue.
@@ -346,13 +347,13 @@ Blocks on ink (g10, g1 text; `#060606`, g2 in the dark scheme) with a 1.5px ink 
 - **Do** pick every neutral from g0..g10 through its alias, and rebind aliases (not the ramp) for the dark scheme; keep `.kit-tag` white.
 - **Do** set what the tag says in Big Shoulders caps, what was typed on it in Courier Prime, and the reading text in Archivo at 1rem/1.6 on a 44rem measure.
 - **Do** draw every seam: 1px g3 between regions, 1.5px ink on and inside tags, 1px dotted g4 under rows.
-- **Do** show state as a mark: solid versus dashed for chosen, ink / red / faded / dashed for stamps, a red dot or rule for the current item.
+- **Do** show state as a mark: filled versus outlined for chosen, ink / red / faded / dashed for stamps, a red dot or rule for the current item.
 - **Do** keep motion to 160ms ease-out settles; the lock release (700ms, 140ms stagger) is the page's one authored moment and renders released under reduced motion.
 - **Do** keep the whole site legible with no script, no image, and no colour: radios for the picker, media query for the scheme, text for every state.
 
 ### Don't:
 - **Don't** put a kicker or eyebrow above an h1 or h2; the Courier Prime label belongs above fields, columns, and lists.
-- **Don't** use the tag or any bordered card as page structure; sections are separated by rules and 80px of air.
+- **Don't** use the tag or any bordered card as page structure; sections are separated by rules and `--section-gap` of air.
 - **Don't** box tables or zebra rows; a 1px ink head rule and dotted row lines are the whole grid.
 - **Don't** add a gradient, glass, backdrop filter, hard offset shadow (beyond the grommet's 1px brass edge), or raster image; the tag shadow and the grommet inset are the only depth.
 - **Don't** use red, yellow, or brass for decoration, and don't introduce a fifth colour beyond the shipped Rouge syntax set on the code ground; red is band, link, current marker, or refusal; yellow is locked, selected, or focused; brass is the grommet only.

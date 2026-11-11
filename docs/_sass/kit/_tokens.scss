@@ -46,6 +46,8 @@
   --font-mono: "Red Hat Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
 
   --unit: 8px;
+  // The air between two home sections: 112px on a desktop, easing to 64px on a phone.
+  --section-gap: clamp(calc(var(--unit) * 8), 8vw, calc(var(--unit) * 14));
   --measure: 44rem;
   --content: 60rem;
   --wide: 84rem;

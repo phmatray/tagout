@@ -227,7 +227,7 @@
   color: var(--ink-soft);
 }
 
-// The picker: radio inputs styled as chips; the chosen host renders solid, the rest dashed.
+// The picker: radio inputs styled as chips; the chosen host renders filled in ink, the rest outlined.
 .kit-picker {
   display: flex;
   flex-direction: column;
@@ -332,9 +332,9 @@
   border-top: 1px dotted var(--g4);
 }
 
-// Sections below the hero share one rhythm: a display heading, then the content, 8 units apart.
+// Sections below the hero share one rhythm: a display heading, then the content, --section-gap apart.
 .kit-section {
-  margin-top: calc(var(--unit) * 10);
+  margin-top: var(--section-gap);
 }
 
 .kit-section-head {
@@ -690,3 +690,69 @@
   font-size: 0.9375rem;
 }
 
+// On a phone the page stays a pitch, not a scroll: the run's numerals move beside their step, the
+// three figures sit side by side, and the ruled rows below tighten by a quarter of their air.
+@media (max-width: 40rem) {
+  .kit-home {
+    padding-bottom: calc(var(--unit) * 6);
+  }
+  .kit-section-head {
+    margin-bottom: calc(var(--unit) * 2);
+    padding-bottom: calc(var(--unit) * 1.5);
+  }
+  .kit-run-steps {
+    gap: calc(var(--unit) * 2);
+  }
+  .kit-run-steps li {
+    padding-top: calc(var(--unit) * 1.5);
+    display: grid;
+    grid-template-columns: calc(var(--unit) * 5) minmax(0, 1fr);
+    gap: calc(var(--unit) * 0.5) calc(var(--unit) * 2);
+    align-items: start;
+  }
+  .kit-run-steps li > * {
+    grid-column: 2;
+  }
+  .kit-run-steps li::before {
+    grid-row: 1 / span 3;
+  }
+  .kit-figures-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: calc(var(--unit) * 2);
+  }
+  .kit-figures-list dd {
+    font-size: 2.25rem;
+  }
+  .kit-section-head p,
+  .kit-refusals p,
+  .kit-commands td,
+  .kit-siteindex span {
+    line-height: 1.45;
+  }
+  .kit-section-head p,
+  .kit-commands td {
+    font-size: 0.9375rem;
+  }
+  .kit-siteindex span {
+    font-size: 0.875rem;
+  }
+  .kit-hero .kit-install .kit-tag-body,
+  .kit-hero .kit-hero-more,
+  .kit-picker {
+    gap: calc(var(--unit) * 1.5);
+  }
+  .kit-hero .kit-hero-more {
+    padding-top: calc(var(--unit) * 2);
+  }
+  .kit-refusals li {
+    gap: var(--unit) calc(var(--unit) * 2);
+    padding: calc(var(--unit) * 2) 0;
+  }
+  .kit-commands td {
+    padding-top: var(--unit);
+    padding-bottom: var(--unit);
+  }
+  .kit-siteindex li {
+    padding: var(--unit) 0;
+  }
+}
