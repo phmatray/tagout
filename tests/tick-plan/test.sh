@@ -48,14 +48,20 @@ if [ "${1:-}" = auth ] && [ "${2:-}" = token ]; then
   case " ${GH_STUB_HOSTS:-} " in *" $host "*) echo "gho_stub_token_for_$host"; exit 0 ;; esac
   exit 1
 fi
-if [[ "$*" == *PATCH* ]]; then
+# The write is either the comment path's `api … -X PATCH --input <json>` or the body path's
+# `issue edit <n> --body-file <raw body>` that the tracker contract's github backend sends (#751).
+# Either way $GH_PAYLOAD ends up as the {body} JSON the call carried, so one round-trip check reads both.
+if [[ "$*" == *PATCH* ]] || [ "${1:-} ${2:-}" = "issue edit" ]; then
   input="<none>"; prev=""
   for a in "$@"; do
     [ "$prev" = "--input" ] && input="$a"
+    [ "$prev" = "--body-file" ] && input="$a"
     prev="$a"
   done
   printf '%s\n' "$input" > "$GH_INPUT_PATH"
-  if [ "$input" = "<none>" ] || [ "$input" = "-" ]; then
+  if [ "${1:-} ${2:-}" = "issue edit" ]; then
+    jq -Rs '{body: .}' < "$input" > "$GH_PAYLOAD"
+  elif [ "$input" = "<none>" ] || [ "$input" = "-" ]; then
     cat > "$GH_PAYLOAD"
   else
     cp "$input" "$GH_PAYLOAD"
@@ -97,11 +103,19 @@ else
   # $GH_READBACK_CRLF models a text-mode `gh` stdout on THIS call only (#215 Task 1) — every \n it
   # emits comes back as \r\n, the same class of corruption #199 found in `jq -j`, but here on the
   # leg that reads back what GitHub now holds rather than the local pre-send round-trip.
+  # The body path reads back with `issue view <n> --json …` (#751): the stored body as gh's JSON.
+  emit() {
+    if [ "${1:-} ${2:-}" = "issue view" ]; then
+      [ -f "$GH_STORE" ] && jq -Rs '{number: 42, title: "t", state: "OPEN", url: "u", labels: [], body: .}' < "$GH_STORE"
+    else
+      [ -f "$GH_STORE" ] && cat "$GH_STORE"
+    fi
+  }
   if [ -n "${GH_READBACK_CRLF:-}" ]; then
-    [ -f "$GH_STORE" ] && sed $'s/$/\r/' "$GH_STORE"
+    emit "$@" | sed $'s/$/\r/'
     exit 0
   fi
-  [ -f "$GH_STORE" ] && cat "$GH_STORE"
+  emit "$@"
 fi
 STUB
 chmod +x "$WORK/bin/gh"
@@ -180,10 +194,11 @@ sed 's/^- \[ \] \*\*Task 1/- [x] **Task 1/' "$BEFORE" > "$WORK/ticked.md"
 "$TICK" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.happy" 2>&1 \
   || { echo "FAIL [happy]: a legitimate tick was refused"; cat "$WORK/out.happy"; exit 1; }
 
-grep -q 'repos/o/r/issues/42' "$GH_CALL_LOG" \
-  || { echo "FAIL [happy]: wrong endpoint"; cat "$GH_CALL_LOG"; exit 1; }
-grep -q 'X PATCH\|-X PATCH' "$GH_CALL_LOG" \
-  || { echo "FAIL [happy]: not a PATCH"; cat "$GH_CALL_LOG"; exit 1; }
+# The body path writes through the tracker contract (#751): `issue edit 42`, and no `api … -X PATCH`.
+grep -q 'ARGS: issue edit 42 --repo o/r --body-file ' "$GH_CALL_LOG" \
+  || { echo "FAIL [happy]: wrong write call"; cat "$GH_CALL_LOG"; exit 1; }
+grep -q 'X PATCH' "$GH_CALL_LOG" \
+  && { echo "FAIL [happy]: the body path still PATCHes through gh api"; cat "$GH_CALL_LOG"; exit 1; }
 
 # The payload must round-trip to the ticked file byte for byte.
 python3 - "$GH_PAYLOAD" "$WORK/ticked.md" <<'PY'
@@ -306,14 +321,17 @@ echo "  ok: bounded-match — bounded at 2s, verdict from the read-back (${ELAPS
 
 # 11. Bounded, but GitHub holds something else → the existing ALERT, exit 1. A killed call must
 #     never be allowed to launder a mismatch into success.
+#     2s, not 1s: the read-back now goes through tracker.sh (#751) — a few more process starts — and
+#     a 1s deadline cut it short under a parallel suite run, turning this case into "read-back
+#     bounded" instead of "body differs". The PATCH still sleeps 6s, so `-lt 6` still proves it was cut.
 export GH_MANGLE_STORE=1
-run_bounded bounded-differs 1 "$TICK" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md"
+run_bounded bounded-differs 2 "$TICK" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md"
 unset GH_MANGLE_STORE
 [ "$RC" -eq 1 ] || { echo "FAIL [bounded-differs]: expected exit 1, got $RC"
                      cat "$WORK/out.bounded-differs"; exit 1; }
 grep -q 'ALERT' "$WORK/out.bounded-differs" \
   || { echo "FAIL [bounded-differs]: no ALERT on a mismatched body"; cat "$WORK/out.bounded-differs"; exit 1; }
-[ "$ELAPSED" -lt 5 ] || { echo "FAIL [bounded-differs]: took ${ELAPSED}s — the PATCH was not bounded"; exit 1; }
+[ "$ELAPSED" -lt 6 ] || { echo "FAIL [bounded-differs]: took ${ELAPSED}s — the PATCH was not bounded"; exit 1; }
 # ...and it must NOT tell the reader to restore. After a cut-short PATCH the write most likely never
 # landed, so restoring is either a no-op or it un-ticks a write that arrives a moment later.
 grep -q 'Do NOT restore' "$WORK/out.bounded-differs" \
@@ -399,7 +417,7 @@ unset GH_PATCH_FAIL
                      cat "$WORK/out.patch-failed"; exit 1; }
 grep -q 'REFUSED' "$WORK/out.patch-failed" \
   || { echo "FAIL [patch-failed]: no REFUSED"; cat "$WORK/out.patch-failed"; exit 1; }
-grep -q 'jq .body' "$GH_CALL_LOG" \
+grep -qE 'jq .body|issue view' "$GH_CALL_LOG" \
   && { echo "FAIL [patch-failed]: read back a body after a PATCH that never landed"
        cat "$GH_CALL_LOG"; exit 1; }
 echo "  ok: patch-failed — a failing PATCH still REFUSES, with no read-back"
@@ -644,8 +662,8 @@ fresh_log ghe-origin
 ( cd "$CO_GHE" && GH_STUB_HOSTS=ghe.example.com "$KIT_ROOT/$TICK" --repo acme/widgets --issue 42 \
     --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.ghe-origin" 2>&1 ) \
   || { echo "FAIL [ghe-origin]: a legitimate tick was refused"; cat "$WORK/out.ghe-origin"; exit 1; }
-has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 -X PATCH '
-has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 --jq \.body$'
+has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: issue edit 42 --repo acme/widgets --body-file '
+has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: issue view 42 --repo acme/widgets --json '
 echo "  ok: ghe-origin — the PATCH and the read-back both ran under GH_HOST=ghe.example.com"
 
 # 20. A HOST/ prefix on --repo names the host outright; it never leaks into the endpoint.
@@ -653,12 +671,12 @@ fresh_log ghe-prefix
 "$TICK" --repo ghe.example.com/acme/widgets --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
   > "$WORK/out.ghe-prefix" 2>&1 \
   || { echo "FAIL [ghe-prefix]: a legitimate tick was refused"; cat "$WORK/out.ghe-prefix"; exit 1; }
-has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 -X PATCH '
-has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 --jq \.body$'
+has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: issue edit 42 --repo acme/widgets --body-file '
+has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: issue view 42 --repo acme/widgets --json '
 if grep -q 'repos/ghe\.example\.com' "$GH_CALL_LOG"; then
   echo "FAIL [ghe-prefix]: the host leaked into the endpoint"; cat "$GH_CALL_LOG"; exit 1
 fi
-echo "  ok: ghe-prefix — endpoint repos/acme/widgets/issues/42, under GH_HOST=ghe.example.com"
+echo "  ok: ghe-prefix — repository acme/widgets, under GH_HOST=ghe.example.com"
 
 # 21. A malformed slug is a usage error: exit 1, the slug named, and gh never called.
 fresh_log malformed-slug
@@ -685,5 +703,119 @@ bash "$NOHELPER/tick-plan.sh" --repo o/r --issue 42 --before "$BEFORE" --after "
 grep -qF '_shared/scripts/_gh-host.sh; reinstall the kit' "$WORK/out.missing-helper" \
   || { echo "FAIL [missing-helper]: stderr does not name the missing helper"; cat "$WORK/out.missing-helper"; exit 1; }
 echo "  ok: missing-helper — exit 1, the missing helper named, no gh call"
+
+# 23. A comment-hosted plan is a GitHub-only shape (#751): on a GitLab-profiled checkout
+#     --comment-id is refused by name before anything is sent — no gh call, no glab call.
+CO_GL="$WORK/co-gitlab"
+mkdir -p "$CO_GL/.claude/skills"
+git init -q "$CO_GL"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** gitlab (gitlab.com)' \
+  > "$CO_GL/.claude/skills/repo-profile.md"
+GLAB_CALL_LOG="$WORK/glab-calls.log"; export GLAB_CALL_LOG; : > "$GLAB_CALL_LOG"
+printf '#!/usr/bin/env bash\necho "$*" >> "$GLAB_CALL_LOG"\nexit 1\n' > "$WORK/bin/glab"
+chmod +x "$WORK/bin/glab"
+fresh_log gitlab-comment
+RC=0
+( cd "$CO_GL" && "$KIT_ROOT/$TICK" --repo g/p --issue 42 --comment-id 5 \
+    --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.gitlab-comment" 2>&1 ) || RC=$?
+[ "$RC" -ne 0 ] || { echo "FAIL [gitlab-comment]: a comment plan on GitLab was not refused"; exit 1; }
+grep -qF 'a plan hosted in a comment is a GitHub-only shape (#750)' "$WORK/out.gitlab-comment" \
+  || { echo "FAIL [gitlab-comment]: the refusal does not name the GitHub-only shape"; cat "$WORK/out.gitlab-comment"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] && [ ! -s "$GLAB_CALL_LOG" ] \
+  || { echo "FAIL [gitlab-comment]: a host was called"; cat "$GH_CALL_LOG" "$GLAB_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-comment — --comment-id on GitLab is refused by name, nothing sent"
+
+# 24. The body path on GitLab (#751): a tick is PUT as the issue description, read back through
+#     issue-view and verified; an edit that is not a checkbox flip is REFUSED with no glab call.
+#     A stateful glab stub: PUT stores the description file, GET serves it back as GitLab's JSON.
+GLAB_STORE="$WORK/glab-store.md"; export GLAB_STORE
+cat > "$WORK/bin/glab" <<'GLAB'
+#!/usr/bin/env bash
+echo "$*" >> "$GLAB_CALL_LOG"
+[ "${1:-}" = api ] || exit 1
+method=GET; f=""; prev=""
+for a in "$@"; do
+  case "$prev" in
+    -X) method="$a" ;;
+    -F) case "$a" in description=@*) f="${a#description=@}" ;; esac ;;
+  esac
+  prev="$a"
+done
+if [ "$method" = PUT ]; then cp "$f" "$GLAB_STORE"; echo '{}'; exit 0; fi
+jq -Rs '{iid: 42, title: "t", state: "opened", labels: [], web_url: "u", description: .}' < "$GLAB_STORE"
+GLAB
+chmod +x "$WORK/bin/glab"
+cp "$BEFORE" "$GLAB_STORE"
+fresh_log gitlab-tick; : > "$GLAB_CALL_LOG"
+( cd "$CO_GL" && "$KIT_ROOT/$TICK" --repo g/p --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
+    > "$WORK/out.gitlab-tick" 2>&1 ) \
+  || { echo "FAIL [gitlab-tick]: a legitimate GitLab tick was refused"; cat "$WORK/out.gitlab-tick"; exit 1; }
+grep -q 'body verified intact' "$WORK/out.gitlab-tick" \
+  || { echo "FAIL [gitlab-tick]: no verified-intact verdict"; cat "$WORK/out.gitlab-tick"; exit 1; }
+cmp -s "$GLAB_STORE" "$WORK/ticked.md" \
+  || { echo "FAIL [gitlab-tick]: GitLab does not hold the ticked body byte for byte"; exit 1; }
+grep -q -- '-X PUT projects/g%2Fp/issues/42 -F description=@' "$GLAB_CALL_LOG" \
+  || { echo "FAIL [gitlab-tick]: the description was not PUT"; cat "$GLAB_CALL_LOG"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [gitlab-tick]: gh was called on a GitLab profile"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-tick — PUT as the description, read back and verified, no gh call"
+
+fresh_log gitlab-refuse; : > "$GLAB_CALL_LOG"
+RC=0
+( cd "$CO_GL" && "$KIT_ROOT/$TICK" --repo g/p --issue 42 --before "$BEFORE" --after "$WORK/mangled.md" \
+    > "$WORK/out.gitlab-refuse" 2>&1 ) || RC=$?
+[ "$RC" -ne 0 ] && grep -q 'REFUSED' "$WORK/out.gitlab-refuse" \
+  || { echo "FAIL [gitlab-refuse]: a non-checkbox edit was not REFUSED"; cat "$WORK/out.gitlab-refuse"; exit 1; }
+[ ! -s "$GLAB_CALL_LOG" ] || { echo "FAIL [gitlab-refuse]: glab was called"; cat "$GLAB_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-refuse — a non-checkbox edit is REFUSED with an empty glab log"
+
+# 25. The body path on Azure DevOps (#751): the PATCH sets the description AND its Markdown format,
+#     the tick is read back through issue-view and verified; a non-checkbox edit is REFUSED with no
+#     az call. A stateful az stub: the workitems PATCH stores the patch, the GET serves it back.
+CO_AZ="$WORK/co-azure"
+mkdir -p "$CO_AZ/.claude/skills"
+git init -q "$CO_AZ"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** azure-devops (dev.azure.com/acme/Shop)' \
+  > "$CO_AZ/.claude/skills/repo-profile.md"
+AZ_CALL_LOG="$WORK/az-calls.log"; AZ_STORE="$WORK/az-store.md"; AZ_PATCH="$WORK/az-patch.json"
+export AZ_CALL_LOG AZ_STORE AZ_PATCH
+cat > "$WORK/bin/az" <<'AZ'
+#!/usr/bin/env bash
+echo "$*" >> "$AZ_CALL_LOG"
+method=GET; f=""; prev=""
+for a in "$@"; do
+  case "$prev" in --http-method) method="$a" ;; --in-file) f="$a" ;; esac
+  prev="$a"
+done
+if [ "$method" = PATCH ]; then
+  cp "$f" "$AZ_PATCH"
+  jq -j '.[] | select(.path == "/fields/System.Description") | .value' "$f" > "$AZ_STORE"
+  echo '{}'; exit 0
+fi
+jq -Rs '{id: 42, fields: {"System.Title": "t", "System.State": "Active", "System.Description": .},
+         multilineFieldsFormat: {"System.Description": "Markdown"}}' < "$AZ_STORE"
+AZ
+chmod +x "$WORK/bin/az"
+cp "$BEFORE" "$AZ_STORE"
+fresh_log azure-tick; : > "$AZ_CALL_LOG"
+( cd "$CO_AZ" && "$KIT_ROOT/$TICK" --repo acme/Shop --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
+    > "$WORK/out.azure-tick" 2>&1 ) \
+  || { echo "FAIL [azure-tick]: a legitimate Azure DevOps tick was refused"; cat "$WORK/out.azure-tick"; exit 1; }
+grep -q 'body verified intact' "$WORK/out.azure-tick" \
+  || { echo "FAIL [azure-tick]: no verified-intact verdict"; cat "$WORK/out.azure-tick"; exit 1; }
+cmp -s "$AZ_STORE" "$WORK/ticked.md" \
+  || { echo "FAIL [azure-tick]: Azure DevOps does not hold the ticked body byte for byte"; exit 1; }
+[ "$(jq -r '.[] | select(.path == "/multilineFieldsFormat/System.Description") | .value' "$AZ_PATCH")" = Markdown ] \
+  || { echo "FAIL [azure-tick]: the PATCH did not set the description format to Markdown"; cat "$AZ_PATCH"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [azure-tick]: gh was called on an Azure DevOps profile"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: azure-tick — PATCHed as Markdown, read back and verified, no gh call"
+
+fresh_log azure-refuse; : > "$AZ_CALL_LOG"
+RC=0
+( cd "$CO_AZ" && "$KIT_ROOT/$TICK" --repo acme/Shop --issue 42 --before "$BEFORE" --after "$WORK/mangled.md" \
+    > "$WORK/out.azure-refuse" 2>&1 ) || RC=$?
+[ "$RC" -ne 0 ] && grep -q 'REFUSED' "$WORK/out.azure-refuse" \
+  || { echo "FAIL [azure-refuse]: a non-checkbox edit was not REFUSED"; cat "$WORK/out.azure-refuse"; exit 1; }
+[ ! -s "$AZ_CALL_LOG" ] || { echo "FAIL [azure-refuse]: az was called"; cat "$AZ_CALL_LOG"; exit 1; }
+echo "  ok: azure-refuse — a non-checkbox edit is REFUSED with an empty az log"
 
 echo "tick-plan golden test OK"

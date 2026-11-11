@@ -72,7 +72,7 @@ creating any worktree.
 and read its 0/1/2+ decision table there** — not a copy here, which is how the worktree-ignore table
 drifted apart (#71), and this fallback's own first draft duplicated the same table once already,
 immediately going stale when the recipe grew a tie-break rule and an empty-fetch guard. That recipe
-runs `skills/_shared/scripts/pr-existence-guard.sh`, which queries `gh pr list` for open PRs whose
+runs `skills/_shared/scripts/pr-existence-guard.sh`, which queries the tracker contract's `pr-list` for open PRs whose
 body actually *closes* this issue (GitHub's own closing-keyword set, not a bare mention) and prints
 the count, then the PR to resume onto and any duplicates;
 `tests/pr-existence-guard/test.sh` proves that program's behavior against fixtures shaped exactly like

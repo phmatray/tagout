@@ -72,6 +72,30 @@
     "issue-blocked-by-count": {
       "args": "<number>",
       "stdout": "an integer, or n/a when the dependencies feature is off (no issue_dependencies_summary on the issue)"
+    },
+    "pr-create": {
+      "args": "--base <b> --head <h> --title <t> --body-file <f> [--draft] [--dry-run]",
+      "stdout": "{\"number\",\"url\"} — refuses a missing or empty --body-file (exit 2) and sends nothing, and on Azure DevOps a description over 4000 characters too. GitLab marks a draft with a `Draft: ` title prefix, Azure DevOps with isDraft. --dry-run prints one DRY-RUN line and calls nothing"
+    },
+    "pr-list": {
+      "args": "[--head <branch>] [--search <text>] [--state open|merged] [--limit <n>]",
+      "stdout": "[{\"number\",\"title\",\"url\",\"state\",\"isDraft\",\"headBranch\",\"body\",\"mergedAt\"}] — state lower-cased open|closed|merged, headBranch a bare name, mergedAt null until the PR merges; --search matches the PR body"
+    },
+    "pr-view": {
+      "args": "<number>",
+      "stdout": "{\"number\",\"title\",\"url\",\"state\",\"isDraft\",\"body\",\"headBranch\",\"baseBranch\",\"headSha\",\"author\"} — state lower-cased, branches as bare names, author a login"
+    },
+    "pr-edit-body": {
+      "args": "<number> --body-file <f> [--dry-run]",
+      "stdout": "nothing — refuses a missing or empty --body-file (exit 2) and sends nothing, and on Azure DevOps a description over 4000 characters too. --dry-run prints one DRY-RUN line and calls nothing"
+    },
+    "pr-ready": {
+      "args": "<number> [--dry-run]",
+      "stdout": "nothing — flips a draft PR ready; GitLab strips the title's Draft: prefix and leaves a non-draft MR alone. --dry-run prints one DRY-RUN line and calls nothing"
+    },
+    "pr-commits": {
+      "args": "<number>",
+      "stdout": "a JSON array of the PR's commit SHAs — added by #751 because pr-existence-guard.sh breaks a tie between open PRs closing one issue by commit count (#214), and no other verb prints commits"
     }
   },
   "skills": {
@@ -80,6 +104,10 @@
       "issue-edit-body", "issue-add-labels", "issue-remove-labels", "issue-reopen",
       "issue-comment", "label-list", "label-create",
       "issue-link-parent", "issue-link-blocked-by", "issue-children", "issue-blocked-by-count"
+    ],
+    "implement-issue": [
+      "auth", "repo", "issue-view", "issue-search", "issue-comments", "issue-edit-body",
+      "pr-create", "pr-list", "pr-view", "pr-edit-body", "pr-ready", "pr-commits"
     ]
   }
 }

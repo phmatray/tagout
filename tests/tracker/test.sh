@@ -148,6 +148,12 @@ else
     "issue comment") exit 0 ;;
     "label list")   payload='[{"name":"bug"},{"name":"area: skills"}]' ;;
     "label create") exit 0 ;;
+    # The PR verbs (#751): gh-shaped answers the backend must normalise (headRefName, OPEN, author.login).
+    "pr create")    echo "https://example.invalid/o/r/pull/51"; exit 0 ;;
+    "pr list")      payload='[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"OPEN","isDraft":true,"headRefName":"feat/7-x","body":"Closes #7","mergedAt":null}]' ;;
+    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}]}' ;;
+    "pr edit")      exit 0 ;;
+    "pr ready")     exit 0 ;;
     *)              echo "gh stub: unsupported call: $*" >&2; exit 1 ;;
   esac
 fi
@@ -647,6 +653,70 @@ else
   ok "issue-blocked-by-count — a non-404 failure exits 1 rather than answering n/a"
 fi
 
+echo "== A4. the PR verbs (#751)"
+
+# pr_case <label> <want-rc> <want-stdout|-> <want-log-line|EMPTY|-> -- <tracker args…>
+# The recorded argv is what proves a flag reached gh; an EMPTY log is the proof a refusal or a
+# --dry-run called nothing at all. PR_TRACKER/PR_DIR/PR_LOG let sections E2 and F2 reuse it.
+PR_TRACKER=github; PR_DIR="$PROFILED"; PR_LOG="$GH_CALL_LOG"
+pr_case() {
+  local label="$1" want_rc="$2" want_out="$3" want_log="$4"; shift 5
+  : > "$PR_LOG"
+  run_tracker "$PR_DIR" --tracker "$PR_TRACKER" "$@"
+  if [ "$RC" -ne "$want_rc" ]; then
+    note_fail "$label — exited $RC, want $want_rc ($ERR)"
+  elif [ "$want_out" != - ] && [ "$OUT" != "$want_out" ]; then
+    note_fail "$label — wrong stdout
+      want: $want_out
+      got:  $OUT"
+  elif [ "$want_log" = EMPTY ] && [ -s "$PR_LOG" ]; then
+    note_fail "$label — expected no host call, got: $(cat "$PR_LOG")"
+  elif [ "$want_log" != - ] && [ "$want_log" != EMPTY ] && ! grep -Fq -- "$want_log" "$PR_LOG"; then
+    note_fail "$label — the host did not receive '$want_log'; log: $(cat "$PR_LOG")"
+  else
+    ok "$label"
+  fi
+}
+
+# pr_dry_runs <body-file> — --dry-run on the three write verbs prints one DRY-RUN line, calls nothing.
+pr_dry_runs() {
+  local dry
+  for dry in "pr-create --base main --head feat/1-x --title T --body-file $1 --dry-run" \
+             "pr-edit-body 51 --body-file $1 --dry-run" "pr-ready 42 --dry-run"; do
+    # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+    pr_case "$PR_TRACKER ${dry%% *} --dry-run — no host call" 0 - EMPTY -- $dry
+    if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+      note_fail "$PR_TRACKER ${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+    fi
+  done
+}
+
+PR_BODY="$WORK/pr-body.md"; printf 'Closes #7\n' > "$PR_BODY"
+PR_EMPTY="$WORK/pr-empty.md"; : > "$PR_EMPTY"
+
+pr_case "pr-create --draft — gh pr create, {number,url}" 0 \
+  '{"number":51,"url":"https://example.invalid/o/r/pull/51"}' \
+  "pr create --draft --base main --head feat/1-x --title T --body-file $PR_BODY" -- \
+  pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
+pr_case "pr-list --search — searches the body, normalises state and headBranch" 0 \
+  '[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"open","isDraft":true,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":null}]' \
+  "pr list --search 7 in:body --state open --limit 100 --json number,title,url,state,isDraft,headRefName,body,mergedAt" -- \
+  pr-list --search 7 --state open --limit 100
+pr_case "pr-view — the ten decided keys" 0 \
+  '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat"}' \
+  "pr view 51 --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author" -- \
+  pr-view 51
+pr_case "pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pr view 51 --json commits" -- pr-commits 51
+pr_case "pr-ready — exactly gh pr ready <n>" 0 '' "pr ready 42" -- pr-ready 42
+if [ "$(cat "$GH_CALL_LOG")" != "pr ready 42" ]; then note_fail "pr-ready — log is not exactly 'pr ready 42': $(cat "$GH_CALL_LOG")"; fi
+pr_case "pr-edit-body — gh pr edit --body-file" 0 '' "pr edit 51 --body-file $PR_BODY" -- \
+  pr-edit-body 51 --body-file "$PR_BODY"
+pr_case "pr-create — refuses an empty --body-file, exit 2, no gh call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_EMPTY"
+pr_case "pr-edit-body — refuses a missing --body-file, exit 2, no gh call" 2 - EMPTY -- \
+  pr-edit-body 51 --body-file "$WORK/no-such-file"
+pr_dry_runs "$PR_BODY"
+
 echo "== B. the state report, and the tracker.capable verdict"
 
 # The report itself: five facts, judging none of them. `needs` is null because no skill is on the
@@ -658,9 +728,9 @@ if [ "$RC" -ne 0 ]; then
 else
   got=$(printf '%s' "$OUT" | jq -r '[.tracker, .skill, (.needs|tostring), (.implements|length|tostring)] | join("|")' 2>/dev/null) \
     || got="<unparseable: $OUT>"
-  if [ "$got" != 'github|merge-pr|null|18' ]; then
+  if [ "$got" != 'github|merge-pr|null|24' ]; then
     note_fail "state — wrong report
-      want: github|merge-pr|null|18
+      want: github|merge-pr|null|24
       got:  $got"
   else
     ok "state — reports {tracker, skill, needs, implements} and judges nothing"
@@ -720,6 +790,18 @@ elif [ "$out" != "capable" ]; then
   note_fail "end-to-end — expected 'capable' from the Step 1 pipe, got '$out'"
 else
   ok "end-to-end — tracker.sh state | decide.sh tracker.capable answers capable here"
+fi
+
+# #751: implement-issue is on the contract — its report names the twelve verbs it needs.
+run_tracker "$PROFILED" state implement-issue
+got=$(printf '%s' "$OUT" | jq -r '.needs | join(" ")' 2>/dev/null) || got="<unparseable: $OUT>"
+want_needs='auth repo issue-view issue-search issue-comments issue-edit-body pr-create pr-list pr-view pr-edit-body pr-ready pr-commits'
+if [ "$RC" -ne 0 ] || [ "$got" != "$want_needs" ]; then
+  note_fail "state implement-issue — wrong needs (rc $RC)
+      want: $want_needs
+      got:  $got"
+else
+  ok "state implement-issue — needs names the twelve verbs (#751)"
 fi
 
 echo "== C. contract coverage over create-issue's prose (#506)"
@@ -802,6 +884,58 @@ if [ -n "$real_gh_out" ]; then
       $real_gh_out"
 else
   ok "AC3 real tree — no gh api|issue|label|repo|pr spelling anywhere under skills/create-issue"
+fi
+
+echo "== C2. contract coverage over implement-issue's prose and open-pr.md (#751)"
+
+# The same check as C, over every file implement-issue's tracker calls are spelled in: its own tree
+# and the shared PR-open recipe it runs in Steps 4 and 5. A stray verb in a fixture must be named.
+II_TREE="$WORK/implement-issue-tree"
+mkdir -p "$II_TREE"
+cp -R "$KIT_ROOT/skills/implement-issue" "$II_TREE/"
+cp "$KIT_ROOT/skills/_shared/open-pr.md" "$II_TREE/"
+
+FIXTURE_II="$WORK/implement-issue-fixture"
+mkdir -p "$FIXTURE_II"
+cp "$KIT_ROOT/skills/_shared/open-pr.md" "$FIXTURE_II/"
+printf '\n"<kit>/scripts/tracker.sh" pr-frobnicate 5\n' >> "$FIXTURE_II/open-pr.md"
+fixture_out=$(check_coverage "$FIXTURE_II" implement-issue)
+if ! grep -Fq 'pr-frobnicate' <<<"$fixture_out"; then
+  note_fail "C2 fixture — a verb absent from the contract was not named: '$fixture_out'"
+else
+  ok "C2 fixture — a verb absent from the contract fails coverage, named"
+fi
+real_out=$(check_coverage "$II_TREE" implement-issue)
+if [ -n "$real_out" ]; then
+  note_fail "C2 real tree — coverage reported gaps:
+      $real_out"
+elif [ -z "$(collect_verbs "$II_TREE")" ]; then
+  note_fail "C2 real tree — no \"<kit>/scripts/tracker.sh\" verb is spelled anywhere; the check is vacuous"
+else
+  ok "C2 real tree — every tracker.sh verb implement-issue's prose and open-pr.md invoke is on skills.implement-issue"
+fi
+
+echo "== D2. no direct gh issue|label|repo|pr call in implement-issue's scripts (#751)"
+
+# `gh api` stays allowed here: the comment-hosted plan path is GitHub-only by name and keeps it.
+GUARD_PATTERN_II='\bgh (issue|label|repo|pr)\b'
+FIXTURE_GH_II="$WORK/implement-issue-gh-fixture"
+mkdir -p "$FIXTURE_GH_II"
+cp "$KIT_ROOT/skills/implement-issue/scripts/guarded-ready.sh" "$FIXTURE_GH_II/"
+printf '\ngh pr view 7 --json body\n' >> "$FIXTURE_GH_II/guarded-ready.sh"
+fixture_gh_out=$(grep -rnE "$GUARD_PATTERN_II" "$FIXTURE_GH_II" || true)
+if ! grep -Fq 'guarded-ready.sh' <<<"$fixture_gh_out"; then
+  note_fail "D2 fixture — a reintroduced 'gh pr view' line was not named: '$fixture_gh_out'"
+else
+  ok "D2 fixture — a direct gh pr call reintroduced into guarded-ready.sh fails the guard, named"
+fi
+real_gh_out=$(grep -rnE "$GUARD_PATTERN_II" "$KIT_ROOT/skills/implement-issue/scripts" \
+  "$KIT_ROOT/skills/_shared/scripts/pr-existence-guard.sh" || true)
+if [ -n "$real_gh_out" ]; then
+  note_fail "D2 real tree — a direct gh call survives:
+      $real_gh_out"
+else
+  ok "D2 real tree — no gh issue|label|repo|pr under skills/implement-issue/scripts or in pr-existence-guard.sh"
 fi
 
 echo "== E. the gitlab backend (#508)"
@@ -918,6 +1052,17 @@ case "$method $endpoint_dispatch" in
     s="${GLAB_LINK_STATUS:-201}"
     case "$s" in 2??) : ;; *) fail_http "$s" "${GLAB_LINK_MESSAGE:-}" ;; esac ;;
   "POST projects/:id/labels") : ;;
+  # The merge request endpoints behind the six PR verbs (#751). /commits before the bare GET: the
+  # bare pattern's `[0-9]*` would swallow it.
+  "POST projects/:id/merge_requests")
+    payload=$(_pl GLAB_MR_CREATE_JSON '{"iid":51,"web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51"}') ;;
+  "GET projects/:id/merge_requests"|"GET projects/:id/merge_requests"\?*)
+    payload=$(_pl GLAB_MR_LIST_JSON '[{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","draft":false,"source_branch":"feat/7-x","description":"Closes #7","merged_at":"2026-11-01T00:00:00Z"}]') ;;
+  "GET projects/:id/merge_requests/"[0-9]*"/commits"*)
+    payload='[{"id":"aaa"},{"id":"bbb"}]' ;;
+  "GET projects/:id/merge_requests/"[0-9]*)
+    payload=$(_pl GLAB_MR_JSON '{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"opened","draft":true,"description":"Closes #7","source_branch":"feat/7-x","target_branch":"main","sha":"abc123","author":{"username":"gl_user"}}') ;;
+  "PUT projects/:id/merge_requests/"[0-9]*) : ;;
   *) echo "glab stub: unexpected api call: $method $endpoint" >&2; exit 1 ;;
 esac
 
@@ -1191,6 +1336,56 @@ else
   ok "issue-blocked-by-count — a non-403 failure exits 1 rather than answering n/a"
 fi
 
+echo "== E2. the PR verbs on gitlab (#751)"
+
+PR_TRACKER=gitlab; PR_DIR="$GITLAB_PROFILED"; PR_LOG="$GLAB_CALL_LOG"
+pr_case "gitlab pr-create --draft — Draft: title prefix, description read from the file" 0 \
+  '{"number":51,"url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51"}' \
+  "-f title=Draft: T -F description=@$PR_BODY" -- \
+  pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
+grep -Fq -- '-f source_branch=feat/1-x -f target_branch=main' "$GLAB_CALL_LOG" \
+  || note_fail "gitlab pr-create — branches not sent: $(cat "$GLAB_CALL_LOG")"
+pr_case "gitlab pr-list --state open --search Closes — state=opened, search in description" 0 \
+  '[{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
+  "merge_requests?state=opened&search=Closes&in=description" -- pr-list --state open --search Closes
+# A term under 3 characters is ignored by GitLab's search, so it is matched locally, never sent.
+pr_case "gitlab pr-list --search 7 — a short term is matched locally, not sent" 0 - \
+  "merge_requests?state=opened" -- pr-list --search 7
+grep -q 'search=' "$GLAB_CALL_LOG" && note_fail "gitlab pr-list --search 7 — a short term was sent: $(cat "$GLAB_CALL_LOG")"
+[ "$(printf '%s' "$OUT" | jq 'length' 2>/dev/null)" = 1 ] || note_fail "gitlab pr-list --search 7 — the matching MR was dropped: $OUT"
+pr_case "gitlab pr-list --search 9 — a non-matching short term returns nothing" 0 '[]' - -- pr-list --search 9
+# No --state means open (as gh's default): a merged MR on a reused branch must not read as open.
+pr_case "gitlab pr-list --head — defaults to state=opened" 0 - \
+  "merge_requests?source_branch=feat%2F7-x&state=opened" -- pr-list --head feat/7-x
+pr_case "gitlab pr-view — opened→open, sha→headSha, author.username→author" 0 \
+  '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user"}' \
+  "api projects/:id/merge_requests/51" -- pr-view 51
+pr_case "gitlab pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "merge_requests/51/commits?per_page=100" -- pr-commits 51
+pr_case "gitlab pr-edit-body — PUT description=@file" 0 '' "-X PUT projects/:id/merge_requests/51 -F description=@$PR_BODY" -- \
+  pr-edit-body 51 --body-file "$PR_BODY"
+pr_case "gitlab pr-ready on a draft — PUTs the title back without Draft:" 0 '' \
+  "-X PUT projects/:id/merge_requests/51 -f title=x" -- pr-ready 51
+export GLAB_MR_JSON='{"iid":52,"title":"x","state":"opened","draft":false}'
+pr_case "gitlab pr-ready on a non-draft MR — no PUT" 0 '' - -- pr-ready 52
+grep -q -- '-X PUT' "$GLAB_CALL_LOG" && note_fail "gitlab pr-ready — a non-draft MR was PUT: $(cat "$GLAB_CALL_LOG")"
+export GLAB_MR_JSON='{"iid":53,"title":"[DRAFT]   y","state":"opened","draft":true}'
+pr_case "gitlab pr-ready strips [DRAFT] case-insensitively" 0 '' "-f title=y" -- pr-ready 53
+unset GLAB_MR_JSON
+pr_case "gitlab pr-create — refuses an empty --body-file, no glab call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_EMPTY"
+pr_case "gitlab pr-edit-body — refuses a missing --body-file, no glab call" 2 - EMPTY -- \
+  pr-edit-body 51 --body-file "$WORK/no-such-file"
+pr_dry_runs "$PR_BODY"
+
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+if [ "$out" != capable ]; then
+  note_fail "gitlab state implement-issue — expected 'capable', got '$out'"
+else
+  ok "gitlab state implement-issue — capable once the six PR verbs land"
+fi
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = missing ] || note_fail "gitlab state merge-pr — expected 'missing', got '$out'"
+
 echo "== F. the Azure DevOps backend (#509)"
 
 # Every az call the stub answers is logged here, one line per call — AC2/AC4's recorded argv and
@@ -1216,6 +1411,15 @@ default_workitem_tmpl='{"id":ROUTE_ID,"fields":{}}'
 default_create='{"id":42,"_links":{"html":{"href":"https://dev.azure.com/o/p/_workitems/edit/42"}}}'
 default_comments='{"comments":[]}'
 default_tags='{"value":[]}'
+
+# The PR verbs' JSON bodies travel in --in-file (#751): copy each to $AZ_INFILE_CAPTURE when set.
+if [ -n "${AZ_INFILE_CAPTURE:-}" ]; then
+  prev=""
+  for a in "$@"; do [ "$prev" = --in-file ] && cp "$a" "$AZ_INFILE_CAPTURE"; prev="$a"; done
+fi
+default_pr='{"pullRequestId":9,"title":"x","status":"active","isDraft":true,"description":"Closes #7","sourceRefName":"refs/heads/feat/7-x","targetRefName":"refs/heads/main","lastMergeSourceCommit":{"commitId":"abc123"},"createdBy":{"uniqueName":"me@acme.example"},"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+default_pr_list='[{"pullRequestId":9,"title":"x","status":"completed","isDraft":false,"sourceRefName":"refs/heads/feat/7-x","description":"Closes #7","closedDate":"2026-11-01T00:00:00Z","repository":{"name":"widgets","project":{"name":"Shop"}}}]'
+default_pr_create='{"pullRequestId":9,"repository":{"name":"widgets","project":{"name":"Shop"}}}'
 
 # Pull the flags every dispatch below needs, regardless of position.
 resource=""; http_method="GET"; route_id=""; route_type=""; capture=0
@@ -1245,6 +1449,14 @@ case "${1-} ${2-}" in
     exit 0 ;;
   "repos show")
     printf '%s' "${AZ_REPO_JSON:-$default_repo}"
+    exit 0 ;;
+  "repos pr")
+    case "${3-}" in
+      list)   printf '%s' "${AZ_PR_LIST_JSON:-$default_pr_list}" ;;
+      show)   printf '%s' "${AZ_PR_JSON:-$default_pr}" ;;
+      update) printf '{}' ;;
+      *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
+    esac
     exit 0 ;;
   "devops invoke") : ;;
   "devops project")
@@ -1287,6 +1499,9 @@ case "$resource $http_method" in
   "tags GET")
     printf '%s' "${AZ_TAGS_JSON:-$default_tags}"
     ;;
+  "pullRequests POST") printf '%s' "$default_pr_create" ;;
+  "pullRequests PATCH") printf '{}' ;;
+  "pullRequestCommits GET") printf '%s' '{"value":[{"commitId":"aaa"},{"commitId":"bbb"}]}' ;;
   *) echo "az stub: unsupported invoke: resource=$resource method=$http_method" >&2; exit 1 ;;
 esac
 AZSTUB
@@ -1674,6 +1889,60 @@ else
 fi
 
 
+
+
+echo "== F2. the PR verbs on Azure DevOps (#751)"
+
+PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
+AZ_INFILE_CAPTURE="$WORK/az-infile.json"; export AZ_INFILE_CAPTURE
+pr_case "azure pr-create --draft — {number,url} with the web URL built" 0 \
+  '{"number":9,"url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9"}' \
+  "devops invoke" -- pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
+got=$(jq -c '[.isDraft, .sourceRefName, .targetRefName, .title, .description]' "$AZ_INFILE_CAPTURE" 2>/dev/null)
+if [ "$got" != '[true,"refs/heads/feat/1-x","refs/heads/main","T","Closes #7\n"]' ]; then
+  note_fail "azure pr-create — wrong --in-file body: $got"
+elif ! grep -Fq '"isDraft": true' "$AZ_INFILE_CAPTURE"; then
+  note_fail "azure pr-create — the body does not send \"isDraft\": true"
+else
+  ok "azure pr-create — --in-file carries isDraft, refs/heads/ refs and the file's description"
+fi
+pr_case "azure pr-ready — az repos pr update --id <n> --draft false" 0 '' \
+  "repos pr update --id 9 --draft false" -- pr-ready 9
+pr_case "azure pr-list --state merged — --status completed, closedDate→mergedAt" 0 \
+  '[{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
+  "--status completed" -- pr-list --state merged
+pr_case "azure pr-list --search — re-reads each candidate's full description" 0 - \
+  "repos pr show" -- pr-list --search 'Closes #7'
+[ "$(printf '%s' "$OUT" | jq -r '.[0].body' 2>/dev/null)" = "Closes #7" ] \
+  || note_fail "azure pr-list --search — the matching PR was not returned: $OUT"
+pr_case "azure pr-view — refs/heads/ stripped, web URL built, author a login" 0 \
+  '{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"me@acme.example"}' \
+  "repos pr show" -- pr-view 9
+pr_case "azure pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pullRequestCommits" -- pr-commits 9
+pr_case "azure pr-edit-body — PATCH {description} through --in-file" 0 '' "pullRequestId=9" -- \
+  pr-edit-body 9 --body-file "$PR_BODY"
+[ "$(jq -c . "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '{"description":"Closes #7\n"}' ] \
+  || note_fail "azure pr-edit-body — wrong --in-file body: $(cat "$AZ_INFILE_CAPTURE")"
+PR_LONG="$WORK/pr-long.md"; head -c 4001 /dev/zero | tr '\0' 'a' > "$PR_LONG"
+pr_case "azure pr-create — a 4001-character description is refused, no az call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_LONG"
+pr_case "azure pr-edit-body — a 4001-character description is refused, no az call" 2 - EMPTY -- \
+  pr-edit-body 9 --body-file "$PR_LONG"
+pr_case "azure pr-create — refuses an empty --body-file, no az call" 2 - EMPTY -- \
+  pr-create --base main --head feat/1-x --title T --body-file "$PR_EMPTY"
+pr_case "azure pr-edit-body — refuses a missing --body-file, no az call" 2 - EMPTY -- \
+  pr-edit-body 9 --body-file "$WORK/no-such-file"
+pr_dry_runs "$PR_BODY"
+unset AZ_INFILE_CAPTURE
+
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+if [ "$out" != capable ]; then
+  note_fail "azure state implement-issue — expected 'capable', got '$out'"
+else
+  ok "azure state implement-issue — capable once the six PR verbs land"
+fi
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = missing ] || note_fail "azure state merge-pr — expected 'missing', got '$out'"
 
 if [ "$FAILED" -ne 0 ]; then
   echo

@@ -9,8 +9,10 @@
 #   -C is required, never defaulted — the rule every guard in this directory follows.
 #
 # Exit codes:
-#   0  record present: runs `gh pr ready <pr>`, prints `guarded-ready: OK — review recorded at <sha>`.
-#   1  no record: prints REFUSED, never calls gh.
+#   0  record present: runs the tracker contract's `pr-ready <pr>` (scripts/tracker.sh, #751) from
+#      <repo-path>, so the profile there picks the host — gh's ready-flip on GitHub, the Draft: prefix
+#      stripped on GitLab, `az repos pr update --draft false` on Azure DevOps — and prints `guarded-ready: OK — review recorded at <sha>`.
+#   1  no record: prints REFUSED, never calls the tracker.
 #   2  usage error.
 set -euo pipefail
 
@@ -40,5 +42,12 @@ if [ -z "$SHA" ]; then
   exit 1
 fi
 
-gh pr ready "$PR"
+# The dispatcher sits three directories up, found through any symlink (a plugin install links here).
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _link=$(readlink -- "$SELF") || break
+  case "$_link" in /*) SELF="$_link" ;; *) SELF="$(dirname -- "$SELF")/$_link" ;; esac
+done
+HERE=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P)
+(cd "$REPO" && "$HERE/../../../scripts/tracker.sh" pr-ready "$PR")
 echo "$TOOL: OK — review recorded at $SHA"

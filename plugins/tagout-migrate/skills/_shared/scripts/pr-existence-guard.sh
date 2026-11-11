@@ -8,9 +8,12 @@
 # and `tests/pr-existence-guard/test.sh` extracts the marked filter below and runs the script
 # against a stub `gh`, so the thing proven green is the thing that executes.
 #
+# It reaches the host through the tracker contract (#751): `scripts/tracker.sh pr-list` and
+# `pr-commits`, so the same guard runs on GitHub, GitLab and Azure DevOps.
+#
 # Usage: pr-existence-guard.sh <issue>
 #   <issue>  the issue number, digits only (no #). Runs against the repository of the current
-#            directory, the way `gh pr list` does.
+#            directory, whose profile names the tracker.
 #
 # Output (stdout), on exit 0:
 #   line 1   the number of open PRs whose body closes the issue with one of GitHub's closing
@@ -29,7 +32,7 @@
 #      rows" to jq, and an unchecked empty fetch would let a duplicate PR through), or a commit
 #      count could not be read. Retry it; never read a refusal as 0.
 #
-# Residual limitation, not fixable from this side: `gh pr list --search` hits GitHub's Search API,
+# Residual limitation, not fixable from this side: on GitHub, `pr-list --search` hits the Search API,
 # which is eventually consistent. A PR created seconds ago can still search as absent, so this
 # narrows the #195-shaped race, it does not close it to zero.
 set -euo pipefail
@@ -37,7 +40,15 @@ set -euo pipefail
 refuse() { printf 'REFUSED — %s\n' "$1"; printf 'REFUSED — %s\n' "$1" >&2; exit 2; }
 
 command -v jq > /dev/null 2>&1 || refuse "jq is missing — it is a \`required\` prerequisite in requirements.json"
-command -v gh > /dev/null 2>&1 || refuse "gh is missing — the search cannot be made"
+# The dispatcher sits three directories up, found through any symlink (a plugin install links here).
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _link=$(readlink -- "$SELF") || break
+  case "$_link" in /*) SELF="$_link" ;; *) SELF="$(dirname -- "$SELF")/$_link" ;; esac
+done
+KIT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) || refuse "cannot resolve the kit root"
+TRACKER_SH="$KIT/scripts/tracker.sh"
+[ -x "$TRACKER_SH" ] || refuse "$TRACKER_SH is missing — the search cannot be made; reinstall the kit"
 
 [ "$#" -eq 1 ] || refuse "usage: pr-existence-guard.sh <issue> (one argument, digits only)"
 ISSUE="$1"
@@ -53,8 +64,15 @@ trap 'rm -rf "$WORK"' EXIT
 # Wide net first (a plain search can hit a PR that merely MENTIONS the issue), then narrow. --limit
 # above the default page size (30): an issue that has accumulated several stale/duplicate PRs — the
 # exact scenario this guard targets — could otherwise truncate the real closer off the first page.
-gh pr list --search "$ISSUE in:body" --state open --limit 100 \
-  --json number,headRefName,body,url,isDraft > "$WORK/mentions.json" 2> "$WORK/gh.err" || true
+rc=0
+"$TRACKER_SH" pr-list --search "$ISSUE" --state open --limit 100 \
+  > "$WORK/mentions.json" 2> "$WORK/gh.err" || rc=$?
+
+# Exit 2 (bad invocation) and 3 (this host has no such verb) are not transient: say what the
+# dispatcher said, rather than advising a retry that can never succeed.
+case "$rc" in
+  2|3) refuse "tracker.sh pr-list cannot run here (exit $rc): $(tr '\n' ' ' < "$WORK/gh.err")" ;;
+esac
 
 [ -s "$WORK/mentions.json" ] \
   || refuse "the PR search returned nothing; retry rather than treat this as '0 found'"
@@ -78,7 +96,7 @@ count=$(jq 'length' "$WORK/closers.json")
 if [ "$count" -ge 2 ]; then
   : > "$WORK/commits.tsv"
   for n in $(jq -r '.[].number' "$WORK/closers.json"); do
-    c=$(gh pr view "$n" --json commits --jq '.commits | length' 2>/dev/null) || c=""
+    c=$("$TRACKER_SH" pr-commits "$n" 2>/dev/null | jq 'length' 2>/dev/null) || c=""
     case "$c" in
       ''|*[!0-9]*) refuse "could not read the commit count of PR #$n; retry rather than pick a PR to resume onto blind" ;;
     esac
@@ -95,6 +113,6 @@ jq -r --rawfile commits "$WORK/commits.tsv" '
   | sort_by(-($c[(.number | tostring)] // 0), .number)
   | to_entries[]
   | [ (if .key == 0 then "RESUME" else "ALSO" end),
-      "#\(.value.number)", .value.headRefName,
+      "#\(.value.number)", .value.headBranch,
       (if .value.isDraft then "draft" else "ready" end), .value.url ]
   | @tsv' "$WORK/closers.json"

@@ -33,8 +33,12 @@ COMMENT_ID=$(printf '%s' "$ARG" | sed -n 's/.*issuecomment-\([0-9]*\).*/\1/p')  
 Confirm the issue exists and is the right one before doing anything destructive:
 
 ```bash
-gh issue view "$ISSUE" --json number,title,state --jq '"\(.number) [\(.state)] \(.title)"'
+"<kit>/scripts/tracker.sh" issue-view "$ISSUE" | jq -r '"\(.number) [\(.state)] \(.title)"'
 ```
+
+Every issue and PR call in this file goes through the tracker contract (`<kit>` is the kit root), so
+the same recipe runs on GitHub, GitLab and Azure DevOps (#751). The one exception is the comment
+fallback in §2, a GitHub-only shape.
 
 ---
 
@@ -47,7 +51,7 @@ the comment trail for issues filed by older versions.
 ```bash
 # Preferred: the plan is in the description. Fetch to a PRISTINE copy, check it, then work on a
 # duplicate — §4 needs the untouched original both to validate the write and to restore from.
-gh api "repos/{owner}/{repo}/issues/$ISSUE" --hostname <host> --jq .body > /tmp/plan-$ISSUE.orig.md
+"<kit>/scripts/tracker.sh" issue-view "$ISSUE" | jq -r '.body // ""' > /tmp/plan-$ISSUE.orig.md
 [ -s /tmp/plan-$ISSUE.orig.md ] || { echo "empty fetch for #$ISSUE — do NOT write anything back"; exit 1; }
 cp /tmp/plan-$ISSUE.orig.md /tmp/plan-$ISSUE.md
 
@@ -63,8 +67,12 @@ empty file, and every downstream step happily turns that into a valid empty body
 how two live issue bodies were destroyed. Never edit-and-write a plan file you have not proved was
 fetched.
 
+**The comment path is GitHub-only.** On GitLab or Azure DevOps a plan that is not in the issue body
+is a stop: *a plan hosted in a comment is a GitHub-only shape (#750); move the plan into the issue
+body* — `tick-plan.sh` and `finish-task.sh` refuse `--comment-id` there with that text, nothing sent.
+
 When `PLAN_SRC=comment`, you need the comment's **numeric REST id** (the database id) — that's what
-the PATCH endpoint in §4 edits. `gh issue view --json comments` returns GraphQL **node ids** (`IC_kw…`),
+the PATCH endpoint in §4 edits. gh's `issue view --json comments` returns GraphQL **node ids** (`IC_kw…`),
 which the REST PATCH rejects. Always go through the REST comments endpoint:
 
 ```bash
@@ -288,14 +296,14 @@ Covered by `tests/tick-plan/test.sh` in CI.
 line in the PR's `### Plan` list, then write it back:
 
 ```bash
-gh pr view $PR_NUMBER --json body --jq .body > /tmp/pr-$ISSUE.md
+"<kit>/scripts/tracker.sh" pr-view "$PR_NUMBER" | jq -r '.body // ""' > /tmp/pr-$ISSUE.md
 [ -s /tmp/pr-$ISSUE.md ] || { echo "empty PR body fetch — do NOT write it back"; exit 1; }
 # Edit-tool per line: flip only this task's "- [ ] Task N:" line to "- [x] Task N:".
-[ -s /tmp/pr-$ISSUE.md ] && gh pr edit $PR_NUMBER --body-file /tmp/pr-$ISSUE.md
+[ -s /tmp/pr-$ISSUE.md ] && "<kit>/scripts/tracker.sh" pr-edit-body "$PR_NUMBER" --body-file /tmp/pr-$ISSUE.md
 ```
 
-⚠️ **`gh pr edit --body-file` on an empty file blanks the PR description** — the same defect as §4's
-issue PATCH, one endpoint over. It is less costly (the PR list is a mirror; the issue is canonical)
+⚠️ **An empty body file would blank the PR description** — the same defect as §4's issue PATCH, one
+endpoint over. `pr-edit-body` itself refuses a missing or empty `--body-file` (exit 2, nothing sent). It is less costly (the PR list is a mirror; the issue is canonical)
 but it is the same mistake, so it gets the same `[ -s ]` guard on both the read and the write.
 
 Re-fetch isn't needed within a single run — you own the source and hold the canonical copy in the
@@ -308,7 +316,7 @@ temp file. (If you ever suspect a concurrent edit, re-fetch, re-apply your flips
 Branch naming ties the worktree, branch, and PR to the issue:
 
 ```bash
-SLUG=$(gh issue view "$ISSUE" --json title --jq .title \
+SLUG=$("<kit>/scripts/tracker.sh" issue-view "$ISSUE" | jq -r .title \
   | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g' | cut -c1-40)
 BRANCH="feat/$ISSUE-$SLUG"
 ```
@@ -324,7 +332,7 @@ one that produced the incident in Step 4: being in *someone else's* worktree pas
 # A herestring, not a pipe: `grep -q` exits on its first match, and a `git worktree list` still
 # writing would die of SIGPIPE and report this issue's own worktree as absent (#391).
 grep -Fxq "branch refs/heads/$BRANCH" <<<"$(git worktree list --porcelain)"   # THIS issue's worktree?
-gh pr list --head "$BRANCH" --json number,url,isDraft --jq '.[0]'       # PR already open?
+"<kit>/scripts/tracker.sh" pr-list --head "$BRANCH" | jq '.[0] // empty'   # PR already open?
 
 WORKTREE=<absolute path of that worktree>
 GUARDS=<this skill's own scripts/ directory>       # skills/implement-issue/scripts from the kit root
@@ -338,15 +346,15 @@ If a guard call at `$GUARDS` is refused from inside that worktree, see the fallb
 at what a prior run called itself.** Ask GitHub about the *issue* directly before creating anything
 (#214 — two sessions scaffolded #195 under two different branch names because the second one never
 ran the `SLUG` recipe above, it invented its own). `$ISSUE` is already a validated digit string here
-(Step 1's locator gates on `gh issue view "$ISSUE"` succeeding): run the issue-scoped guard in
+(Step 1's locator gates on `issue-view "$ISSUE"` succeeding): run the issue-scoped guard in
 [`../../_shared/open-pr.md` §1](../../_shared/open-pr.md#1-look-for-an-existing-pr) and read its
 0/1/2+ table there — the recipe and `tests/pr-existence-guard/test.sh`'s one marked copy live in
 that file, never here.
 
 When it stops on an existing PR (`1`, or the one its `2`+ tie-break picks), resume onto that PR's
-`headRefName` the same way as a branch-name match: fetch it, `git worktree add` from it (existing
+`headBranch` the same way as a branch-name match: fetch it, `git worktree add` from it (existing
 local branch) or from `origin/<branch>` with `-b` (remote-only), set `BRANCH` to it, and skip straight
-to Step 6 — no second scaffold, no second `gh pr create`. If resuming onto an existing *local* branch,
+to Step 6 — no second scaffold, no second `pr-create`. If resuming onto an existing *local* branch,
 also `git branch --set-upstream-to="origin/$BRANCH" "$BRANCH" 2>/dev/null || true` before Step 6's
 push — a branch left over from a session that created it but crashed before its first push has no
 upstream configured, and that push has no `-u` of its own to fall back on. On `2`+, name the others
@@ -376,7 +384,7 @@ something other than `origin`, or the guard verifies a ref the push never wrote.
 ## 6. Mark ready (only after green)
 
 ```bash
-"$GUARDS/guarded-ready.sh" -C "$WORKTREE" --branch "$BRANCH" "$PR_NUMBER"  # number from `gh pr create`, or `gh pr list --head "$BRANCH"`
+"$GUARDS/guarded-ready.sh" -C "$WORKTREE" --branch "$BRANCH" "$PR_NUMBER"  # number from `pr-create`, or `pr-list --head "$BRANCH"`
 ```
 
 The guard runs the host's ready command, which with no extra flag flips draft → ready-for-review. There's no separate "approve" — the
@@ -410,7 +418,7 @@ the normal outcome of a real sync, not an error.** Resolve them and *complete* t
   `PLAN_SRC=body` is the normal path and you PATCH the issue (`.../issues/$ISSUE`). The comment path
   is only for issues filed by older versions. Ticking a body plan also advances the progress meter,
   which a comment plan never did.
-- **Node id vs REST id (comment path only).** `gh issue view --json comments` → GraphQL `IC_kw…` ids;
+- **Node id vs REST id (comment path only).** gh's `issue view --json comments` → GraphQL `IC_kw…` ids;
   the PATCH endpoint needs the **numeric** id from `gh api .../comments`. Mixing them up is the #1 way
   the comment tick fails. Irrelevant when the plan is in the body.
 - **Pagination (comment path only).** Always `--paginate` the comments call; the plan comment may be
@@ -432,7 +440,7 @@ the normal outcome of a real sync, not an error.** Resolve them and *complete* t
   first real task commit immediately makes it meaningful. Don't squash it away mid-run.
 - **A branch-name match is a guess, not a guarantee.** §5's fallback exists because a worker's own
   judgment can pick a different branch name for the same issue on a different run (#214) — never skip
-  the issue-scoped `gh pr list --search "$ISSUE in:body"` check just because the branch-name check
+  the issue-scoped `pr-list --search "$ISSUE"` check just because the branch-name check
   came back empty. Scope the search's *filter* to a real closing keyword (`Closes`/`Fixes`/`Resolves
   #$ISSUE`), not a bare mention — GitHub's text search alone returns PRs that merely reference the
   number.

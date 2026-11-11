@@ -62,7 +62,9 @@ check_one_home() {
   local root="$1" hits others rc=0
   hits=$(kit_scratch)/hits
   others=$(kit_scratch)/others
-  (cd "$root" && grep -rnE '^[[:space:]]*gh pr create' skills) > "$hits" || rc=$?
+  # The recipe's own line is the tracker contract's pr-create (#751); a direct `gh pr create` anywhere
+  # is still a second home.
+  (cd "$root" && grep -rnE '^[[:space:]]*gh pr create|"<kit>/scripts/tracker\.sh" pr-create' skills) > "$hits" || rc=$?
   [ "$rc" -le 1 ] || { echo "FAIL: grep could not read $root/skills (exit $rc)"; return 1; }
   grep -q '^skills/_shared/open-pr\.md:' "$hits" \
     || { echo "FAIL: skills/_shared/open-pr.md spells no \`gh pr create\` line — the one home is empty"; return 1; }
@@ -199,28 +201,30 @@ check_create_line() {
   local create bin out1 out0
 
   n_flag=$(grep -c -F 'DRAFT_FLAG=--draft' "$file") || true
-  n_create=$(grep -c -F 'gh pr create $DRAFT_FLAG' "$file") || true
+  n_create=$(grep -c -F '"<kit>/scripts/tracker.sh" pr-create $DRAFT_FLAG' "$file") || true
   if [ "$n_flag" != 1 ] || [ "$n_create" != 1 ]; then
-    echo "FAIL: (f) no DRAFT_FLAG=--draft / gh pr create \$DRAFT_FLAG line found in $file"
+    echo "FAIL: (f) no DRAFT_FLAG=--draft / \"<kit>/scripts/tracker.sh\" pr-create \$DRAFT_FLAG line found in $file"
     return 1
   fi
   flag_line=$(grep -F 'DRAFT_FLAG=--draft' "$file")
-  create_line=$(grep -F 'gh pr create $DRAFT_FLAG' "$file")
+  create_line=$(grep -F '"<kit>/scripts/tracker.sh" pr-create $DRAFT_FLAG' "$file")
 
-  create=$(kit_scratch)/create.sh
-  printf '%s\n' "$flag_line" > "$create"
-  printf '%s\n' "$create_line" >> "$create"
-
-  bin=$(kit_scratch)/bin
-  mkdir -p "$bin"
-  cat > "$bin/gh" <<'EOF'
+  # <kit> becomes a stub kit whose tracker.sh echoes back its argv (#751).
+  bin=$(kit_scratch)/kit
+  mkdir -p "$bin/scripts"
+  cat > "$bin/scripts/tracker.sh" <<'EOF'
 #!/bin/sh
 printf '<%s>' "$@"
 EOF
-  chmod +x "$bin/gh"
+  chmod +x "$bin/scripts/tracker.sh"
 
-  out1=$(PATH="$bin:$PATH" DRAFT=1 BASE=release/9 BRANCH=feat/1-x TITLE=t BODY_FILE=/dev/null bash "$create")
-  out0=$(PATH="$bin:$PATH" DRAFT=0 BASE=release/9 BRANCH=feat/1-x TITLE=t BODY_FILE=/dev/null bash "$create")
+  create=$(kit_scratch)/create.sh
+  printf '%s\n' "$flag_line" > "$create"
+  printf '%s\n' "$create_line" | sed "s#<kit>#$bin#g" >> "$create"
+  printf '%s\n' 'printf "%s" "$OUT"' >> "$create"
+
+  out1=$(DRAFT=1 BASE=release/9 BRANCH=feat/1-x TITLE=t BODY_FILE=/dev/null bash "$create")
+  out0=$(DRAFT=0 BASE=release/9 BRANCH=feat/1-x TITLE=t BODY_FILE=/dev/null bash "$create")
 
   case "$out1" in
     *'<--draft>'*) ;;
