@@ -143,8 +143,12 @@ resolve_tracker() {
 repo_is_checkouts_own() {
   local slug="${TRACKER_REPO_ARG%.git}" path
   case "$slug" in
-    *.*/*/*) [ "${slug%%/*}" = "${DETAIL%%/*}" ] ;;   # a dotted first segment is a host
-    */*/*) return 0 ;;   # a hostless group/sub/proj cannot be GitHub's two-segment owner/repo
+    */*/*)
+      # A dotted first segment is a host; a hostless group/sub/proj cannot be GitHub's owner/repo.
+      case "${slug%%/*}" in
+        *.*) [ "${slug%%/*}" = "${DETAIL%%/*}" ] ;;
+        *)   return 0 ;;
+      esac ;;
     *)
       path=$(git remote get-url origin 2>/dev/null | sed -E \
         -e 's#^[a-z+]+://[^/]+/##' -e 's#^[^@/]+@[^:]+:##' -e 's#\.git$##') || path=""
