@@ -13,32 +13,40 @@
 #   silently preferring one (#668).
 #
 #   HOST/OWNER/REPO names a GitHub Enterprise host outright; with a bare OWNER/REPO the host is the
-#   checkout's own origin's, when origin is that repository. Resolved once, before the first gh
-#   call, by skills/_shared/scripts/_gh-host.sh (#514).
+#   checkout's own origin's, when origin is that repository. Resolved once, before the first
+#   tracker call, by skills/_shared/scripts/_gh-host.sh (#514) — on GitHub only; another tracker
+#   gets the slug as given.
+#
+# Every read and write goes through `scripts/tracker.sh` (#752), so this runs on any tracker whose
+# backend answers `issue-parent`, `issue-view`, `pr-view` and `issue-edit-body`.
 #
 # What it does, in order:
-#   1. Reads the child's parent over REST (`gh api repos/{owner}/{repo}/issues/{n}/parent`).
-#      No parent (a 404) → prints `no-parent` and exits 0. This is the common path.
-#   2. Parent present → reads the merged PR's title and url, and the parent's current body.
+#   1. Asks the tracker for the child's parent (`issue-parent`): a number is the parent, `none` →
+#      prints `no-parent` and exits 0 (the common path). `fallback` — the host has no native parent
+#      link, or its sub-issues API is off — reads the child's body instead: a first line
+#      `Part of #N …` names the parent; without one, prints `no-parent` (a stderr note says why).
+#      A cross-repository parent is refused inside the backend (#781), and that refusal fails here.
+#   2. Parent present → reads the merged PR's title and url (`pr-view`) and the parent's current
+#      body (`issue-view`).
 #   3. Idempotency: if the body already carries this PR's own marker (`[#<pr>]`), prints
 #      `already-noted` and exits 0 without writing anything — a re-run of `merge-pr` on an
 #      already-merged PR must not duplicate the line.
 #   4. Otherwise appends `- #<child> — <title, trimmed of its trailing "(#issue) (#PR)"> ([#<PR>](<url>))`
 #      to the `## Decisions so far` section, creating the section (at the end of the body) if the
-#      parent doesn't have one yet. Writes via `gh issue edit --body-file -`, then reads the body
-#      back to confirm the line landed.
+#      parent doesn't have one yet. Writes the new body to a temp file and sends it with
+#      `issue-edit-body --body-file`, then reads the body back (`issue-view`) to confirm it landed.
 #
 # Exit codes:
 #   0   success — appended, already-noted, or no-parent (all three are success, never confused with
 #       a genuine failure by a caller that only checks the exit code)
-#   1   a real failure: a `gh` call failed, returned unparseable JSON, or the parent's body could
+#   1   a real failure: a tracker call failed, returned unparseable JSON, or the parent's body could
 #       not be safely read or the write could not be confirmed. Always a `parent-decision-note:`
-#       prefixed line on stderr.
-#   2   usage — bad arguments, a malformed slug, or the kit's host helper missing; nothing was
-#       called.
+#       prefixed line on stderr, under the backend's own.
+#   2   usage — bad arguments, a malformed slug, or the kit's host helper or scripts/tracker.sh
+#       missing; nothing was called.
 #
 # bash 3.2 compatible (no associative arrays, no `${var,,}`, no `mapfile`). Tested by
-# tests/merge-pr-parent/test.sh through a stubbed `gh` on PATH.
+# tests/merge-pr-parent/test.sh through a stubbed `gh` on PATH, behind the real GitHub backend.
 set -euo pipefail
 
 TOOL="parent-decision-note"
@@ -110,15 +118,14 @@ case "$REPO" in
   *) refuse "'$REPO' is not [<host>/]<owner>/<repo>" ;;
 esac
 
-command -v gh > /dev/null 2>&1 || refuse "gh is missing"
 command -v jq > /dev/null 2>&1 || refuse "jq is missing"
 
 # ---------------------------------------------------------------------- 0. the repository's host
 #
 # `gh -R OWNER/REPO` takes gh's DEFAULT host, even inside a GitHub Enterprise checkout, so on a GHE
 # repository every call below reached github.com (#514). Which host gh talks to is decided in ONE
-# place, the helper below; its exported GH_HOST is what all five calls inherit. Resolved AFTER every
-# check above, so a refusal there still means nothing was called, and BEFORE the first gh call.
+# place, the helper below; its exported GH_HOST is what every tracker call inherits. Resolved AFTER
+# every check above, so a refusal there still means nothing was called, and BEFORE the first call.
 #
 # $0 through any symlinks first, as guarded-commit.sh does: `pwd -P` canonicalizes the directory,
 # not the link, and macOS's readlink has no -f.
@@ -130,65 +137,50 @@ while [ -L "$SELF" ]; do
     *)  SELF="$(dirname -- "$SELF")/$_link" ;;
   esac
 done
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P) || SCRIPT_DIR=$(dirname -- "$SELF")
-GH_HOST_LIB="$SCRIPT_DIR/../../_shared/scripts/_gh-host.sh"
+KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
+  || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+GH_HOST_LIB="$KIT_ROOT/skills/_shared/scripts/_gh-host.sh"
 # CALLABLE, not merely readable: an empty or truncated helper sources cleanly and defines nothing.
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve > /dev/null 2>&1 || refuse "cannot load $GH_HOST_LIB; reinstall the kit"
-gh_host_resolve "$REPO" || exit 2
-REPO="$KIT_REPO_SLUG"
+TRACKER_SH="$KIT_ROOT/scripts/tracker.sh"
+[ -x "$TRACKER_SH" ] || refuse "cannot find $TRACKER_SH; reinstall the kit"
+TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+[ -n "$TRACKER_NAME" ] || refuse "tracker.sh state could not name this repository's tracker"
+if [ "$TRACKER_NAME" = github ]; then
+  gh_host_resolve "$REPO" || exit 2
+  REPO="$KIT_REPO_SLUG"
+fi
+
+tracker() { "$TRACKER_SH" -R "$REPO" "$@"; }
 
 # ---------------------------------------------------------------------- 1. does a parent exist?
 
-# REST, not the `parent` JSON field of `gh issue view`: gh 2.87.3 lacks it (#762). A 404 means no parent.
-parent_rc=0
-parent_json=$(gh api -H "Accept: application/vnd.github+json" "repos/$REPO/issues/$CHILD/parent" 2>&1) \
-  || parent_rc=$?
-if [ "$parent_rc" -ne 0 ]; then
-  case "$parent_json" in
-    *"No parent issue found"*) echo "no-parent"; exit 0 ;;
-    *"HTTP 404"*)
-      echo "parent-decision-note: this host's sub-issues API is unavailable (HTTP 404); reading #$CHILD as parentless" >&2
-      echo "no-parent"; exit 0 ;;
-  esac
-  fail "gh api repos/$REPO/issues/$CHILD/parent failed: $parent_json"
+# The backend's stderr (the #762 sub-issues note, the #781 cross-repository refusal) passes through.
+PARENT=$(tracker issue-parent "$CHILD") || fail "issue-parent #$CHILD failed — see the line above"
+
+if [ "$PARENT" = fallback ]; then
+  # No native parent link on this host: the child's own `Part of #N` first line names it, if any.
+  child_json=$(tracker issue-view "$CHILD") || fail "issue-view #$CHILD failed — see the line above"
+  PARENT=$(printf '%s' "$child_json" | jq -r '.body // empty' 2>/dev/null | head -1 \
+    | sed -nE 's/^Part of #([0-9]+).*/\1/p') || PARENT=""
+  if [ -z "$PARENT" ]; then
+    echo "$TOOL: no native parent link here, and #$CHILD's body does not open with 'Part of #N'; reading it as parentless" >&2
+    PARENT=none
+  fi
 fi
 
-printf '%s' "$parent_json" | jq -e . > /dev/null 2>&1 \
-  || fail "gh api repos/$REPO/issues/$CHILD/parent returned unparseable output: $parent_json"
-
-PARENT=$(printf '%s' "$parent_json" | jq -r '.number // empty')
-
-if [ -z "$PARENT" ]; then
+if [ "$PARENT" = none ]; then
   echo "no-parent"
   exit 0
 fi
 is_number "$PARENT" || fail "#$CHILD's parent resolved to '$PARENT', which is not an issue number"
 
-# A parent in another repository must never be read by number in this one (#781). The REST payload
-# is the parent issue itself: its `repository_url` (else `html_url`) names its repository. A payload
-# with neither is the same-repository shape and passes.
-PARENT_URL=$(printf '%s' "$parent_json" | jq -r '.repository_url // empty')
-if [ -n "$PARENT_URL" ]; then
-  # api host: https://api.<host>/repos/<o>/<r>; GHES: https://<host>/api/v3/repos/<o>/<r>
-  PARENT_SLUG=$(printf '%s' "$PARENT_URL" | sed -E 's#^.*/repos/([^/]+/[^/]+)/?$#\1#')
-else
-  PARENT_URL=$(printf '%s' "$parent_json" | jq -r '.html_url // empty')
-  PARENT_SLUG=""
-  [ -z "$PARENT_URL" ] || PARENT_SLUG=$(printf '%s' "$PARENT_URL" | sed -E 's#^https?://[^/]+/([^/]+/[^/]+)(/.*)?$#\1#')
-fi
-if [ -n "$PARENT_URL" ]; then
-  if [ "$(printf '%s' "$PARENT_SLUG" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" ]; then
-    fail "#$CHILD's parent #$PARENT lives in '$PARENT_SLUG', not '$REPO' — refusing a cross-repository parent (note it there by hand)"
-  fi
-fi
-
 # ---------------------------------------------------------------------- 2. the PR's title + url
 
-pr_json=$(gh pr view "$PR" -R "$REPO" --json title,url 2>&1) \
-  || fail "gh pr view #$PR --json title,url failed: $pr_json"
+pr_json=$(tracker pr-view "$PR") || fail "pr-view #$PR failed — see the line above"
 printf '%s' "$pr_json" | jq -e . > /dev/null 2>&1 \
-  || fail "gh pr view #$PR --json title,url returned unparseable output: $pr_json"
+  || fail "pr-view #$PR returned unparseable output: $pr_json"
 
 PR_TITLE=$(printf '%s' "$pr_json" | jq -r '.title // empty')
 PR_URL=$(printf '%s' "$pr_json" | jq -r '.url // empty')
@@ -210,14 +202,11 @@ OLD_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/parent-decision-note-old.XXXXXX") \
   || fail "cannot create a temp file"
 NEW_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/parent-decision-note-new.XXXXXX") \
   || fail "cannot create a temp file"
-EDIT_ERR_FILE=$(mktemp "${TMPDIR:-/tmp}/parent-decision-note-edit-err.XXXXXX") \
-  || fail "cannot create a temp file"
-trap 'rm -f "$OLD_BODY_FILE" "$NEW_BODY_FILE" "$EDIT_ERR_FILE"' EXIT
+trap 'rm -f "$OLD_BODY_FILE" "$NEW_BODY_FILE"' EXIT
 
-parent_body_json=$(gh issue view "$PARENT" -R "$REPO" --json body 2>&1) \
-  || fail "gh issue view #$PARENT --json body failed: $parent_body_json"
+parent_body_json=$(tracker issue-view "$PARENT") || fail "issue-view #$PARENT failed — see the line above"
 printf '%s' "$parent_body_json" | jq -e . > /dev/null 2>&1 \
-  || fail "gh issue view #$PARENT --json body returned unparseable output: $parent_body_json"
+  || fail "issue-view #$PARENT returned unparseable output: $parent_body_json"
 
 printf '%s' "$parent_body_json" | jq -r '.body // empty' > "$OLD_BODY_FILE"
 [ -s "$OLD_BODY_FILE" ] || fail "parent #$PARENT has an empty body — refusing to guess at a write"
@@ -273,12 +262,11 @@ grep -qF -- "$NEW_LINE" "$NEW_BODY_FILE" || fail "the new line did not make it i
 
 # ---------------------------------------------------------------------- 6. write, then read back
 
-if ! gh issue edit "$PARENT" -R "$REPO" --body-file - < "$NEW_BODY_FILE" > /dev/null 2> "$EDIT_ERR_FILE"; then
-  fail "gh issue edit #$PARENT --body-file - failed: $(cat "$EDIT_ERR_FILE" 2>/dev/null || true)"
-fi
+tracker issue-edit-body "$PARENT" --body-file "$NEW_BODY_FILE" > /dev/null \
+  || fail "issue-edit-body #$PARENT failed — see the line above"
 
-readback_json=$(gh issue view "$PARENT" -R "$REPO" --json body 2>&1) \
-  || fail "the write to #$PARENT may have landed, but the read-back failed: $readback_json"
+readback_json=$(tracker issue-view "$PARENT") \
+  || fail "the write to #$PARENT may have landed, but the read-back failed — see the line above"
 printf '%s' "$readback_json" | jq -e . > /dev/null 2>&1 \
   || fail "the read-back of #$PARENT returned unparseable output: $readback_json"
 
