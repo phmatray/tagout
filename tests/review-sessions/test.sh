@@ -360,7 +360,8 @@ got = (h.encode_project_dir(win), h.encode_project_dir(posix))
 if got != ("C--work-repo--claude-worktrees-x", "-home-u-repo--claude-worktrees-x"):
     print("FAIL: encode_project_dir ->", got); sys.exit(1)
 home = tempfile.mkdtemp()
-for d in ("C--work-repo", "C--work-repo--claude-worktrees-x", "D--other"):
+for d in ("C--work-repo", "C--work-repo--claude-worktrees-x", "D--other",
+          "C--work-repo2", "C--work-repo2--claude-worktrees-y"):
     os.makedirs(os.path.join(home, ".claude", "projects", d))
 os.getcwd = lambda: win
 os.path.expanduser = lambda p: home
