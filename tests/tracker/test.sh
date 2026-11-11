@@ -1476,6 +1476,19 @@ else
   ok "AC1 merge-pr on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
+# #805: -R names the repository the caller targets. A GitLab-profiled checkout reaching a GitHub
+# repository gets the GitHub backend; with no -R, or -R at the checkout's own host, it keeps GitLab.
+# scripts/tracker-name.sh is the one probe the five merge-pr scripts share.
+NAMER="$(dirname "$TRACKER")/tracker-name.sh"
+for tc in "|gitlab" "-R acme/widgets|gitlab" "-R github.com/acme/widgets|github" \
+          "-R gitlab.com/acme/widgets|gitlab" "-R grp/sub/proj|gitlab" "-R grp/sub.v2/proj/leaf|gitlab"; do
+  args=${tc%|*}; want=${tc#*|}
+  got=$(cd "$GITLAB_PROFILED" && "$NAMER" $args 2>/dev/null)
+  [ "$got" = "$want" ] \
+    && ok "#805 tracker-name.sh ${args:-(no -R)} on a gitlab-profiled checkout — $want" \
+    || note_fail "#805 tracker-name.sh ${args:-(no -R)} — want $want, got '$got'"
+done
+
 # ------------------------------------------------------------------------------------------- repo
 run_tracker "$GITLAB_PROFILED" --tracker gitlab repo
 if [ "$RC" -ne 0 ]; then
@@ -2675,6 +2688,14 @@ grep -Fq -- "--top 100" "$AZ_CALL_LOG" || note_fail "azure commit-checks — run
 export AZ_RUNS_JSON='[{"id":9,"sourceVersion":"merge999","triggerInfo":{"pr.sourceSha":"abc123"},"status":"completed","result":"succeeded","definition":{"name":"pr-build"}},{"id":10,"sourceVersion":"merge888","triggerInfo":{"pr.sourceSha":"other"},"status":"completed","result":"failed","definition":{"name":"pr-build"}}]'
 pr_case "azure commit-checks — a PR build whose triggerInfo pr.sourceSha is the sha counts" 0 \
   '[{"name":"pr-build","state":"success","bucket":"pass","id":9,"app":null,"html_url":null}]' - -- commit-checks abc123
+# A sha older than the 100-run window: a full window with no run on it is unverified, never [] (#806).
+AZ_RUNS_JSON=$(jq -nc '[range(100) | {id: ., sourceVersion: "newer", status: "completed", result: "succeeded", definition: {name: "build"}}]')
+export AZ_RUNS_JSON
+pr_case "azure commit-checks — a sha outside a full 100-run window is UNKNOWN pending, never []" 0 \
+  '[{"name":"commit-checks: sha not in the 100 newest runs","state":"UNKNOWN","bucket":"pending","id":null,"app":null,"html_url":null}]' \
+  - -- commit-checks abc123
+export AZ_RUNS_JSON='[{"id":1,"sourceVersion":"other","status":"completed","result":"succeeded","definition":{"name":"build"}}]'
+pr_case "azure commit-checks — a short window with no run on the sha is still []" 0 '[]' - -- commit-checks abc123
 unset AZ_RUNS_JSON
 export AZ_RUNS_FAIL=1
 pr_case "azure commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123

@@ -354,7 +354,7 @@ fi
 if [ -n "$COMMENT_ID" ]; then
   run_bounded /dev/null gh api "$endpoint" -X PATCH --input "$payload_file"
 else
-  run_bounded /dev/null "$TRACKER_SH" --repo "$REPO_ARG" issue-edit-body "$ISSUE" --body-file "$payload_file"
+  run_bounded /dev/null "$TRACKER_SH" --tracker "$TRACKER_NAME" --repo "$REPO_ARG" issue-edit-body "$ISSUE" --body-file "$payload_file"
 fi
 bounded=$BOUNDED
 patch_rc=$RC
@@ -380,7 +380,7 @@ quiet_gh() { gh "$@" 2>/dev/null; }
 # The body path's read-back: a failed `issue-view` fails the leg rather than reading as an empty body.
 quiet_view() {
   local j
-  j=$("$TRACKER_SH" --repo "$REPO_ARG" issue-view "$ISSUE" 2>/dev/null) || return 1
+  j=$("$TRACKER_SH" --tracker "$TRACKER_NAME" --repo "$REPO_ARG" issue-view "$ISSUE" 2>/dev/null) || return 1
   printf '%s' "$j" | jq -r '.body // ""'
 }
 

@@ -105,7 +105,7 @@ host cannot map prints `UNKNOWN`, and both decisions wait on it: `merge.step4` a
 direct, GitHub-only `gh` call: `approve-runs.sh`, reached only on `needs-approval`, which comes from
 GitHub's `action_required` and which no other backend maps; `base-run-verdict.sh`'s workflow-runs
 fallback (#479, a GitHub Enterprise workaround) and `base-run-followup.sh`'s `gh run list`, both
-skipped on any other tracker (they check `tracker.sh state merge-pr | jq -r .tracker`); and
+skipped on any other tracker (they check `scripts/tracker-name.sh [-R <slug>]`, the one probe, which honours `-R` over the checkout profile, #805); and
 `gh pr checks --watch` as a human-facing view.
 
 `auto-dev` is the fourth (#753). It drives the other three, so `skills.auto-dev` is their union plus

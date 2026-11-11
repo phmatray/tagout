@@ -111,7 +111,7 @@ answer() { printf '%s\n' "$1"; exit 0; }
 # tracker — or one `state` cannot name — there is nothing to ask, so the answer is the non-verdict
 # this script gives for every lookup that cannot speak, and nothing is called. `state` reads the
 # committed profile only; it costs no network.
-TRACKER_NAME=$("$KIT_ROOT/scripts/tracker.sh" state merge-pr 2>/dev/null | jq -r '.tracker // empty') \
+TRACKER_NAME=$("$KIT_ROOT/scripts/tracker-name.sh" ${REPO:+-R "$REPO"}) \
   || TRACKER_NAME=""
 [ "$TRACKER_NAME" = github ] || answer "unverified (timeout)"
 
