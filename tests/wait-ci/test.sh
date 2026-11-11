@@ -322,7 +322,8 @@ reset_case through-tracker '[{"name":"kit","state":"SUCCESS","bucket":"pass"}]'
 rc=0
 out=$(POLL_SECONDS=0 MAX_POLLS=4 "$WAIT" 13 2>&1) || rc=$?
 [ "$rc" -eq 0 ] || { echo "FAIL [through-tracker]: expected exit 0, got $rc"; echo "$out"; exit 1; }
-if grep 'pr checks' "$GH_CALL_LOG" | grep -qv -- '--json name,state,bucket'; then
+checks_calls=$(grep 'pr checks' "$GH_CALL_LOG" || true)
+if [ -n "$checks_calls" ] && grep -qv -- '--json name,state,bucket' <<<"$checks_calls"; then
   echo "FAIL [through-tracker]: a \`gh pr checks\` call did not come from tracker.sh pr-checks:"
   cat "$GH_CALL_LOG"; exit 1
 fi
