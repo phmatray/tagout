@@ -527,6 +527,11 @@ mkdir -p "$SCRATCH_KIT/skills/auto-dev/scripts"
 # $SCRATCH_KIT exactly like a real copy would, without a byte-for-byte snapshot of survey.sh's
 # own source that could silently drift from the file this suite is actually testing.
 ln -s "$SURVEY" "$SCRATCH_KIT/skills/auto-dev/scripts/survey.sh"
+# survey.sh reads the backlog through "$KIT_ROOT/scripts/tracker.sh" (#753), so the scratch kit
+# carries the dispatcher too. A symlink again: tracker.sh resolves itself through symlinks and finds
+# its backends in the real kit.
+mkdir -p "$SCRATCH_KIT/scripts"
+ln -s "$KIT/scripts/tracker.sh" "$SCRATCH_KIT/scripts/tracker.sh"
 # Deliberately no skills/init/scripts/parse-manifest.py anywhere under $SCRATCH_KIT.
 
 F6="$WORK/parser-missing-issues.json"
@@ -1296,3 +1301,37 @@ grep -qF 'blocking=' <<<"$step4" || {
   echo "FAIL: SKILL.md Step 4 does not carry the immediate re-survey trigger for a merged blocking= row"
   exit 1; }
 echo "ok: frontier — SKILL.md documents the deps= column and Step 4's blocking= re-survey trigger"
+
+# ---------------------------------- 16. an unreachable tracker is never a drained backlog (#753)
+#
+# survey.sh reads the backlog through `tracker.sh issue-list`; a failed read must surface as the
+# failure it is — non-zero, no QUEUE/HOLD/SKIP/SEED row — because an empty survey is what SKILL.md
+# Step 2 reads as "backlog drained" (#213).
+W16="$WORK/tracker-unreachable"
+mkdir -p "$W16/bin"
+printf '#!/usr/bin/env bash\necho "HTTP 401: Bad credentials (https://api.github.com/graphql)" >&2\nexit 1\n' > "$W16/bin/gh"
+chmod +x "$W16/bin/gh"
+O16="$WORK/tracker-unreachable.out"
+rc16=0
+( cd "$W16" && env PATH="$W16/bin:$PATH" bash "$SURVEY" ) > "$O16" 2>"$O16.err" || rc16=$?
+[ "$rc16" -ne 0 ] || { echo "FAIL: survey.sh exited 0 when tracker.sh issue-list failed"; cat "$O16"; exit 1; }
+if grep -qE '^(QUEUE|HOLD|SKIP|SEED)' "$O16"; then
+  echo "FAIL: survey.sh printed rows over a failed issue-list"; cat "$O16"; exit 1
+fi
+grep -q 'HTTP 401' "$O16.err" || { echo "FAIL: the tracker's own error was swallowed"; cat "$O16.err"; exit 1; }
+echo "ok: tracker-unreachable — a failed issue-list exits non-zero with no rows, its error surfaced"
+
+# ------------------------------- 17. one issue's labels and body give one row, on every host (#753)
+#
+# The row an operator reads for an issue labelled `effort: small` and `area: skills` with a planned
+# body. The GitHub half feeds gh's {name} label objects through the stub; the Azure DevOps half
+# feeds the same issue as a work item and must print this same row, byte for byte (AC3).
+WANT17=$(printf 'QUEUE\t#1701\teffort: small\tplan=true\tqa=false\tdeps=-\tmodel=mid\tarea=skills\t[effort: small,area: skills]\tSame row on every host')
+F17="$WORK/same-row-github.json"
+printf '[{"number":1701,"title":"Same row on every host","labels":[{"name":"effort: small"},{"name":"area: skills"}],"body":"%s","comments":[]}]' \
+  "$PLAN_BODY" > "$F17"
+O17="$WORK/same-row-github.out"
+run_survey "$W1" "$F17" "$O17"
+got17=$(grep -F "$(printf '\t#1701\t')" "$O17" || true)
+[ "$got17" = "$WANT17" ] || { echo "FAIL: the GitHub row for #1701 differs"; echo "want: $WANT17"; echo "got:  $got17"; exit 1; }
+echo "ok: same-row — a GitHub issue's labels and body give the expected QUEUE row"
