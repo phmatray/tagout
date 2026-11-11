@@ -73,7 +73,7 @@ if [ -n "${GH_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_CALL_LOG"; fi
 fail_http() {
   local code="$1" msg
   case "$code" in
-    404) msg="Not Found" ;;
+    404) msg="${GH_404_MESSAGE:-Not Found}" ;;
     422) msg="${GH_422_MESSAGE:-Validation Failed}" ;;
     *)   msg="Server Error" ;;
   esac
@@ -116,6 +116,25 @@ if [ -n "$endpoint" ]; then
     "GET "*/sub_issues)
       s="${GH_CHILDREN_STATUS:-200}"
       case "$s" in 2??) payload="${GH_CHILDREN_JSON:-[]}" ;; *) fail_http "$s" ;; esac ;;
+    # The merge-pr endpoints (#752). /parent before the bare issue GET, which would swallow it.
+    # GH_PARENT_STATUS/GH_PARENT_JSON, GH_CHECKRUNS_STATUS and GH_REF_STATUS pick each one's answer.
+    "GET repos/"*/issues/[0-9]*/parent)
+      s="${GH_PARENT_STATUS:-200}"
+      default_parent='{"number":40,"repository_url":"https://api.github.com/repos/acme/widgets"}'
+      case "$s" in 2??) payload="${GH_PARENT_JSON:-$default_parent}" ;; *) fail_http "$s" ;; esac ;;
+    "GET repos/"*/compare/*)
+      payload='{"behind_by":3,"ahead_by":1}' ;;
+    "GET repos/"*/commits/*/check-runs)
+      s="${GH_CHECKRUNS_STATUS:-200}"
+      # Already the --slurp shape (an array of pages): a superseded run of `build`, its rerun, and a
+      # run with neither status nor conclusion.
+      case "$s" in
+        2??) payload='[{"total_count":3,"check_runs":[{"name":"build","id":1,"app":{"id":15368},"html_url":"https://example.invalid/runs/1","status":"completed","conclusion":"failure"},{"name":"build","id":2,"app":{"id":15368},"html_url":"https://example.invalid/runs/2","status":"in_progress","conclusion":null},{"name":"lint","id":3,"app":{"id":15368},"html_url":"https://example.invalid/runs/3","status":null,"conclusion":null}]}]' ;;
+        *) fail_http "$s" ;;
+      esac ;;
+    "DELETE repos/"*/git/refs/heads/*)
+      s="${GH_REF_STATUS:-204}"
+      case "$s" in 2??) exit 0 ;; *) fail_http "$s" ;; esac ;;
     "GET repos/"*/issues/[0-9]*)
       s="${GH_ISSUE_STATUS:-200}"
       case "$s" in
@@ -151,9 +170,30 @@ else
     # The PR verbs (#751): gh-shaped answers the backend must normalise (headRefName, OPEN, author.login).
     "pr create")    echo "https://example.invalid/o/r/pull/51"; exit 0 ;;
     "pr list")      payload='[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"OPEN","isDraft":true,"headRefName":"feat/7-x","body":"Closes #7","mergedAt":null}]' ;;
-    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}]}' ;;
+    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}],"mergedAt":"2026-11-11T10:00:00Z","mergeCommit":{"oid":"def456"},"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","closingIssuesReferences":[{"number":12},{"number":13}]}' ;;
     "pr edit")      exit 0 ;;
     "pr ready")     exit 0 ;;
+    # The merge-pr verbs (#752). GH_CHECKS_MODE=none is gh's "no checks reported", =fail any other
+    # failure; GH_GRAPHQL_FAIL fails the reviewThreads query the way a GHES host without
+    # --hostname does.
+    "pr checks")
+      case "${GH_CHECKS_MODE:-}" in
+        none) echo "no checks reported on the 'feat/7-x' branch" >&2; exit 1 ;;
+        fail) echo "gh: Server Error (HTTP 502)" >&2; exit 1 ;;
+      esac
+      payload='[{"name":"build","state":"SUCCESS","bucket":"pass"}]' ;;
+    "pr merge")     exit 0 ;;
+    "pr comment")   exit 0 ;;
+    "api graphql")
+      case "$*" in
+        *addPullRequestReviewThreadReply*|*resolveReviewThread*) exit 0 ;;
+        *reviewThreads*)
+          if [ -n "${GH_GRAPHQL_FAIL:-}" ]; then
+            echo "gh: Could not resolve to a Repository with the name 'acme/widgets'." >&2; exit 1
+          fi
+          payload='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"T1","isResolved":false,"comments":{"nodes":[{"path":"a.sh","line":3,"body":"fix this"}]}},{"id":"T2","isResolved":true,"comments":{"nodes":[{"path":"b.sh","line":9,"body":"done"}]}},{"id":"T3","isResolved":false,"comments":{"nodes":[{"path":null,"line":null,"body":"overall"}]}}]}}}}}' ;;
+        *) echo "gh stub: unsupported graphql call" >&2; exit 1 ;;
+      esac ;;
     *)              echo "gh stub: unsupported call: $*" >&2; exit 1 ;;
   esac
 fi
@@ -702,9 +742,9 @@ pr_case "pr-list --search — searches the body, normalises state and headBranch
   '[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"open","isDraft":true,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":null}]' \
   "pr list --search 7 in:body --state open --limit 100 --json number,title,url,state,isDraft,headRefName,body,mergedAt" -- \
   pr-list --search 7 --state open --limit 100
-pr_case "pr-view — the ten decided keys" 0 \
-  '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat"}' \
-  "pr view 51 --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author" -- \
+pr_case "pr-view — the ten decided keys, plus mergedAt and mergeSha (#752)" 0 \
+  '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat","mergedAt":"2026-11-11T10:00:00Z","mergeSha":"def456"}' \
+  "pr view 51 --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author,mergedAt,mergeCommit" -- \
   pr-view 51
 pr_case "pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pr view 51 --json commits" -- pr-commits 51
 pr_case "pr-ready — exactly gh pr ready <n>" 0 '' "pr ready 42" -- pr-ready 42
@@ -717,20 +757,117 @@ pr_case "pr-edit-body — refuses a missing --body-file, exit 2, no gh call" 2 -
   pr-edit-body 51 --body-file "$WORK/no-such-file"
 pr_dry_runs "$PR_BODY"
 
+echo "== A5. the merge-pr verbs (#752)"
+
+# Every case names the repository, so the recorded argv carries the `--repo <slug>` today's scripts
+# send — the argv tests/merge-base-ci and tests/guarded-pr-merge will match once they route here.
+R=(--repo acme/widgets)
+
+pr_case "pr-merge-state — behind_by from compare, only unresolved paths, (pr-level) for none" 0 \
+  '{"behind_by":3,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","unresolved_threads":["a.sh","(pr-level)"]}' \
+  "api repos/acme/widgets/compare/main...feat/7-x" -- "${R[@]}" pr-merge-state 7
+grep -Fq "pr view 7 --repo acme/widgets --json mergeStateStatus,isDraft,reviewDecision,baseRefName,headRefName" "$GH_CALL_LOG" \
+  || note_fail "pr-merge-state — the pr view argv is not today's: $(cat "$GH_CALL_LOG")"
+export GH_GRAPHQL_FAIL=1
+pr_case "pr-merge-state — a failed thread read exits 1 and prints nothing" 1 '' - -- "${R[@]}" pr-merge-state 7
+pr_case "pr-threads — a failed thread read is exit 1, never []" 1 '' - -- "${R[@]}" pr-threads 7
+unset GH_GRAPHQL_FAIL
+pr_case "pr-threads — one entry per thread, first comment's path/line/body" 0 \
+  '[{"id":"T1","path":"a.sh","line":3,"body":"fix this","isResolved":false},{"id":"T2","path":"b.sh","line":9,"body":"done","isResolved":true},{"id":"T3","path":null,"line":null,"body":"overall","isResolved":false}]' \
+  "api graphql --paginate" -- "${R[@]}" pr-threads 7
+
+pr_case "commit-checks — every run on the sha, superseded included, with id and app" 0 \
+  '[{"name":"build","state":"failure","bucket":"fail","id":1,"app":15368,"html_url":"https://example.invalid/runs/1"},{"name":"build","state":"in_progress","bucket":"pending","id":2,"app":15368,"html_url":"https://example.invalid/runs/2"},{"name":"lint","state":"UNKNOWN","bucket":"pending","id":3,"app":15368,"html_url":"https://example.invalid/runs/3"}]' \
+  - -- "${R[@]}" commit-checks abc123
+[ "$(cat "$GH_CALL_LOG")" = "api repos/acme/widgets/commits/abc123/check-runs --paginate --slurp" ] \
+  || note_fail "commit-checks — argv is not exactly today's check-runs call: $(cat "$GH_CALL_LOG")"
+export GH_CHECKRUNS_STATUS=502
+pr_case "commit-checks — a host error is exit 1, never []" 1 '' - -- "${R[@]}" commit-checks abc123
+unset GH_CHECKRUNS_STATUS
+
+pr_case "pr-checks — gh pr checks, name/state/bucket" 0 '[{"name":"build","state":"SUCCESS","bucket":"pass"}]' \
+  "pr checks 7 --repo acme/widgets --json name,state,bucket" -- "${R[@]}" pr-checks 7
+export GH_CHECKS_MODE=none
+pr_case "pr-checks — 'no checks reported' is [] and exit 0" 0 '[]' - -- "${R[@]}" pr-checks 7
+export GH_CHECKS_MODE=fail
+pr_case "pr-checks — any other failure is exit 1" 1 '' - -- "${R[@]}" pr-checks 7
+unset GH_CHECKS_MODE
+
+pr_case "pr-thread-resolve — replies, then resolves" 0 '' resolveReviewThread -- \
+  "${R[@]}" pr-thread-resolve 7 T1 --body-file "$PR_BODY"
+reply_at=$(grep -n addPullRequestReviewThreadReply "$GH_CALL_LOG" | head -1 | cut -d: -f1)
+resolve_at=$(grep -n 'resolveReviewThread(' "$GH_CALL_LOG" | head -1 | cut -d: -f1)
+if [ -z "$reply_at" ] || [ -z "$resolve_at" ] || [ "$reply_at" -ge "$resolve_at" ]; then
+  note_fail "pr-thread-resolve — the reply must be logged before the resolve: $(cat "$GH_CALL_LOG")"
+fi
+
+pr_case "pr-merge — exactly gh pr merge <n> --repo <slug> <flags>" 0 '' - -- "${R[@]}" pr-merge 7 --squash --subject s
+[ "$(cat "$GH_CALL_LOG")" = "pr merge 7 --repo acme/widgets --squash --subject s" ] \
+  || note_fail "pr-merge — argv is not exactly today's: $(cat "$GH_CALL_LOG")"
+pr_case "pr-merge — a flag outside the four is exit 2, no gh call" 2 - EMPTY -- "${R[@]}" pr-merge 7 --admin
+
+pr_case "branch-delete — per-segment @uri, ok" 0 ok \
+  "api -X DELETE repos/acme/widgets/git/refs/heads/feature/x%231" -- "${R[@]}" branch-delete 'feature/x#1'
+export GH_REF_STATUS=422 GH_422_MESSAGE="Reference does not exist"
+pr_case "branch-delete — 'Reference does not exist' is gone" 0 gone - -- "${R[@]}" branch-delete feature/x
+unset GH_422_MESSAGE
+export GH_REF_STATUS=404
+pr_case "branch-delete — any other failure is exit 1" 1 '' - -- "${R[@]}" branch-delete feature/x
+unset GH_REF_STATUS
+
+pr_case "issue-parent — the parent's number" 0 40 "api -H Accept: application/vnd.github+json repos/acme/widgets/issues/5/parent" -- \
+  "${R[@]}" issue-parent 5
+export GH_PARENT_STATUS=404 GH_404_MESSAGE="No parent issue found"
+pr_case "issue-parent — 'No parent issue found' is none" 0 none - -- "${R[@]}" issue-parent 5
+unset GH_404_MESSAGE
+pr_case "issue-parent — any other 404 is fallback (#762)" 0 fallback - -- "${R[@]}" issue-parent 5
+unset GH_PARENT_STATUS
+export GH_PARENT_JSON='{"number":40,"repository_url":"https://api.github.com/repos/acme/other"}'
+pr_case "issue-parent — a parent in another repository is exit 1 (#781)" 1 '' - -- "${R[@]}" issue-parent 5
+unset GH_PARENT_JSON
+
+pr_case "pr-closing-issues — an array of numbers" 0 '[12,13]' \
+  "pr view 7 --repo acme/widgets --json closingIssuesReferences" -- "${R[@]}" pr-closing-issues 7
+pr_case "pr-comment — gh pr comment --body-file" 0 '' "pr comment 7 --repo acme/widgets --body-file $PR_BODY" -- \
+  "${R[@]}" pr-comment 7 --body-file "$PR_BODY"
+
+for refusal in "pr-thread-resolve 7 T1 --body-file $PR_EMPTY" "pr-thread-resolve 7 T1" \
+               "pr-comment 7 --body-file $PR_EMPTY" "pr-comment 7 --body-file $WORK/no-such-file" \
+               "pr-merge 7 --squash --body-file $PR_EMPTY"; do
+  # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+  pr_case "${refusal%% *} — refuses a missing or empty --body-file, exit 2, no gh call" 2 - EMPTY -- "${R[@]}" $refusal
+done
+for dry in "pr-merge 7 --squash --delete-branch --dry-run" "pr-thread-resolve 7 T1 --body-file $PR_BODY --dry-run" \
+           "pr-comment 7 --body-file $PR_BODY --dry-run" "branch-delete feature/x --dry-run"; do
+  # shellcheck disable=SC2086
+  pr_case "${dry%% *} --dry-run — no gh call" 0 - EMPTY -- "${R[@]}" $dry
+  if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+    note_fail "${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+  fi
+done
+
+# merge-pr is on the contract now, so a host whose backend lacks its verbs is missing for THAT
+# reason — not because the skill is absent from the contract.
+run_tracker "$PROFILED" --tracker gitlab state merge-pr
+got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+[ "$got" = missing/verb-not-implemented ] \
+  && ok "state merge-pr on gitlab — missing/verb-not-implemented" \
+  || note_fail "state merge-pr on gitlab — want missing/verb-not-implemented, got $got"
+
 echo "== B. the state report, and the tracker.capable verdict"
 
-# The report itself: five facts, judging none of them. `needs` is null because no skill is on the
-# contract yet, and that is a different absence from `implements` being null — the decision below is
-# what tells them apart, which is only possible if the report keeps them distinct.
-run_tracker "$PROFILED" state merge-pr
+# The report itself: five facts, judging none of them. `needs` is null because auto-dev is not on
+# the contract yet (#753), and that is a different absence from `implements` being null — the
+# decision below is what tells them apart, which is only possible if the report keeps them distinct.
+run_tracker "$PROFILED" state auto-dev
 if [ "$RC" -ne 0 ]; then
   note_fail "state — exited $RC ($ERR)"
 else
   got=$(printf '%s' "$OUT" | jq -r '[.tracker, .skill, (.needs|tostring), (.implements|length|tostring)] | join("|")' 2>/dev/null) \
     || got="<unparseable: $OUT>"
-  if [ "$got" != 'github|merge-pr|null|24' ]; then
+  if [ "$got" != 'github|auto-dev|null|34' ]; then
     note_fail "state — wrong report
-      want: github|merge-pr|null|24
+      want: github|auto-dev|null|34
       got:  $got"
   else
     ok "state — reports {tracker, skill, needs, implements} and judges nothing"
@@ -802,6 +939,18 @@ if [ "$RC" -ne 0 ] || [ "$got" != "$want_needs" ]; then
       got:  $got"
 else
   ok "state implement-issue — needs names the twelve verbs (#751)"
+fi
+
+# #752: merge-pr is on the contract — the ten inherited verbs plus its ten own.
+run_tracker "$PROFILED" state merge-pr
+got=$(printf '%s' "$OUT" | jq -r '.needs | join(" ")' 2>/dev/null) || got="<unparseable: $OUT>"
+want_needs='auth repo issue-view issue-search issue-edit-body issue-reopen issue-comment pr-list pr-view pr-ready pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete issue-parent pr-closing-issues pr-comment'
+if [ "$RC" -ne 0 ] || [ "$got" != "$want_needs" ]; then
+  note_fail "state merge-pr — wrong needs (rc $RC)
+      want: $want_needs
+      got:  $got"
+else
+  ok "state merge-pr — needs names the twenty verbs (#752)"
 fi
 
 echo "== C. contract coverage over create-issue's prose (#506)"
@@ -1092,8 +1241,8 @@ else
   ok "AC1 create-issue on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
-# merge-pr has not migrated (#508's own Out of scope) — missing, not capable, and not unsupported:
-# the backend exists, this skill's verbs just are not on the contract yet.
+# merge-pr is on the contract (#752) but gitlab.sh does not answer its verbs yet — missing, not
+# capable, and not unsupported: the backend exists, it just lacks verbs this skill needs.
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ]; then
@@ -1101,7 +1250,7 @@ if [ "$rc" -ne 0 ]; then
 elif [ "$out" != "missing" ]; then
   note_fail "AC1 merge-pr on gitlab — expected 'missing', got '$out'"
 else
-  ok "AC1 merge-pr on gitlab — not yet migrated, missing rather than capable or unsupported"
+  ok "AC1 merge-pr on gitlab — its verbs not answered yet, missing rather than capable or unsupported"
 fi
 
 # ------------------------------------------------------------------------------------------- repo

@@ -83,7 +83,7 @@
     },
     "pr-view": {
       "args": "<number>",
-      "stdout": "{\"number\",\"title\",\"url\",\"state\",\"isDraft\",\"body\",\"headBranch\",\"baseBranch\",\"headSha\",\"author\"} — state lower-cased, branches as bare names, author a login"
+      "stdout": "{\"number\",\"title\",\"url\",\"state\",\"isDraft\",\"body\",\"headBranch\",\"baseBranch\",\"headSha\",\"author\",\"mergedAt\",\"mergeSha\"} — state lower-cased, branches as bare names, author a login; mergedAt and mergeSha null until the PR merges (#752: guarded-pr-merge.sh reads the outcome back through them)"
     },
     "pr-edit-body": {
       "args": "<number> --body-file <f> [--dry-run]",
@@ -96,6 +96,46 @@
     "pr-commits": {
       "args": "<number>",
       "stdout": "a JSON array of the PR's commit SHAs — added by #751 because pr-existence-guard.sh breaks a tie between open PRs closing one issue by commit count (#214), and no other verb prints commits"
+    },
+    "pr-merge-state": {
+      "args": "<number>",
+      "stdout": "{\"behind_by\",\"mergeStateStatus\",\"isDraft\",\"reviewDecision\",\"unresolved_threads\"} — GitHub's words, UNKNOWN for a state the host cannot map; unresolved_threads lists the paths of unresolved threads ((pr-level) for a thread with no path). Exit 1 with nothing printed when any of its reads fails"
+    },
+    "pr-checks": {
+      "args": "<number>",
+      "stdout": "[{\"name\",\"state\",\"bucket\"}] — bucket is pass|fail|pending|skipping|cancel. No checks prints [] and exits 0; a host error is exit 1, never []"
+    },
+    "commit-checks": {
+      "args": "<sha>",
+      "stdout": "[{\"name\",\"state\",\"bucket\",\"id\",\"app\",\"html_url\"}] — every run on the sha, not reduced (ci.verdict reduces); state in GitHub's lower-case check-run words (conclusion // status), or UNKNOWN. A host error is exit 1, never []"
+    },
+    "pr-threads": {
+      "args": "<number>",
+      "stdout": "[{\"id\",\"path\",\"line\",\"body\",\"isResolved\"}] — one entry per review thread, its first comment's path, line and body. A failed read is exit 1, never []"
+    },
+    "pr-thread-resolve": {
+      "args": "<number> <thread-id> --body-file <f> [--dry-run]",
+      "stdout": "nothing — posts the file as a reply, then resolves the thread. Refuses a missing or empty --body-file (exit 2) and sends nothing. Added by #752: merge-pr resolves threads and must never resolve one silently. --dry-run prints one DRY-RUN line and calls nothing"
+    },
+    "pr-merge": {
+      "args": "<number> [--squash] [--delete-branch] [--subject <s>] [--body-file <f>] [--dry-run]",
+      "stdout": "nothing — the exit code is a hint, never the verdict: read the outcome back through pr-view. Refuses a missing or empty --body-file when one is given (exit 2). --dry-run prints one DRY-RUN line and calls nothing"
+    },
+    "branch-delete": {
+      "args": "<branch> [--dry-run]",
+      "stdout": "ok | gone — gone when the branch was already deleted. --dry-run prints one DRY-RUN line and calls nothing"
+    },
+    "issue-parent": {
+      "args": "<number>",
+      "stdout": "the parent's number, none, or fallback when the host cannot say (the sub-issues feature off). A parent in another repository exits 1 (#781)"
+    },
+    "pr-closing-issues": {
+      "args": "<number>",
+      "stdout": "a JSON array of the issue numbers the PR closes — added by #752 because merge-pr Step 5c reads them and no other verb prints them"
+    },
+    "pr-comment": {
+      "args": "<number> --body-file <f> [--dry-run]",
+      "stdout": "nothing — refuses a missing or empty --body-file (exit 2) and sends nothing. Added by #752: merge-pr records observations as a PR comment. --dry-run prints one DRY-RUN line and calls nothing"
     }
   },
   "skills": {
@@ -108,6 +148,12 @@
     "implement-issue": [
       "auth", "repo", "issue-view", "issue-search", "issue-comments", "issue-edit-body",
       "pr-create", "pr-list", "pr-view", "pr-edit-body", "pr-ready", "pr-commits"
+    ],
+    "merge-pr": [
+      "auth", "repo", "issue-view", "issue-search", "issue-edit-body", "issue-reopen",
+      "issue-comment", "pr-list", "pr-view", "pr-ready",
+      "pr-merge-state", "pr-checks", "commit-checks", "pr-threads", "pr-thread-resolve",
+      "pr-merge", "branch-delete", "issue-parent", "pr-closing-issues", "pr-comment"
     ]
   }
 }
