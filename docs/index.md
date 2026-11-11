@@ -67,6 +67,15 @@ nav_order: 1
 </aside>
 </section>
 
+<section class="kit-section kit-run" aria-labelledby="kit-run-title">
+<div class="kit-section-head"><h2 id="kit-run-title" class="kit-section-title">One run, start to finish</h2><p>One issue of this repository, from the idea to the merge. Its pull request was opened at 12:07:43 and merged at 12:24:27, {{ site.data.demo.opened_to_merged }} later. The three links are the proof.</p></div>
+<ol class="kit-run-steps">
+{%- for step in site.data.demo.steps %}
+<li><code>{{ step.skill }}</code><a href="{{ step.url }}">{{ step.left }}</a><span class="kit-run-at">{{ step.at }}</span></li>
+{%- endfor %}
+</ol>
+</section>
+
 <section class="kit-hasp" aria-label="The migration pipeline as a group lock-out">
 <div class="kit-hasp-bar">
 <div class="kit-hasp-label"><dl class="kit-hasp-times" aria-label="Cleared, timed from the gate commits"><dt>Chords</dt><dd>18 min</dd><dt>Les Fleurs du Mal</dt><dd>~30 min</dd><dt>Pokédex G</dt><dd>~1 h</dd></dl><p class="kit-display">Seven locks, one hasp</p></div>

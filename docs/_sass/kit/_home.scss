@@ -309,6 +309,56 @@
 
 // The lock-out record: the four apps, from where, cleared in how long. The minutes are the
 // largest type on the page after the tag band, stamped inside their rows.
+// One run (#786): three numbered steps side by side, stacked on a phone.
+.kit-run-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--unit) * 3);
+  counter-reset: run;
+}
+
+@media (min-width: 48rem) {
+  .kit-run-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kit-run-steps li {
+  counter-increment: run;
+  display: flex;
+  flex-direction: column;
+  gap: var(--unit);
+  padding-top: calc(var(--unit) * 2);
+  border-top: 1.5px solid var(--rule-strong);
+}
+
+.kit-run-steps li::before {
+  content: counter(run);
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 0.9;
+}
+
+.kit-run-steps code {
+  align-self: flex-start;
+}
+
+.kit-run-steps a {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.kit-run-at {
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
 .kit-record {
   width: 100%;
   border-collapse: collapse;

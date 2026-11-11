@@ -1585,6 +1585,15 @@ if "](install.md)" not in itext or "kit-picker" not in itext or "site.data.hosts
     print("FAIL: docs/index.md must link install.md and carry a kit-picker rendered from site.data.hosts"); sys.exit(1)
 if "claude_code.install[" in itext:
     print("FAIL: docs/index.md types an install command in the hero — the picker is the one place a command appears"); sys.exit(1)
+# The home page shows one real run (#786): docs/_data/demo.yml is its one home, and every step is proof.
+if "site.data.demo" not in itext:
+    print("FAIL: docs/index.md does not read site.data.demo — the run has one home, docs/_data/demo.yml"); sys.exit(1)
+_steps = (yaml.safe_load((docs / "_data" / "demo.yml").read_text(encoding="utf-8")) or {}).get("steps") or []
+if len(_steps) < 3:
+    print("FAIL: docs/_data/demo.yml has fewer than three steps — the run is idea, pull request, merge"); sys.exit(1)
+for _n, _s in enumerate(_steps, 1):
+    if not str(_s.get("url", "")).startswith("https://github.com/phmatray/tagout/"):
+        print("FAIL: docs/_data/demo.yml step " + str(_n) + " has no proof link into phmatray/tagout"); sys.exit(1)
 _product = (root / "PRODUCT.md").read_text(encoding="utf-8")
 _users = _product.split("## Users", 1)[1].split("\n## ", 1)[0]
 if "undecided" not in _users:
