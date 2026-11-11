@@ -1487,6 +1487,13 @@ home = (yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}).get("setting
 want = "/" + home.rstrip("/").rsplit("/", 1)[-1]
 if home and cfg.get("baseurl") != want:
     print("FAIL: docs/_config.yml baseurl is " + repr(cfg.get("baseurl")) + " but .github/repo-setup.yml homepage " + repr(home) + " implies " + repr(want)); sys.exit(1)
+# Every page carries a share card (#790): docs/assets/og.png is a byte copy of the README banner (Pages serves only docs/),
+# and the first defaults scope hands it to jekyll-seo-tag as the site-wide image.
+_og, _bn = docs / "assets" / "og.png", root / ".github" / "banner.png"
+if not (_og.exists() and _bn.exists() and _og.read_bytes() == _bn.read_bytes()):
+    print("FAIL: docs/assets/og.png is missing or differs from .github/banner.png — the share card is a copy of the README banner"); sys.exit(1)
+if not any(isinstance(v, dict) and v.get("values", {}).get("image") == "/assets/og.png" for v in cfg.get("defaults", [])):
+    print("FAIL: docs/_config.yml sets no default image — pages are shared without a card"); sys.exit(1)
 # The layouts the defaults assign must exist, and the base layout must include the head, the top bar,
 # the footer and the scripts — the four includes every page stands on.
 layouts = docs / "_layouts"
@@ -1660,6 +1667,7 @@ python3 "$_pscratch/pages-check.py" "$KIT_ROOT" || exit 1
 # refused by name. ONE check file, run on each.
 _red_docs() {  # <case> — a fresh copy of docs/ under $_pscratch/<case>
   rm -rf "${_pscratch:?}/$1"; mkdir -p "$_pscratch/$1"; cp -R "$KIT_ROOT/docs" "$_pscratch/$1/docs"; cp "$KIT_ROOT/PRODUCT.md" "$_pscratch/$1/PRODUCT.md"
+  mkdir -p "$_pscratch/$1/.github"; cp "$KIT_ROOT/.github/banner.png" "$_pscratch/$1/.github/banner.png"
 }
 _red_refused() {  # <case> <text the refusal must name> <what was broken>
   if python3 "$_pscratch/pages-check.py" "$_pscratch/$1" > "$_pscratch/$1.out" 2>&1; then
@@ -1690,6 +1698,12 @@ _red_refused typed "docs/install.md types" "an install command typed into a page
 _red_docs undecided
 sed 's/undecided/other/g' "$KIT_ROOT/PRODUCT.md" > "$_pscratch/undecided/PRODUCT.md"
 _red_refused undecided "PRODUCT.md" "a PRODUCT.md whose Users section names no undecided visitor"
+_red_docs card
+printf 'x' >> "$_pscratch/card/docs/assets/og.png"
+_red_refused card "differs from .github/banner.png" "a share card that drifted from the README banner"
+_red_docs noimage
+grep -v 'image: /assets/og.png' "$KIT_ROOT/docs/_config.yml" > "$_pscratch/noimage/docs/_config.yml"
+_red_refused noimage "sets no default image" "a docs/_config.yml with no default share image"
 _red_docs gets
 sed 's/, hooks: "yes"//' "$KIT_ROOT/docs/_data/hosts.yml" > "$_pscratch/gets/docs/_data/hosts.yml"
 _red_refused gets "claude-code gets" "a host row missing a capability"
