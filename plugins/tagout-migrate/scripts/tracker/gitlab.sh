@@ -232,13 +232,8 @@ _threads() {
          body: $n.body, isResolved: ($n.resolved == true)}]'
 }
 
-# github.sh's bucket rule over the check-run words commit-checks maps to: anything unrecognised —
-# UNKNOWN included — is pending, so an unmapped state waits and never reads as clear.
-JQ_BUCKET='def bucket: if . == "success" then "pass"
-  elif . == "skipped" or . == "neutral" then "skipping"
-  elif . == "cancelled" then "cancel"
-  elif . == "failure" then "fail"
-  else "pending" end;'
+# The `commit-checks` bucket rule lives once, in _bucket.sh (#807).
+. "$(dirname -- "${BASH_SOURCE[0]}")/_bucket.sh"
 
 case "$VERB" in
   auth)

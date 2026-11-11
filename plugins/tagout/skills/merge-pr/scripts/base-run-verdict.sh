@@ -118,6 +118,7 @@ KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
   || KIT_ROOT="$(dirname -- "$SELF")/../../.."
 DECIDE="$KIT_ROOT/scripts/decide.sh"
 TRACKER_SH="$KIT_ROOT/scripts/tracker.sh"
+BUCKET_LIB="$KIT_ROOT/scripts/tracker/_bucket.sh"
 
 # ------------------------------------------------------------------------------ 2. the arguments
 SHA=""
@@ -170,6 +171,11 @@ command -v gh_host_resolve > /dev/null 2>&1 \
 TRACKER_NAME=$("$KIT_ROOT/scripts/tracker-name.sh" ${REPO:+-R "$REPO"}) || TRACKER_NAME=""
 [ -n "$TRACKER_NAME" ] \
   || { echo "$TOOL: REFUSED — tracker.sh state could not name this repository's tracker" >&2; exit 64; }
+
+# The fallback's bucket is the backends' own rule, defined once (#807) — not a second copy, not null.
+unset JQ_BUCKET
+if [ -r "$BUCKET_LIB" ]; then . "$BUCKET_LIB" || true; fi
+[ -n "${JQ_BUCKET:-}" ] || { echo "$TOOL: REFUSED — cannot load $BUCKET_LIB; reinstall the kit" >&2; exit 64; }
 
 OWNER_REPO=""
 if [ "$TRACKER_NAME" = github ]; then
@@ -266,7 +272,7 @@ while :; do
     wr=""; wrc=0
     wr=$(gh api "repos/$OWNER_REPO/actions/runs?head_sha=$SHA&per_page=100" 2>/dev/null) || wrc=$?
     if [ "$wrc" -eq 0 ] && [ -n "$wr" ]; then
-      mapped=$(printf '%s' "$wr" | jq -c '[ .workflow_runs[]? | {name, id, app: null, html_url, state: (.conclusion // .status), bucket: null} ]' 2>/dev/null) || mapped=""
+      mapped=$(printf '%s' "$wr" | jq -c "$JQ_BUCKET"'[ .workflow_runs[]? | (.conclusion // .status) as $s | {name, id, app: null, html_url, state: $s, bucket: ($s | bucket)} ]' 2>/dev/null) || mapped=""
       if [ -n "$mapped" ]; then raw="$mapped"; rc=0; source=workflow-runs; fi
     fi
   fi
