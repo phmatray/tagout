@@ -486,7 +486,7 @@ case "$VERB" in
     [ -n "$LIM" ] && ARGS+=(--limit "$LIM")
     ARGS+=(--json number,title,url,state,isDraft,headRefName,body,mergedAt)
     out=$(gh "${ARGS[@]}") || exit 1
-    printf '%s' "$out" | jq -c '[.[] | {number, title, url, state: (.state | ascii_downcase),
+    printf '%s' "$out" | jq -c '[.[] | {number, title, url, state: ((.state // "") | ascii_downcase),
       isDraft, headBranch: .headRefName, body, mergedAt: (.mergedAt // null)}]'
     ;;
 

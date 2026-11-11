@@ -159,12 +159,12 @@ fi
 
 # ---------------------------------------------- 4. the branch-name lookup is silent on no match (#635)
 #
-# §1 reads ANY output of the `gh pr list --head` lookup as "a PR is already open". `.[0]` alone
+# §1 reads ANY output of the `pr-list --head` lookup as "a PR is already open". `.[0]` alone
 # prints `null` for a no-match `[]` — the #286 shape — and every caller would then stop forever.
-# The filter is read out of the recipe and run as gh's --jq runs it (raw output).
-lookup=$(grep -F 'gh pr list --head "$BRANCH"' "$RECIPE" | sed -nE "s/.*--jq '([^']*)'.*/\1/p") || true
+# The filter is read out of the recipe's `"<kit>/scripts/tracker.sh" pr-list --head` line (#751).
+lookup=$(grep -F '"<kit>/scripts/tracker.sh" pr-list --head "$BRANCH"' "$RECIPE" | sed -nE "s/.*\| jq '([^']*)'.*/\1/p") || true
 if [ -z "$lookup" ]; then
-  note_fail "no --jq filter found on the branch-name lookup in $RECIPE"
+  note_fail "no jq filter found on the branch-name lookup in $RECIPE"
 elif [ -n "$(printf '[]' | jq -r "$lookup")" ]; then
   note_fail "the branch-name lookup ('$lookup') prints output for no open PR — §1 would read it as a PR"
 elif [ -z "$(printf '[{"number":7}]' | jq -r "$lookup")" ]; then
@@ -243,8 +243,9 @@ cat > "$STUB/gh" <<'EOF'
 case "$1 $2" in
   "pr list") [ -n "${GH_LIST_FIXTURE:-}" ] && cat "$GH_LIST_FIXTURE"; exit "${GH_LIST_RC:-0}" ;;
   "pr view")
+    # `pr view <n> --json commits`, as the tracker contract's pr-commits sends it (#751).
     for pair in ${GH_COMMITS:-}; do
-      [ "${pair%%=*}" = "$3" ] && { echo "${pair#*=}"; exit 0; }
+      [ "${pair%%=*}" = "$3" ] && { jq -nc --argjson n "${pair#*=}" '{commits: [range($n) | {oid: "c\(.)"}]}'; exit 0; }
     done
     exit 1 ;;
 esac
