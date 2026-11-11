@@ -600,10 +600,11 @@ case "$VERB" in
     [ -n "$Q" ] && ARGS+=(--search "$Q in:body")
     [ -n "$ST" ] && ARGS+=(--state "$ST")
     [ -n "$LIM" ] && ARGS+=(--limit "$LIM")
-    ARGS+=(--json number,title,url,state,isDraft,headRefName,body,mergedAt)
+    ARGS+=(--json number,title,url,state,isDraft,headRefName,body,mergedAt,mergeStateStatus)
     out=$(gh "${ARGS[@]}") || exit 1
     printf '%s' "$out" | jq -c '[.[] | {number, title, url, state: ((.state // "") | ascii_downcase),
-      isDraft, headBranch: .headRefName, body, mergedAt: (.mergedAt // null)}]'
+      isDraft, headBranch: .headRefName, body, mergedAt: (.mergedAt // null),
+      mergeStateStatus: (.mergeStateStatus // null)}]'
     ;;
 
   pr-view)

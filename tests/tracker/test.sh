@@ -765,8 +765,8 @@ pr_case "pr-create --draft — gh pr create, {number,url}" 0 \
   "pr create --draft --base main --head feat/1-x --title T --body-file $PR_BODY" -- \
   pr-create --draft --base main --head feat/1-x --title T --body-file "$PR_BODY"
 pr_case "pr-list --search — searches the body, normalises state and headBranch" 0 \
-  '[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"open","isDraft":true,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":null}]' \
-  "pr list --search 7 in:body --state open --limit 100 --json number,title,url,state,isDraft,headRefName,body,mergedAt" -- \
+  '[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"open","isDraft":true,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":null,"mergeStateStatus":null}]' \
+  "pr list --search 7 in:body --state open --limit 100 --json number,title,url,state,isDraft,headRefName,body,mergedAt,mergeStateStatus" -- \
   pr-list --search 7 --state open --limit 100
 pr_case "pr-view — the ten decided keys, plus mergedAt and mergeSha (#752)" 0 \
   '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat","mergedAt":"2026-11-11T10:00:00Z","mergeSha":"def456"}' \
@@ -1418,7 +1418,7 @@ case "$method $endpoint_dispatch" in
   "POST projects/:id/merge_requests")
     payload=$(_pl GLAB_MR_CREATE_JSON '{"iid":51,"web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51"}') ;;
   "GET projects/:id/merge_requests"|"GET projects/:id/merge_requests"\?*)
-    payload=$(_pl GLAB_MR_LIST_JSON '[{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","draft":false,"source_branch":"feat/7-x","description":"Closes #7","merged_at":"2026-11-01T00:00:00Z"}]') ;;
+    payload=$(_pl GLAB_MR_LIST_JSON '[{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","draft":false,"source_branch":"feat/7-x","description":"Closes #7","merged_at":"2026-11-01T00:00:00Z","detailed_merge_status":"mergeable"}]') ;;
   "GET projects/:id/merge_requests/"[0-9]*"/commits"*)
     payload='[{"id":"aaa"},{"id":"bbb"}]' ;;
   # The merge verbs (#752). Every sub-resource before the bare MR patterns below, whose `[0-9]*`
@@ -1796,7 +1796,7 @@ pr_case "gitlab pr-create --draft — Draft: title prefix, description read from
 grep -Fq -- '-f source_branch=feat/1-x -f target_branch=main' "$GLAB_CALL_LOG" \
   || note_fail "gitlab pr-create — branches not sent: $(cat "$GLAB_CALL_LOG")"
 pr_case "gitlab pr-list --state open --search Closes — state=opened, search in description" 0 \
-  '[{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
+  '[{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","mergeStateStatus":"CLEAN","state":"merged","isDraft":false,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":"2026-11-01T00:00:00Z"}]' \
   "merge_requests?state=opened&search=Closes&in=description" -- pr-list --state open --search Closes
 # A term under 3 characters is ignored by GitLab's search, so it is matched locally, never sent.
 pr_case "gitlab pr-list --search 7 — a short term is matched locally, not sent" 0 - \
@@ -2000,6 +2000,23 @@ want='{"number":3,"title":"t3","labels":["effort: small"],"body":"b3","comments"
 pr_case "gitlab issue-list --limit 3 — three of five" 0 - - -- issue-list --state open --limit 3
 [ "$(printf '%s' "$OUT" | jq -c 'map(.number)')" = '[3,4,5]' ] && ok "gitlab issue-list --limit 3 — cut to three" \
   || note_fail "gitlab issue-list --limit 3 — got $OUT"
+
+# #813: the links read follows every page (glab --paginate prints one array per page) and the
+# edge's totalCount is the whole set — 250 links over three pages, never the first page's 100.
+pg() { jq -nc --argjson a "$1" --argjson n "$2" '[range($a; $a + $n) | {iid: ., state: "opened", link_type: "is_blocked_by"}]'; }
+GLAB_LINKS_JSON="$(pg 100 100)
+$(pg 200 100)
+$(pg 300 50)"
+export GLAB_LINKS_JSON GLAB_SEARCH_JSON='[{"iid":3,"title":"t3","labels":[],"description":"b3","created_at":"2026-11-01T00:00:00Z","assignees":[]}]'
+pr_case "gitlab issue-list — a 250-link set reads through every page" 0 - "api --paginate projects/:id/issues/3/links" -- issue-list --state open
+[ "$(printf '%s' "$OUT" | jq -c '[.[0].blockedBy.totalCount, (.[0].blockedBy.nodes | length)]')" = '[250,250]' ] \
+  && ok "gitlab issue-list — 250 links, totalCount 250" || note_fail "gitlab issue-list — links not paginated: $(printf '%s' "$OUT" | cut -c1-200)"
+GLAB_CALL_LOG="$GLAB_CALL_LOG" GLAB_LINKS_JSON="$GLAB_LINKS_JSON" run_tracker "$GITLAB_PROFILED" --tracker gitlab issue-blocked-by-count 3
+[ "$RC" -eq 0 ] && [ "$OUT" = 250 ] && ok "gitlab issue-blocked-by-count — counts across pages" \
+  || note_fail "gitlab issue-blocked-by-count — expected 250, got '$OUT' ($ERR)"
+unset GLAB_LINKS_JSON GLAB_SEARCH_JSON
+export GLAB_SEARCH_JSON='[{"iid":3,"title":"t3","labels":["effort: small"],"description":"b3","created_at":"2026-11-01T00:00:00Z","assignees":[{"username":"ann"}]},{"iid":4,"title":"t4","labels":[],"description":"b4","created_at":"2026-11-02T00:00:00Z","assignees":[]}]
+[{"iid":5,"title":"t5","labels":[],"description":"b5","created_at":"2026-11-03T00:00:00Z","assignees":[]},{"iid":6,"title":"t6","labels":[],"description":"b6","created_at":"2026-11-04T00:00:00Z","assignees":[]},{"iid":7,"title":"t7","labels":[],"description":"b7","created_at":"2026-11-05T00:00:00Z","assignees":[]}]'
 
 export GLAB_LINKS_STATUS=403
 pr_case "gitlab issue-list — a 403 on links is null edges, not a failure" 0 - - -- issue-list --state open
