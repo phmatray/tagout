@@ -51,7 +51,9 @@ there are three rungs, tried in order — **one attempt per rung** (#763).
    mkdir -p "$WORKTREE/.kit-guards"
    cp <kit>/skills/merge-pr/scripts/guarded-pr-merge.sh "$WORKTREE/.kit-guards/"
    ```
-   It sources nothing, so there is no `_assert-branch.sh`-style sibling to bring with it. Run the
+   It finds `scripts/tracker.sh` and `_gh-host.sh` three directories up from itself, which a copy
+   cannot, so run that copy with the kit named — `KIT_ROOT=<kit> "$WORKTREE/.kit-guards/guarded-pr-merge.sh" …`
+   (a pre-set `KIT_ROOT` wins over its own resolution). Run the
    copies from there — same arguments, same `-C "$WORKTREE"`, same `$BRANCH`. Then **delete the
    scratch directory before finishing** — it must never reach the commit or the diff:
    ```bash

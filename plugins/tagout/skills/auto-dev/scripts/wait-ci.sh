@@ -67,7 +67,9 @@
 # Exit 0 once every (filtered) check has left the `pending` bucket for every PR; 2 immediately if
 # a PR reports zero checks for MAX_ZERO_POLLS consecutive polls (nothing to wait on — most likely
 # no CI configured on this branch, not worth a silent hour-long stall); 1 on timeout (MAX_POLLS
-# reached with at least one check still pending).
+# reached with at least one check still pending). Also 2 at once when `pr-checks` exits 2, 3, 126 or
+# 127 — a bad invocation, a tracker without the verb, a dispatcher that cannot run: none heals by
+# waiting, so the real cause is printed instead of an hour of transient polls.
 #
 # GENUINE zero checks vs a TRANSIENT host failure (rate limit, network blip, an auth hiccup) must
 # not be confused: counting a failure toward MAX_ZERO_POLLS would let a couple of unlucky API calls
@@ -77,7 +79,7 @@
 # github.sh's concern since #752 — gh FAILS a `--json` call with "no checks reported on the
 # '<branch>' branch" when zero checks exist, measured on PR #291 of this repo, and the backend turns
 # exactly that wording into `[]`.) So `[]` is a zero-checks poll (counts toward MAX_ZERO_POLLS), and
-# ANY non-zero exit is transient, whatever its stderr says — logged, not counted either way, and the
+# exit 1 (or any code but the four above) is transient, whatever its stderr says — logged, not counted either way, and the
 # poll just continues, rather than giving up early with a wrong verdict.
 
 set -uo pipefail
@@ -154,13 +156,20 @@ for i in $(seq 1 "$MAX_POLLS"); do
   idx=0
   for pr in "${PRS[@]}"; do
     transient=0
-    json=$("$TRACKER" pr-checks "$pr" 2>"${GH_ERR_FILE:-/dev/null}") || transient=1
+    json=$("$TRACKER" pr-checks "$pr" 2>"${GH_ERR_FILE:-/dev/null}") || transient=$?
     gh_err=''
     [ -n "$GH_ERR_FILE" ] && gh_err=$(cat -- "$GH_ERR_FILE" 2>/dev/null)
     [ -n "$json" ] || json='[]'
 
-    # Any non-zero exit is a failed read, never "zero checks" — the verb prints `[]` for that.
-    if [ "$transient" -eq 1 ]; then
+    # Any non-zero exit is a failed read, never "zero checks" — the verb prints `[]` for that. But
+    # 2 (bad invocation), 3 (verb not implemented on this tracker), 126 and 127 (the dispatcher
+    # cannot run) never heal by waiting: fail at once with the real cause, not after MAX_POLLS.
+    case "$transient" in
+      2|3|126|127)
+        echo "wait-ci: tracker.sh pr-checks $pr exited $transient — not a transient failure, giving up: ${gh_err:-<no output>}" >&2
+        exit 2 ;;
+    esac
+    if [ "$transient" -ne 0 ]; then
       # Neither confirms nor disconfirms "zero checks": ZERO_POLLS is left exactly as it was, so a
       # blip can't manufacture progress toward MAX_ZERO_POLLS, and can't erase real progress either.
       line="${line} PR${pr}=[gh error, retrying: ${gh_err:-<no output>}]"
@@ -219,8 +228,12 @@ for i in $(seq 1 "$MAX_POLLS"); do
     for pr in "${PRS[@]}"; do
       echo "--- PR ${pr} ---"
       "$TRACKER" pr-checks "$pr" 2>/dev/null | jq -r '.[] | "\(.name)\t\(.state)"' 2>/dev/null | head -10
+      # pr-view carries no merge state; pr-merge-state does. Either read failing is not worth a red
+      # exit here — the checks are final — so a failure prints `unknown`.
+      ms=$("$TRACKER" pr-merge-state "$pr" 2>/dev/null | jq -r '.mergeStateStatus // empty' 2>/dev/null) || ms=""
       "$TRACKER" pr-view "$pr" 2>/dev/null \
-        | jq -r '"  state=\(.state) draft=\(.isDraft)"' 2>/dev/null
+        | jq -r --arg ms "${ms:-unknown}" '"  state=\(.state) draft=\(.isDraft) mergeState=\($ms)"' 2>/dev/null \
+        || echo "  mergeState=${ms:-unknown}"
     done
     exit 0
   fi

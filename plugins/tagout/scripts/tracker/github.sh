@@ -604,16 +604,21 @@ case "$VERB" in
     # Every read lands in a variable before anything prints: a failed read is exit 1 with an EMPTY
     # stdout, never a partial state that a caller could hand to merge.step4.
     view=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} \
-             --json mergeStateStatus,isDraft,reviewDecision,baseRefName,headRefName) || exit 1
+             --json mergeStateStatus,isDraft,reviewDecision,baseRefName,headRefName,headRepositoryOwner,isCrossRepository) || exit 1
     base=$(printf '%s' "$view" | jq -r '.baseRefName // empty')
     head=$(printf '%s' "$view" | jq -r '.headRefName // empty')
     [ -n "$base" ] && [ -n "$head" ] \
       || { echo "github: pr-merge-state: PR #$n reported no base or head branch" >&2; exit 1; }
+    # A fork PR's head branch is not in the base repository, so a bare `base...head` 404s there; the
+    # compare API names it `<owner>:<head>`.
+    headref=$(_uri_path "$head")
+    owner=$(printf '%s' "$view" | jq -r 'if .isCrossRepository == true then .headRepositoryOwner.login // empty else empty end')
+    [ -n "$owner" ] && headref="$owner:$headref"
     # `base...head` — three dots — gives behind_by relative to the base; reversing it silently
     # inverts the answer. This read and the pr view above are sequential, not atomic: a sibling PR
     # merging between them yields behind_by 0 beside BEHIND, which merge.step4's behind-state rule
     # answers for.
-    behind=$(gh api "repos/$(_repo_slug)/compare/$(_uri_path "$base")...$(_uri_path "$head")" \
+    behind=$(gh api "repos/$(_repo_slug)/compare/$(_uri_path "$base")...$headref" \
                --jq .behind_by) || exit 1
     case "$behind" in
       ''|*[!0-9]*) echo "github: pr-merge-state: compare answered behind_by '$behind'" >&2; exit 1 ;;

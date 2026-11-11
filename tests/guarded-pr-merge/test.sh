@@ -316,6 +316,58 @@ grep -qF "ARGS: pr merge 999 --squash --subject x" "$WORK/gh-calls.subject-passe
   || note_fail "subject-passes — gh pr merge did not receive '--squash --subject x':
 $(sed 's/^/    /' "$WORK/gh-calls.subject-passes.log")"
 
+# ------------------------------------------------- 13. a copy run with KIT_ROOT set (guard-invocation)
+#
+# skills/_shared/guard-invocation.md's worktree-confined fallback copies this one script into
+# $WORKTREE/.kit-guards/, where scripts/tracker.sh is not three dirs up. A pre-set KIT_ROOT must win
+# over the script's own resolution; without it the copy refuses (exit 64) rather than guessing.
+GUARDS_COPY="$WORK/kit-guards"
+mkdir -p "$GUARDS_COPY"
+cp "$SCRIPT" "$GUARDS_COPY/guarded-pr-merge.sh"
+GH_MERGE_RC=0 GH_MERGE_STDERR="" \
+GH_VIEW_MODE=ok GH_VIEW_FAIL_FIRST_N=0 GH_VIEW_STATE=MERGED GH_VIEW_MERGED_AT=2026-08-20T00:00:00Z GH_VIEW_SHA=c0b1ed \
+SCRIPT="$GUARDS_COPY/guarded-pr-merge.sh" KIT_ROOT="$KIT_ROOT" \
+run_case copy-with-kit-root 0 "MERGED c0b1ed" 'a copy outside the kit, run with KIT_ROOT=<kit> -> MERGED, exit 0'
+GH_MERGE_RC=0 GH_MERGE_STDERR="" GH_VIEW_MODE=ok GH_VIEW_FAIL_FIRST_N=0 GH_VIEW_STATE=MERGED \
+SCRIPT="$GUARDS_COPY/guarded-pr-merge.sh" \
+run_case copy-without-kit-root 64 "" 'the same copy with no KIT_ROOT -> refuses (exit 64), no call'
+[ -s "$WORK/gh-calls.copy-without-kit-root.log" ] && note_fail "copy-without-kit-root — refused but still called gh"
+
+# --------------------------------------------------------------- 14. a GitLab-profiled repository (#752)
+#
+# Both calls go through tracker.sh, so on a GitLab-profiled checkout they reach `glab`, never `gh`,
+# and -R group/sub/proj addresses a project under a subgroup (gitlab.sh's own slug rule). Built like
+# tests/merge-base-ci/test.sh's GitLab-profiled fixture.
+GITLAB_PROFILED="$WORK/gitlab-profiled"
+mkdir -p "$GITLAB_PROFILED/.claude/skills"
+printf '%s\n' \
+  '- **Tracker:** gitlab (gitlab.com) — the lifecycle skills drive GitLab semantics through `glab`.' \
+  > "$GITLAB_PROFILED/.claude/skills/repo-profile.md"
+cat > "$WORK/bin/glab" <<'STUB'
+#!/usr/bin/env bash
+echo "ARGS: $*" >> "$GLAB_CALL_LOG"
+case "$*" in
+  "api -X PUT projects/group%2Fsub%2Fproj/merge_requests/7/merge"*) exit 0 ;;
+  "api projects/group%2Fsub%2Fproj/merge_requests/7")
+    echo '{"iid":7,"state":"merged","draft":false,"merged_at":"2026-11-11T10:00:00Z","merge_commit_sha":null,"squash_commit_sha":"9a1ab5ha"}' ;;
+  *) echo "glab stub: unexpected invocation: $*" >&2; exit 99 ;;
+esac
+STUB
+chmod +x "$WORK/bin/glab"
+export GLAB_CALL_LOG="$WORK/glab-calls.log" GH_CALL_LOG="$WORK/gh-calls.gitlab.log"
+: > "$GLAB_CALL_LOG"; : > "$GH_CALL_LOG"
+set +e
+out=$(cd "$GITLAB_PROFILED" && "$KIT_ROOT/skills/merge-pr/scripts/guarded-pr-merge.sh" -R group/sub/proj 7 -- --squash 2>"$WORK/stderr.gitlab")
+rc=$?
+set -e
+if [ "$rc" -ne 0 ] || [ "$out" != "MERGED 9a1ab5ha" ]; then
+  note_fail "gitlab-profiled — want 'MERGED 9a1ab5ha' exit 0, got '$out' exit $rc: $(cat "$WORK/stderr.gitlab") glab: $(cat "$GLAB_CALL_LOG")"
+elif [ -s "$GH_CALL_LOG" ]; then
+  note_fail "gitlab-profiled — gh was called on a GitLab-profiled repository: $(cat "$GH_CALL_LOG")"
+else
+  echo "ok: gitlab-profiled — -R group/sub/proj 7 merges and reads back through glab, MERGED <sha>, no gh call"
+fi
+
 # ---------------------------------------------------------------------------------------- verdict
 if [ "$FAILED" -ne 0 ]; then
   echo

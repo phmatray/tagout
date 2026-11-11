@@ -89,8 +89,12 @@ while [ -L "$SELF" ]; do
     *)  SELF="$(dirname -- "$SELF")/$_link" ;;
   esac
 done
-KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
-  || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+# A pre-set KIT_ROOT wins: a copy run from outside the kit (guard-invocation.md's worktree-confined
+# fallback) cannot find scripts/tracker.sh three dirs up from itself.
+if [ -z "${KIT_ROOT:-}" ]; then
+  KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
+    || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+fi
 
 # Overridable so the golden suite (tests/guarded-pr-merge/test.sh) can exercise the UNCONFIRMED
 # and retry paths without real sleeps; production callers get the defaults. Validated, not just

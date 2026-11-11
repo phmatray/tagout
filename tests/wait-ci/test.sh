@@ -70,14 +70,19 @@ case "$*" in
     [ "$use" -gt "$max" ] && use=$max
     content=$(cat "$GH_RESPONSES/$use.json")
     case "$content" in
-      ERR:*)
-        printf '%s\n' "${content#ERR:}" >&2
-        exit 1
+      ERR*:*)
+        # "ERR:<msg>" exits 1; "ERR<code>:<msg>" exits <code> (case 16's not-implemented 3).
+        code="${content%%:*}"; code="${code#ERR}"
+        printf '%s\n' "${content#*:}" >&2
+        exit "${code:-1}"
         ;;
       *)
         printf '%s' "$content"
         ;;
     esac
+    ;;
+  "pr-merge-state "*)
+    echo '{"behind_by":0,"mergeStateStatus":"CLEAN","isDraft":false,"reviewDecision":null,"unresolved_threads":[]}'
     ;;
   *"pr view"*)
     echo '{"number":1,"title":"t","url":"u","state":"OPEN","isDraft":false,"body":"","headRefName":"h","baseRefName":"main","headRefOid":"abc","author":{"login":"a"},"mergedAt":null,"mergeCommit":null}'
@@ -372,5 +377,36 @@ has_poll "$out" 3 && { echo "FAIL [verb-empty]: should have failed fast, well be
 grep -q '^ARGS: pr-checks 15$' "$GH_CALL_LOG" || {
   echo "FAIL [verb-empty]: wait-ci.sh did not call tracker.sh pr-checks 15"; cat "$GH_CALL_LOG"; exit 1; }
 echo "  ok: verb-empty — pr-checks answering [] is a zero-checks poll and trips the bound"
+
+# ---------------------------------------------------------------- 16. pr-checks exiting 3 (the
+# tracker has no such verb) never heals: fail at once (exit 2) with the real cause, not after
+# MAX_POLLS of "retrying". Exit 1 stays transient (case 14).
+
+reset_case verb-missing 'ERR3:tracker: pr-checks is not implemented for bitbucket'
+rc=0
+out=$(POLL_SECONDS=0 MAX_POLLS=6 "$FWAIT" 16 2>&1) || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL [verb-missing]: expected exit 2 on pr-checks exiting 3, got $rc"; echo "$out"; exit 1; }
+has_poll "$out" 1 && { echo "FAIL [verb-missing]: polled on instead of failing at once"; echo "$out"; exit 1; }
+grep -q 'not implemented for bitbucket' <<<"$out" || {
+  echo "FAIL [verb-missing]: the real cause was not printed"; echo "$out"; exit 1; }
+echo "  ok: verb-missing — pr-checks exiting 3 fails at once with the real cause"
+
+# ---------------------------------------------------------------- 17. the final summary carries
+# the merge state again, from pr-merge-state (pr-view has none) — and `unknown` when it fails.
+
+reset_case summary-merge-state '[{"name":"kit","state":"SUCCESS","bucket":"pass"}]'
+rc=0
+out=$(POLL_SECONDS=0 MAX_POLLS=4 "$FWAIT" 17 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL [summary-merge-state]: expected exit 0, got $rc"; echo "$out"; exit 1; }
+grep -q 'mergeState=CLEAN' <<<"$out" || {
+  echo "FAIL [summary-merge-state]: the summary lacks mergeState=CLEAN"; echo "$out"; exit 1; }
+# The real tracker over the gh stub: pr-merge-state's compare read is unhandled there, so it fails.
+reset_case summary-merge-state-fails '[{"name":"kit","state":"SUCCESS","bucket":"pass"}]'
+rc=0
+out=$(POLL_SECONDS=0 MAX_POLLS=4 "$WAIT" 17 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || { echo "FAIL [summary-merge-state]: a failed pr-merge-state turned exit 0 into $rc"; echo "$out"; exit 1; }
+grep -q 'mergeState=unknown' <<<"$out" || {
+  echo "FAIL [summary-merge-state]: a failed pr-merge-state does not print mergeState=unknown"; echo "$out"; exit 1; }
+echo "  ok: summary-merge-state — the summary prints pr-merge-state's mergeStateStatus, unknown on failure"
 
 echo "wait-ci golden test OK"

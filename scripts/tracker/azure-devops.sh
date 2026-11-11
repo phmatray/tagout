@@ -799,10 +799,12 @@ PY
     [ -n "$sha" ] || { echo "azure-devops: commit-checks needs a commit sha" >&2; exit 2; }
     # ponytail: the project's 100 most recent runs, filtered here — the runs API cannot filter on a
     # commit. A sha whose runs fell out of that window reads as no runs; page with --skip if it bites.
+    # A PR validation build's sourceVersion is the test merge commit, so a PR head sha (pr-view's
+    # headSha, what merge-pr passes) matches on triggerInfo."pr.sourceSha" instead.
     out=$(az pipelines runs list --top 100 --org "$(_base_url)" --project "$PROJECT" -o json) \
       || { echo "azure-devops: commit-checks: az pipelines runs list failed" >&2; exit 1; }
     printf '%s' "$out" | jq -c --arg sha "$sha" "$JQ_BUCKET"'
-      [.[] | select(.sourceVersion == $sha) | .status as $st | .result as $r
+      [.[] | select(.sourceVersion == $sha or .triggerInfo."pr.sourceSha" == $sha) | .status as $st | .result as $r
        | (if $st == "notStarted" then "queued"
           elif $st == "inProgress" or $st == "cancelling" then "in_progress"
           elif $st == "postponed" then "waiting"

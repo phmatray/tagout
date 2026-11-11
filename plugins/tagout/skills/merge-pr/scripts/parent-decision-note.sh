@@ -137,8 +137,12 @@ while [ -L "$SELF" ]; do
     *)  SELF="$(dirname -- "$SELF")/$_link" ;;
   esac
 done
-KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
-  || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+# A pre-set KIT_ROOT wins: a copy run from outside the kit (guard-invocation.md's worktree-confined
+# fallback) cannot find scripts/tracker.sh three dirs up from itself.
+if [ -z "${KIT_ROOT:-}" ]; then
+  KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
+    || KIT_ROOT="$(dirname -- "$SELF")/../../.."
+fi
 GH_HOST_LIB="$KIT_ROOT/skills/_shared/scripts/_gh-host.sh"
 # CALLABLE, not merely readable: an empty or truncated helper sources cleanly and defines nothing.
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi

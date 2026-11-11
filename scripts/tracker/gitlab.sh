@@ -751,8 +751,9 @@ case "$VERB" in
     ep="projects/$(_id)/repository/branches/$(_urlenc "$b")"
     if [ "$DRY" -eq 1 ]; then echo "DRY-RUN glab api -X DELETE $ep"; exit 0; fi
     if err=$(_api -X DELETE "$ep" 2>&1); then echo ok; exit 0; fi
-    # A 404 is a branch already gone (a concurrent should_remove_source_branch); anything else is real.
-    if grep -qE '\(HTTP 404\)$|^glab: HTTP 404$' <<<"$err"; then echo gone; exit 0; fi
+    # A 404 naming the branch is one already gone (a concurrent should_remove_source_branch). A wrong
+    # project 404s too ("Project Not Found", or a bare 404) — that, and anything else, is real.
+    if grep -qE 'Branch Not Found \(HTTP 404\)$' <<<"$err"; then echo gone; exit 0; fi
     echo "gitlab: branch-delete: failed to delete $b: $err" >&2; exit 1
     ;;
 

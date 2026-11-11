@@ -171,7 +171,13 @@ else
     # The PR verbs (#751): gh-shaped answers the backend must normalise (headRefName, OPEN, author.login).
     "pr create")    echo "https://example.invalid/o/r/pull/51"; exit 0 ;;
     "pr list")      payload='[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"OPEN","isDraft":true,"headRefName":"feat/7-x","body":"Closes #7","mergedAt":null}]' ;;
-    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}],"mergedAt":"2026-11-11T10:00:00Z","mergeCommit":{"oid":"def456"},"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","closingIssuesReferences":[{"number":12},{"number":13}]}' ;;
+    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}],"mergedAt":"2026-11-11T10:00:00Z","mergeCommit":{"oid":"def456"},"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","closingIssuesReferences":[{"number":12},{"number":13}]}'
+                    # GH_PR_FORK=<login> makes it a fork PR: its head branch lives in <login>'s repository.
+                    if [ -n "${GH_PR_FORK:-}" ]; then
+                      payload=$(printf '%s' "$payload" | jq -c --arg o "$GH_PR_FORK" '. + {isCrossRepository: true, headRepositoryOwner: {login: $o}}')
+                    else
+                      payload=$(printf '%s' "$payload" | jq -c '. + {isCrossRepository: false, headRepositoryOwner: {login: "acme"}}')
+                    fi ;;
     "pr edit")      exit 0 ;;
     "pr ready")     exit 0 ;;
     # The merge-pr verbs (#752). GH_CHECKS_MODE=none is gh's "no checks reported", =fail any other
@@ -769,6 +775,16 @@ pr_case "pr-merge-state — behind_by from compare, only unresolved paths, (pr-l
   "api repos/acme/widgets/compare/main...feat/7-x" -- "${R[@]}" pr-merge-state 7
 grep -Fq "pr view 7 --repo acme/widgets --json mergeStateStatus,isDraft,reviewDecision,baseRefName,headRefName" "$GH_CALL_LOG" \
   || note_fail "pr-merge-state — the pr view argv is not today's: $(cat "$GH_CALL_LOG")"
+# The threads query paginates: without BOTH the $endCursor variable and the pageInfo selection,
+# `--paginate` quietly fetches one page and a 101st unresolved thread reads as resolved.
+for frag in 'after:$endCursor' 'pageInfo{ hasNextPage endCursor }'; do
+  grep -Fq -- "$frag" "$GH_CALL_LOG" || note_fail "pr-merge-state — the reviewThreads query lacks '$frag': $(cat "$GH_CALL_LOG")"
+done
+# A fork PR's head branch is not in the base repository: a bare main...feat/7-x 404s there.
+export GH_PR_FORK=forker
+pr_case "pr-merge-state — a fork PR compares <base>...<owner>:<head>" 0 - \
+  "api repos/acme/widgets/compare/main...forker:feat/7-x" -- "${R[@]}" pr-merge-state 7
+unset GH_PR_FORK
 export GH_GRAPHQL_FAIL=1
 pr_case "pr-merge-state — a failed thread read exits 1 and prints nothing" 1 '' - -- "${R[@]}" pr-merge-state 7
 pr_case "pr-threads — a failed thread read is exit 1, never []" 1 '' - -- "${R[@]}" pr-threads 7
@@ -1696,6 +1712,22 @@ export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"requested_c
 pr_case "gitlab pr-merge-state — requested_changes is BLOCKED / CHANGES_REQUESTED" 0 \
   '{"behind_by":0,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","unresolved_threads":["a.sh","(pr-level)"]}' \
   - -- pr-merge-state 7
+
+# AC3 end to end: an UNKNOWN from the verb, projected the way merge-mechanics.md §4 builds the
+# merge.step4 state (the five fields by name, plus the CI gate's failed/pending — empty here), must
+# answer wait/unknown through the dispatcher, never merge. Reused by F3.
+step4_of() {
+  printf '%s' "$1" | jq -c '{behind_by, mergeStateStatus, isDraft, reviewDecision, unresolved_threads}
+                           + {failed: [], pending: []}' \
+    | "$DECIDE" merge.step4 --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null || echo "<unparseable>"
+}
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"checking","diverged_commits_count":0}' GLAB_DISCUSSIONS_JSON='[]'
+pr_case "gitlab pr-merge-state — checking, no threads, not behind" 0 - - -- pr-merge-state 7
+got=$(step4_of "$OUT")
+[ "$got" = wait/unknown ] && ok "gitlab checking → merge.step4 wait/unknown, never merge" \
+  || note_fail "gitlab checking → merge.step4 — want wait/unknown, got $got ($OUT)"
+unset GLAB_DISCUSSIONS_JSON
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"requested_changes","diverged_commits_count":0}'
 export GLAB_DISCUSSIONS_STATUS=500
 pr_case "gitlab pr-merge-state — a failed discussions read exits 1 and prints nothing" 1 '' - -- pr-merge-state 7
 pr_case "gitlab pr-threads — a failed discussions read is exit 1, never []" 1 '' - -- pr-threads 7
@@ -1747,7 +1779,12 @@ pr_case "gitlab pr-merge — a flag outside the four is exit 2, no glab call" 2 
 pr_case "gitlab branch-delete — DELETE the url-encoded branch, ok" 0 ok \
   "-X DELETE projects/:id/repository/branches/feature%2Fx%231" -- branch-delete 'feature/x#1'
 export GLAB_BRANCH_DELETE_STATUS=404 GLAB_BRANCH_DELETE_MESSAGE="404 Branch Not Found"
-pr_case "gitlab branch-delete — a 404 is gone" 0 gone - -- branch-delete feature/x
+pr_case "gitlab branch-delete — a 404 Branch Not Found is gone" 0 gone - -- branch-delete feature/x
+# A wrong project 404s too — that is not the branch being gone.
+export GLAB_BRANCH_DELETE_MESSAGE="404 Project Not Found"
+pr_case "gitlab branch-delete — a 404 Project Not Found is exit 1, never gone" 1 '' - -- branch-delete feature/x
+export GLAB_BRANCH_DELETE_MESSAGE=""
+pr_case "gitlab branch-delete — a bare HTTP 404 is exit 1, never gone" 1 '' - -- branch-delete feature/x
 export GLAB_BRANCH_DELETE_STATUS=403 GLAB_BRANCH_DELETE_MESSAGE="403 Forbidden"
 pr_case "gitlab branch-delete — any other failure is exit 1" 1 '' - -- branch-delete feature/x
 unset GLAB_BRANCH_DELETE_STATUS GLAB_BRANCH_DELETE_MESSAGE
@@ -2398,6 +2435,14 @@ for c in "false:succeeded:OK:CLEAN" "false:conflicts:OK:DIRTY" "false:succeeded:
   got=$(printf '%s' "$OUT" | jq -r .mergeStateStatus 2>/dev/null)
   [ "$got" = "$want" ] || note_fail "azure pr-merge-state draft=$d $ms/$pol — want $want, got '$got' ($OUT)"
 done
+# AC3 end to end, as E3: a running blocking policy is UNKNOWN, and merge.step4 waits on it.
+AZ_PR_JSON=$(printf '%s' "$AZ_PR_TMPL" | sed 's/DRAFT/false/; s/"MS"/"succeeded"/'); export AZ_PR_JSON
+export AZ_POLICY_JSON="$POL_RUN" AZ_THREADS_JSON='{"value":[]}'
+pr_case "azure pr-merge-state — a running policy, no threads, not behind" 0 - - -- pr-merge-state 9
+got=$(step4_of "$OUT")
+[ "$got" = wait/unknown ] && ok "azure running policy → merge.step4 wait/unknown, never merge" \
+  || note_fail "azure running policy → merge.step4 — want wait/unknown, got $got ($OUT)"
+unset AZ_THREADS_JSON
 AZ_PR_JSON=$(printf '%s' "$AZ_PR_TMPL" | sed 's/DRAFT/false/; s/"MS"/"succeeded"/'); export AZ_PR_JSON
 export AZ_POLICY_JSON="$POL_OK" AZ_BRANCH_STATS_JSON='{"name":"feat/7-x","aheadCount":2,"behindCount":3}'
 pr_case "azure pr-merge-state — behindCount is behind_by, active text threads' paths without the leading /" 0 \
@@ -2442,6 +2487,11 @@ pr_case "azure commit-checks — runs on the sha only, partiallySucceeded is fai
   '[{"name":"build","state":"success","bucket":"pass","id":1,"app":null,"html_url":"https://dev.azure.com/acme/Shop/_build/results?buildId=1"},{"name":"test","state":"failure","bucket":"fail","id":2,"app":null,"html_url":null},{"name":"lint","state":"in_progress","bucket":"pending","id":4,"app":null,"html_url":null},{"name":"odd","state":"UNKNOWN","bucket":"pending","id":5,"app":null,"html_url":null},{"name":"e2e","state":"queued","bucket":"pending","id":6,"app":null,"html_url":null},{"name":"old","state":"cancelled","bucket":"cancel","id":7,"app":null,"html_url":null},{"name":"later","state":"waiting","bucket":"pending","id":8,"app":null,"html_url":null}]' \
   "pipelines runs list" -- commit-checks abc123
 grep -Fq -- "--top 100" "$AZ_CALL_LOG" || note_fail "azure commit-checks — runs list without --top 100: $(cat "$AZ_CALL_LOG")"
+# A PR validation build runs on the test merge commit: its sourceVersion is that merge, and the PR
+# head merge-pr passes (pr-view's headSha) is only in triggerInfo."pr.sourceSha".
+export AZ_RUNS_JSON='[{"id":9,"sourceVersion":"merge999","triggerInfo":{"pr.sourceSha":"abc123"},"status":"completed","result":"succeeded","definition":{"name":"pr-build"}},{"id":10,"sourceVersion":"merge888","triggerInfo":{"pr.sourceSha":"other"},"status":"completed","result":"failed","definition":{"name":"pr-build"}}]'
+pr_case "azure commit-checks — a PR build whose triggerInfo pr.sourceSha is the sha counts" 0 \
+  '[{"name":"pr-build","state":"success","bucket":"pass","id":9,"app":null,"html_url":null}]' - -- commit-checks abc123
 unset AZ_RUNS_JSON
 export AZ_RUNS_FAIL=1
 pr_case "azure commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
