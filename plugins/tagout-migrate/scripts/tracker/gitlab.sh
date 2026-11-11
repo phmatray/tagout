@@ -75,7 +75,7 @@ if [ -n "${TRACKER_REPO:-}" ]; then
   _slug="$TRACKER_REPO"
   case "$_slug" in
     /*|*/|*//*)
-      echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER/REPO" >&2; exit 2 ;;
+      echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER[/SUBGROUP…]/REPO" >&2; exit 2 ;;
   esac
   _segments=1; _rest="$_slug"
   while :; do
