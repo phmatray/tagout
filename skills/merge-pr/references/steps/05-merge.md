@@ -6,7 +6,7 @@ land; for squash-merge (the `(#NNN)` commits on `main`):
 ```bash
 <kit>/skills/merge-pr/scripts/guarded-pr-merge.sh "$PR" \
   -- --squash --delete-branch --subject "<PR title — already ends in (#issue)> (#$PR)"
-  # --subject is optional; omit it (drop the whole -- line down to --delete-branch) to accept gh's default
+  # --subject is optional; omit it (drop the whole -- line down to --delete-branch) to accept the host's default
 ```
 
 If that call to `guarded-pr-merge.sh` is refused (an agent confined to its worktree, the path
@@ -16,9 +16,16 @@ resolving outside it), see the fallback in
 `<kit>` is the kit root (the placeholder `references/merge-mechanics.md` defines). When the plugin's
 hooks run, it is printed at session start as `Kit root:` and spelled out in every write-gate denial
 that names a guard; either way, a guard you cannot find is a reason to resolve `<kit>`, never to run
-`gh pr merge` yourself.
+the merge yourself (`gh pr merge`, or `tracker.sh pr-merge` bare).
 
-**Prefer omitting `--subject`.** `implement-issue` titled the PR `… (#issue)`, and gh's default squash
+The guard merges through `"<kit>/scripts/tracker.sh" pr-merge` and reads the outcome back through
+`pr-view` (#752), so the same call lands a PR on GitHub, a merge request on GitLab and a pull request
+on Azure DevOps. It accepts only `--squash`, `--delete-branch`, `--subject <s>` and `--body-file <f>`
+after `--`; anything else (`--admin`, `--auto`, …) is exit 64 with nothing sent. On a landed merge it
+prints `MERGED <sha>`, the sha taken from `pr-view`'s `mergeSha` — keep it as `$MERGE_SHA` for Steps
+5b and 6.
+
+**Prefer omitting `--subject`.** `implement-issue` titled the PR `… (#issue)`, and GitHub's default squash
 subject is that title with `(#PR)` appended — giving the canonical `… (#issue) (#PR)` shape
 automatically. If you override it, keep the `(#issue)` or you drop the link to the originating issue.
 
@@ -81,5 +88,15 @@ one Conventional Commit line per distinct change, e.g.:
     feat(export): stream large report downloads (#58, #77)
     feat(export): add XLSX export alongside CSV (#90)
 
-Verify the resulting release PR lists an entry per line. If the release tooling does not split the
-body, prefer not bundling unrelated issues into one squash in the first place.
+Write that body to a file and pass it through the guard — never inline, and never piped:
+
+```bash
+<kit>/skills/merge-pr/scripts/guarded-pr-merge.sh "$PR" \
+  -- --squash --delete-branch --body-file <squash-body.md>
+```
+
+`pr-merge` refuses a missing or empty `--body-file` (exit 2, nothing sent), so an unwritten body file
+cannot land a squash with a blank body. A refused guard call takes the same fallback as above,
+[`../../../_shared/guard-invocation.md`](../../../_shared/guard-invocation.md). Verify the resulting
+release PR lists an entry per line. If the release tooling does not split the body, prefer not
+bundling unrelated issues into one squash in the first place.

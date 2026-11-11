@@ -44,7 +44,9 @@ if [ "$VERB" = verbs ]; then
     issue-search issue-comments issue-create issue-edit-body \
     issue-add-labels issue-remove-labels issue-reopen issue-comment label-list label-create \
     issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
-    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits
+    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits \
+    pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete \
+    issue-parent pr-closing-issues pr-comment
   exit 0
 fi
 
@@ -161,6 +163,56 @@ _parse_link_args() {
     esac
   done
 }
+
+# A branch name as a URL path, URI-encoded PER PATH SEGMENT — moved from
+# skills/merge-pr/scripts/remote-branch-teardown.sh (#752), its reasoning with it: git branch names
+# may legally contain characters that are significant in a URL — `#` in particular delimits a
+# fragment and gh silently drops it and everything after, so an unencoded "feature/x#1" would
+# DELETE the wrong (truncated, likely nonexistent) ref while the real branch survives on origin. But
+# the kit's own branch names are themselves slash-separated ("fix/185-…" — the routine case, not an
+# edge case here), and those slashes are real path separators in the REST route, not data to
+# escape: encoding the whole string with a flat `@uri` would turn every `/` into `%2F`, which does
+# not decode back to a path separator. Split on `/`, encode each segment, rejoin with a literal `/`.
+_uri_path() { jq -rn --arg b "$1" '$b | split("/") | map(@uri) | join("/")'; }
+
+# The review threads of PR $1, as the contract's pr-threads array — the ONE read both pr-threads and
+# pr-merge-state answer from. Moved from skills/merge-pr/references/merge-mechanics.md §4 (#752).
+# `--paginate` is load-bearing: `reviewThreads(first:100)` sits at GitHub's page maximum, so without
+# it a PR whose 101st thread is the unresolved one reads as fully resolved and merges. It needs BOTH
+# the `$endCursor` variable and the `pageInfo` selection; drop either and it quietly fetches one page.
+# A failed query must never yield an empty list — a failed query and a PR with nothing open spell the
+# same `[]`, and one of them merges unreviewed (#294) — so `pipefail` (set at the top of this file)
+# carries gh's exit status across the `jq` after it, and the caller discards stdout on a non-zero
+# return. GH_HOST, exported by gh_host_resolve, is what reaches a GitHub Enterprise host here; without
+# it the query fails with "Could not resolve to a Repository" rather than answering empty.
+# `-f` for a named repository (a numeric owner must stay a string), `-F` for gh's own {owner}/{repo}
+# placeholders, which only -F expands.
+# shellcheck disable=SC2016  # $owner, $pr… are GraphQL variables, not shell expansions
+_threads() {
+  local s fl=-F
+  s=$(_repo_slug)
+  [ -n "$KIT_REPO_SLUG" ] && fl=-f
+  gh api graphql --paginate -f query='
+  query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){ repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){ reviewThreads(first:100, after:$endCursor){
+      pageInfo{ hasNextPage endCursor }
+      nodes{ id isResolved comments(first:1){ nodes{ path line body } } } } } } }' \
+    "$fl" owner="${s%%/*}" "$fl" repo="${s#*/}" -F pr="$1" \
+    --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+          | {id, path: .comments.nodes[0].path, line: .comments.nodes[0].line,
+             body: .comments.nodes[0].body, isResolved}' \
+    | jq -sc .
+}
+
+# gh's own `pr checks` bucket rule, applied to a check-run's lower-cased conclusion // status so
+# commit-checks carries the same buckets pr-checks does. Anything unrecognised — UNKNOWN included —
+# is pending: an unmapped state waits, it never reads as clear.
+JQ_BUCKET='def bucket: if . == "success" then "pass"
+  elif . == "skipped" or . == "neutral" then "skipping"
+  elif . == "cancelled" then "cancel"
+  elif . == "failure" or . == "timed_out" or . == "action_required" or . == "startup_failure"
+       or . == "error" then "fail"
+  else "pending" end;'
 
 case "$VERB" in
   auth)
@@ -494,10 +546,11 @@ case "$VERB" in
     n="${1-}"
     [ -n "$n" ] || { echo "github: pr-view needs a PR number" >&2; exit 2; }
     out=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} \
-            --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author) || exit 1
+            --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author,mergedAt,mergeCommit) || exit 1
     printf '%s' "$out" | jq -c '{number, title, url, state: (.state | ascii_downcase), isDraft, body,
       headBranch: .headRefName, baseBranch: .baseRefName, headSha: .headRefOid,
-      author: (.author.login // null)}'
+      author: (.author.login // null), mergedAt: (.mergedAt // null),
+      mergeSha: (.mergeCommit.oid // null)}'
     ;;
 
   pr-edit-body)
@@ -541,6 +594,239 @@ case "$VERB" in
     [ -n "$n" ] || { echo "github: pr-commits needs a PR number" >&2; exit 2; }
     out=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} --json commits) || exit 1
     printf '%s' "$out" | jq -c '[.commits[].oid]'
+    ;;
+
+  # The ten merge-pr verbs (#752). Each sends the argv merge-pr's scripts and prose send today, so
+  # tests/merge-base-ci's path-matching stub and tests/guarded-pr-merge's cases still match.
+  pr-merge-state)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: pr-merge-state needs a PR number" >&2; exit 2; }
+    # Every read lands in a variable before anything prints: a failed read is exit 1 with an EMPTY
+    # stdout, never a partial state that a caller could hand to merge.step4.
+    view=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} \
+             --json mergeStateStatus,isDraft,reviewDecision,baseRefName,headRefName,headRepositoryOwner,isCrossRepository) || exit 1
+    base=$(printf '%s' "$view" | jq -r '.baseRefName // empty')
+    head=$(printf '%s' "$view" | jq -r '.headRefName // empty')
+    [ -n "$base" ] && [ -n "$head" ] \
+      || { echo "github: pr-merge-state: PR #$n reported no base or head branch" >&2; exit 1; }
+    # A fork PR's head branch is not in the base repository, so a bare `base...head` 404s there; the
+    # compare API names it `<owner>:<head>`.
+    headref=$(_uri_path "$head")
+    owner=$(printf '%s' "$view" | jq -r 'if .isCrossRepository == true then .headRepositoryOwner.login // empty else empty end')
+    [ -n "$owner" ] && headref="$owner:$headref"
+    # `base...head` — three dots — gives behind_by relative to the base; reversing it silently
+    # inverts the answer. This read and the pr view above are sequential, not atomic: a sibling PR
+    # merging between them yields behind_by 0 beside BEHIND, which merge.step4's behind-state rule
+    # answers for.
+    behind=$(gh api "repos/$(_repo_slug)/compare/$(_uri_path "$base")...$headref" \
+               --jq .behind_by) || exit 1
+    case "$behind" in
+      ''|*[!0-9]*) echo "github: pr-merge-state: compare answered behind_by '$behind'" >&2; exit 1 ;;
+    esac
+    threads=$(_threads "$n") || {
+      echo "github: pr-merge-state: the reviewThreads query failed — an unanswered query is not 'no threads'" >&2
+      exit 1; }
+    # Paths, not a count, so the recap can say WHICH threads were cleared; a thread with no inline
+    # path (a PR-level conversation) still counts, under `(pr-level)`.
+    printf '%s' "$view" | jq -c --argjson b "$behind" --argjson t "$threads" \
+      '{behind_by: $b, mergeStateStatus, isDraft, reviewDecision,
+        unresolved_threads: [$t[] | select(.isResolved == false) | .path // "(pr-level)"]}'
+    ;;
+
+  pr-threads)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: pr-threads needs a PR number" >&2; exit 2; }
+    threads=$(_threads "$n") || {
+      echo "github: pr-threads: the reviewThreads query failed — an unanswered query is not 'no threads'" >&2
+      exit 1; }
+    printf '%s\n' "$threads"
+    ;;
+
+  pr-checks)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: pr-checks needs a PR number" >&2; exit 2; }
+    errf=$(mktemp "${TMPDIR:-/tmp}/github-pr-checks.XXXXXX") || exit 1
+    trap 'rm -f "$errf"' EXIT
+    if out=$(gh pr checks "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} --json name,state,bucket 2>"$errf"); then
+      printf '%s' "$out" | jq -c '[.[] | {name, state, bucket}]'
+    elif grep -qi 'no checks reported' "$errf"; then
+      # gh answers a PR with no checks at all by FAILING with this message — a genuine zero, the
+      # one failure that is an answer (wait-ci.sh used to make this call itself, #752).
+      echo '[]'
+    else
+      cat "$errf" >&2; exit 1
+    fi
+    ;;
+
+  commit-checks)
+    sha="${1-}"
+    [ -n "$sha" ] || { echo "github: commit-checks needs a commit sha" >&2; exit 2; }
+    # Exactly base-run-verdict.sh's call. Every run, superseded ones included: the #91 reduction
+    # (newest run per name, grouped by app) is ci.verdict's job, its one home (#208), not this verb's.
+    out=$(gh api "repos/$(_repo_slug)/commits/$sha/check-runs" --paginate --slurp) || exit 1
+    [ -n "$out" ] || { echo "github: commit-checks: check-runs answered nothing for $sha" >&2; exit 1; }
+    printf '%s' "$out" | jq -c "$JQ_BUCKET"'
+      [.[].check_runs[] | (.conclusion // .status // "UNKNOWN") as $s
+       | {name, state: $s, bucket: ($s | bucket), id, app: .app.id, html_url}]'
+    ;;
+
+  pr-thread-resolve)
+    POS=(); BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "github: pr-thread-resolve: unknown option: $1" >&2; exit 2 ;;
+        *)  POS+=("$1"); shift ;;
+      esac
+    done
+    n="${POS[0]-}"; tid="${POS[1]-}"
+    [ -n "$n" ] && [ -n "$tid" ] \
+      || { echo "github: pr-thread-resolve needs <number> <thread-id>" >&2; exit 2; }
+    # The reply is REQUIRED: resolving silently clears the gate and deletes the reason. Reply first,
+    # resolve second, always in that order (merge-mechanics.md §6).
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "github: pr-thread-resolve refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN gh api graphql addPullRequestReviewThreadReply(threadId: $tid, body: @$BODY_FILE) then resolveReviewThread(threadId: $tid) on PR #$n"
+      exit 0
+    fi
+    # shellcheck disable=SC2016  # $id, $body are GraphQL variables, not shell expansions
+    gh api graphql -f query='
+  mutation($id:ID!,$body:String!){ addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$id, body:$body}){ comment{ id } } }' \
+      -f id="$tid" -F body=@"$BODY_FILE" > /dev/null || exit 1
+    # shellcheck disable=SC2016
+    gh api graphql -f query='
+  mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' \
+      -f id="$tid" > /dev/null || exit 1
+    ;;
+
+  pr-merge)
+    n=""; FLAGS=(); BODY_FILE=""; HAS_BODY=0; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --squash|--delete-branch) FLAGS+=("$1"); shift ;;
+        --subject)   [ $# -ge 2 ] || { echo "github: pr-merge: --subject needs a value" >&2; exit 2; }
+                     FLAGS+=(--subject "$2"); shift 2 ;;
+        --body-file) HAS_BODY=1; BODY_FILE="${2-}"; FLAGS+=(--body-file "$BODY_FILE"); shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "github: pr-merge: unknown option: $1 (only --squash, --delete-branch, --subject, --body-file)" >&2; exit 2 ;;
+        *)  [ -z "$n" ] || { echo "github: pr-merge: unexpected argument: $1" >&2; exit 2; }
+            n="$1"; shift ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "github: pr-merge needs a PR number" >&2; exit 2; }
+    if [ "$HAS_BODY" -eq 1 ]; then
+      [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+        || { echo "github: pr-merge refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    fi
+    # Number, then --repo, then the flags in the order given — the argv guarded-pr-merge.sh sent.
+    ARGS=(pr merge "$n")
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    ARGS+=(${FLAGS[@]+"${FLAGS[@]}"})
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh ${ARGS[*]}"; exit 0; fi
+    # stdout dropped so a gh status line can never land on a caller's captured stdout; stderr passes
+    # through. The exit code is a hint, never the verdict — the caller reads the outcome back
+    # through pr-view.
+    gh "${ARGS[@]}" > /dev/null || exit 1
+    ;;
+
+  branch-delete)
+    b=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "github: branch-delete: unknown option: $a" >&2; exit 2 ;;
+        *)  b="$a" ;;
+      esac
+    done
+    [ -n "$b" ] || { echo "github: branch-delete needs a branch name" >&2; exit 2; }
+    ep="repos/$(_repo_slug)/git/refs/heads/$(_uri_path "$b")"
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh api -X DELETE $ep"; exit 0; fi
+    if err=$(gh api -X DELETE "$ep" 2>&1); then echo ok; exit 0; fi
+    # Same tolerance gh's own deleteRemoteBranch() applies: a delete that lost the race against a
+    # concurrent delete_branch_on_merge or a slow --delete-branch answers "Reference does not
+    # exist", on either a 422 or a 404. Matched on the MESSAGE, not the HTTP code alone — any
+    # 422/404 would also swallow a real failure that happens to share a status (a nonexistent repo
+    # 404s for a wholly different reason). Anything without this exact phrase is a real failure.
+    if grep -qF 'Reference does not exist' <<<"$err"; then echo gone; exit 0; fi
+    echo "github: branch-delete: failed to delete $b: $err" >&2; exit 1
+    ;;
+
+  issue-parent)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: issue-parent needs an issue number" >&2; exit 2; }
+    # Moved from skills/merge-pr/scripts/parent-decision-note.sh (#752). REST, not the `parent` JSON
+    # field of `gh issue view`: gh 2.87.3 lacks it (#762).
+    rc=0
+    out=$(gh api -H "Accept: application/vnd.github+json" "repos/$(_repo_slug)/issues/$n/parent" 2>&1) || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      case "$out" in
+        *"No parent issue found"*) echo none; exit 0 ;;
+        *"HTTP 404"*)
+          # Any OTHER 404 is the sub-issues API being unavailable on this host, not "no parent"
+          # (#762): fallback, so the caller can look for the parent another way.
+          echo "github: issue-parent: this host's sub-issues API is unavailable (HTTP 404)" >&2
+          echo fallback; exit 0 ;;
+      esac
+      echo "github: issue-parent: gh api repos/$(_repo_slug)/issues/$n/parent failed: $out" >&2; exit 1
+    fi
+    printf '%s' "$out" | jq -e . > /dev/null 2>&1 \
+      || { echo "github: issue-parent: unparseable answer for #$n: $out" >&2; exit 1; }
+    parent=$(printf '%s' "$out" | jq -r '.number // empty')
+    [ -n "$parent" ] || { echo none; exit 0; }
+    case "$parent" in
+      *[!0-9]*) echo "github: issue-parent: #$n's parent resolved to '$parent', which is not an issue number" >&2; exit 1 ;;
+    esac
+    # A parent in another repository must never be read by number in this one (#781). The REST
+    # payload is the parent issue itself: its `repository_url` (else `html_url`) names its
+    # repository. A payload with neither is the same-repository shape and passes.
+    purl=$(printf '%s' "$out" | jq -r '.repository_url // empty')
+    if [ -n "$purl" ]; then
+      # api host: https://api.<host>/repos/<o>/<r>; GHES: https://<host>/api/v3/repos/<o>/<r>
+      pslug=$(printf '%s' "$purl" | sed -E 's#^.*/repos/([^/]+/[^/]+)/?$#\1#')
+    else
+      purl=$(printf '%s' "$out" | jq -r '.html_url // empty')
+      pslug=""
+      [ -z "$purl" ] || pslug=$(printf '%s' "$purl" | sed -E 's#^https?://[^/]+/([^/]+/[^/]+)(/.*)?$#\1#')
+    fi
+    if [ -n "$purl" ]; then
+      own="$KIT_REPO_SLUG"
+      # No --repo: the checkout's own repository, read only when there is something to compare.
+      [ -n "$own" ] || own=$(gh repo view --json nameWithOwner --jq .nameWithOwner) || exit 1
+      if [ "$(printf '%s' "$pslug" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$own" | tr '[:upper:]' '[:lower:]')" ]; then
+        echo "github: issue-parent: #$n's parent #$parent lives in '$pslug', not '$own' — refusing a cross-repository parent" >&2
+        exit 1
+      fi
+    fi
+    printf '%s\n' "$parent"
+    ;;
+
+  pr-closing-issues)
+    n="${1-}"
+    [ -n "$n" ] || { echo "github: pr-closing-issues needs a PR number" >&2; exit 2; }
+    out=$(gh pr view "$n" ${KIT_REPO_SLUG:+--repo "$KIT_REPO_SLUG"} --json closingIssuesReferences) || exit 1
+    printf '%s' "$out" | jq -c '[(.closingIssuesReferences // [])[].number]'
+    ;;
+
+  pr-comment)
+    n=""; BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "github: pr-comment: unknown option: $1" >&2; exit 2 ;;
+        *)  n="$1"; shift ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "github: pr-comment needs a PR number" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "github: pr-comment refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    ARGS=(pr comment "$n")
+    [ -n "$KIT_REPO_SLUG" ] && ARGS+=(--repo "$KIT_REPO_SLUG")
+    ARGS+=(--body-file "$BODY_FILE")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN gh ${ARGS[*]}"; exit 0; fi
+    gh "${ARGS[@]}" > /dev/null || exit 1
     ;;
 
   *)

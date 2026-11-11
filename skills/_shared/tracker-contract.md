@@ -94,6 +94,20 @@ a draft with the `Draft: ` title prefix, which `pr-ready` strips; Azure DevOps u
 stays a GitHub-only shape: on any other tracker `tick-plan.sh` and `finish-task.sh` refuse
 `--comment-id` by name, with nothing sent.
 
+`merge-pr` is the third (#752). It adds ten verbs: `pr-merge-state`, `pr-checks`, `commit-checks`,
+`pr-threads`, `pr-thread-resolve`, `pr-merge`, `branch-delete`, `issue-parent`, `pr-closing-issues`
+and `pr-comment`. Three of them go beyond what #750 decided: `pr-thread-resolve`, because merge-pr
+resolves review threads and the verb's required `--body-file` reply makes "never resolve silently"
+its own rule; `pr-closing-issues`, because Step 5c reads the issues a PR closes and no other verb
+prints them; and `pr-comment`, because follow-up triage records an observation on the PR. A state a
+host cannot map prints `UNKNOWN`, and both decisions wait on it: `merge.step4` answers `wait` (rule
+`unknown`), and `ci.verdict` counts an `UNKNOWN` check as `pending`, never `clear`. What stays a
+direct, GitHub-only `gh` call: `approve-runs.sh`, reached only on `needs-approval`, which comes from
+GitHub's `action_required` and which no other backend maps; `base-run-verdict.sh`'s workflow-runs
+fallback (#479, a GitHub Enterprise workaround) and `base-run-followup.sh`'s `gh run list`, both
+skipped on any other tracker (they check `tracker.sh state merge-pr | jq -r .tracker`); and
+`gh pr checks --watch` as a human-facing view.
+
 Until step 2 happens for a skill, it is `missing` on every non-GitHub host — which is the honest
 answer, not a gap: nothing has established which verbs it needs there.
 

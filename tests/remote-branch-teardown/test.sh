@@ -9,7 +9,8 @@
 # `origin/<headRefName>` leaks permanently and nothing ever notices.
 #
 # remote-branch-teardown.sh is not fixture-file driven — it shells out to `git ls-remote` and
-# `gh api -X DELETE`, so this suite stubs both (same idiom as tests/guarded-git/test.sh) rather than
+# `tracker.sh branch-delete` (#752), whose GitHub backend sends `gh api -X DELETE`, so this suite
+# stubs git and gh (same idiom as tests/guarded-git/test.sh) rather than
 # feeding it JSON. Three shapes from the issue's own Task 3, plus the race the script itself
 # documents tolerating (a concurrent delete winning between the ls-remote and the DELETE call) and
 # the two refusal paths (bad usage, a genuine ls-remote failure).
@@ -30,7 +31,7 @@ FAILED=0
 note_fail() { echo "FAIL: $1"; FAILED=1; }
 
 command -v jq > /dev/null 2>&1 || {
-  echo "FAIL: jq is missing — remote-branch-teardown.sh needs it to URI-encode the branch name"
+  echo "FAIL: jq is missing — remote-branch-teardown.sh reads the tracker's name through it"
   exit 1; }
 
 STUBS=$(kit_scratch)
@@ -61,6 +62,9 @@ if [ "\$1" = "remote" ] && [ "\${2:-}" = "get-url" ]; then
   cat "$GIT_ORIGIN"
   exit 0
 fi
+# The profile probe behind tracker.sh asks for the top-level and falls back to the cwd (the kit's
+# own checkout, which profiles GitHub) — answered without touching \$GIT_ARGS, which pins ls-remote.
+[ "\$1" = "rev-parse" ] && exit 1
 printf '%s\n' "\$*" > "$GIT_ARGS"
 if [ "\$1" = "ls-remote" ]; then
   cat "$GIT_OUT" 2>/dev/null
@@ -358,6 +362,23 @@ if run_case missing-helper 2 'without its host helper the teardown refuses, exit
   want_contains missing-helper "_shared/scripts/_gh-host.sh; reinstall the kit" 'names the missing helper' \
   && want_no_gh_call missing-helper 'refused before any gh call' \
   && echo "ok: missing-helper — exit 2, the missing helper named, no gh call"
+fi
+SCRIPT="$SCRIPT_KEEP"
+
+# The delete goes through the tracker (#752): an install without scripts/tracker.sh refuses, naming
+# it, rather than reaching for gh on its own.
+NOTRACKER="$STUBS/notracker"
+mkdir -p "$NOTRACKER/skills/merge-pr/scripts" "$NOTRACKER/skills/_shared/scripts"
+cp "$SCRIPT" "$NOTRACKER/skills/merge-pr/scripts/remote-branch-teardown.sh"
+cp "$KIT_ROOT/skills/_shared/scripts/_gh-host.sh" "$NOTRACKER/skills/_shared/scripts/"
+SCRIPT="$NOTRACKER/skills/merge-pr/scripts/remote-branch-teardown.sh"
+set_git "$(printf 'deadbeef\trefs/heads/%s' "$BRANCH")" 0
+set_gh "" 0
+: > "$GH_LOG"
+if run_case missing-tracker 2 'without scripts/tracker.sh the teardown refuses, exit 2'; then
+  want_contains missing-tracker "scripts/tracker.sh; reinstall the kit" 'names the missing dispatcher' \
+  && want_no_gh_call missing-tracker 'refused before any gh call' \
+  && echo "ok: missing-tracker — exit 2, the missing dispatcher named, no gh call"
 fi
 SCRIPT="$SCRIPT_KEEP"
 

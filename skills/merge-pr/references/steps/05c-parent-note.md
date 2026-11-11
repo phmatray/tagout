@@ -16,15 +16,17 @@ Find every issue this merge closed — a PR can close more than one (Step 5's ow
 note above) — and hand each one to the script that does the actual read-then-conditional-edit:
 
 ```bash
-gh pr view "$PR" --json closingIssuesReferences --jq '.closingIssuesReferences[].number' \
+"<kit>/scripts/tracker.sh" pr-closing-issues "$PR" | jq -r '.[]' \
   | while read -r issue; do
       skills/merge-pr/scripts/parent-decision-note.sh "$issue" "$PR" "{owner}/{repo}"
     done
 ```
 
-`parent-decision-note.sh` does everything from there: reads the issue's parent over REST
-(`gh api repos/{owner}/{repo}/issues/{n}/parent --hostname <host>` — the `parent` JSON field of `gh issue view` is absent on some
-`gh` builds, #762), and:
+`parent-decision-note.sh` does everything from there: reads the issue's parent through
+`"<kit>/scripts/tracker.sh" issue-parent` (#752 — a number, `none`, or `fallback` when the host cannot
+say; on GitHub the REST `parent` endpoint, because the `parent` JSON field of `gh issue view` is absent
+on some `gh` builds, #762). On `fallback` it reads the child's body through `issue-view`, and a first
+line `Part of #N` (what `create-issue`'s decomposed variant writes) names the parent. Then:
 
 - **No parent** → prints `no-parent` and exits 0. This is the overwhelming majority of merges — say
   nothing about it in Step 8's recap either, the same way Step 6's "none" follow-up tally stays
@@ -41,7 +43,7 @@ gh pr view "$PR" --json closingIssuesReferences --jq '.closingIssuesReferences[]
 
 ⛔ **Never stop here, and never block the merge.** The merge already happened (same reasoning as Step
 5b's own "never stop here" rule) — a real failure (a `parent-decision-note:`-prefixed non-zero exit:
-a `gh` call failed, or the write couldn't be confirmed) is worth naming in Step 8, next to the
+a tracker call failed, or the write couldn't be confirmed) is worth naming in Step 8, next to the
 follow-up tally, but it never halts the rest of this checklist. An autonomous fleet that stopped a
 successful merge's teardown over a tracking-issue bookkeeping failure would strand a slot on work
 that already succeeded — the exact failure Step 5b's own gate exists to avoid, one step later.

@@ -14,10 +14,12 @@
 # stayed red ~40 minutes and every in-flight PR in the fleet inherited the red bar — PR #340's own
 # CI failed on it despite its diff being unrelated. A human noticed; #352 was filed by hand.
 #
-# WHAT IT DOES. Given the squash sha `guarded-pr-merge.sh` printed on exit 0, it resolves the
-# check-runs FOR THAT SHA, polls while any of them is still running (bounded), and hands the final
-# set to the registered decision `ci.verdict` — the same reduction `merge-pr` Step 3 already runs.
-# It prints one JSON object and exits 0.
+# WHAT IT DOES. Given the squash sha `guarded-pr-merge.sh` printed on exit 0, it reads the checks
+# FOR THAT SHA through the tracker contract (`scripts/tracker.sh commit-checks`, #752 — GitHub's
+# check-runs, GitLab's commit statuses, Azure DevOps' pipeline runs, one normalised list), polls
+# while any of them is still running (bounded), and hands the final set to the registered decision
+# `ci.verdict` — the same reduction `merge-pr` Step 3 already runs. It prints one JSON object and
+# exits 0.
 #
 #   {"verdict":"green|red|unverified","reason":"<slug>","sha":"<sha>","runs":[{name,html_url,state}]}
 #
@@ -34,8 +36,9 @@
 # while the workflow runs for those very shas were visible, so every merge reported `unverified`
 # and a base that went red twice was never seen. When check-runs FAILS (404, any error) the
 # workflow-runs endpoint is asked `?head_sha=<sha>` — keyed on the sha like check-runs, never on
-# the branch — and its runs are mapped into the check-runs shape so the same `ci.verdict`
-# reduction judges them. A verdict from that path says so in its reason: `green (base-run)`,
+# the branch — and its runs are mapped into `commit-checks`' normalised list so the same
+# `ci.verdict` reduction judges them. The fallback is a GitHub Enterprise workaround and stays a
+# direct, GitHub-only `gh` call (#752): on any other tracker it is skipped. A verdict from that path says so in its reason: `green (base-run)`,
 # `RED (base-run)`, and `unverified (no-run-yet)` when it found nothing for the sha. Twelve
 # `unverified` in a row is a FINDING, not a default — `merge-pr` Step 5b says so.
 #
@@ -77,7 +80,8 @@
 # refusals, both exit 64 and both before any `gh` call, are a usage error — no sha to resolve, and
 # printing `unverified` would let a caller that forgot its argument report a clean non-verdict
 # forever — and a kit whose host helper will not load (#514), where every read would reach gh's
-# default host and a GitHub Enterprise base would never be read at all.
+# default host and a GitHub Enterprise base would never be read at all, or whose tracker.sh cannot
+# name the repository's tracker (#752).
 #
 # IT NEVER REVERTS, and this script cannot: it performs no writes at all. On red the caller files
 # a bug naming the sha and the run URL (`merge-pr` Step 5b). An autonomous revert of what may well
@@ -86,7 +90,8 @@
 # Exit codes:
 #   0   a verdict was produced — `green`, `red`, or one of the `unverified` non-verdicts
 #   64  usage error: no sha, an unparseable option, a non-numeric bound, a malformed -R slug — or
-#       skills/_shared/scripts/_gh-host.sh cannot be loaded
+#       skills/_shared/scripts/_gh-host.sh cannot be loaded, or scripts/tracker.sh cannot name the
+#       tracker
 set -euo pipefail
 
 TOOL="base-run-verdict"
@@ -112,6 +117,7 @@ done
 KIT_ROOT=$(CDPATH= cd -- "$(dirname -- "$SELF")/../../.." && pwd -P) \
   || KIT_ROOT="$(dirname -- "$SELF")/../../.."
 DECIDE="$KIT_ROOT/scripts/decide.sh"
+TRACKER_SH="$KIT_ROOT/scripts/tracker.sh"
 
 # ------------------------------------------------------------------------------ 2. the arguments
 SHA=""
@@ -145,7 +151,6 @@ case "$SHA" in
 esac
 
 command -v jq > /dev/null 2>&1 || refuse "jq is missing — it is a \`required\` prerequisite in requirements.json"
-command -v gh > /dev/null 2>&1 || refuse "gh is missing — there is no other way to read check-runs"
 [ -x "$DECIDE" ] || refuse "cannot execute $DECIDE — the ci.verdict decision has no other home"
 
 # The repository's own host (#514): `gh api` never infers one, so on a GitHub Enterprise base both
@@ -157,13 +162,25 @@ GH_HOST_LIB="$KIT_ROOT/skills/_shared/scripts/_gh-host.sh"
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve > /dev/null 2>&1 \
   || { echo "$TOOL: REFUSED — cannot load $GH_HOST_LIB; reinstall the kit" >&2; exit 64; }
-gh_host_resolve "$REPO" || exit 64
 
-# `{owner}/{repo}` is gh's own placeholder, resolved from the repository gh is pointed at. An
-# explicit -R overrides it, which is what lets a caller standing in a worktree of one repo read
-# another's base branch.
-OWNER_REPO="{owner}/{repo}"
-[ -n "$REPO" ] && OWNER_REPO="$KIT_REPO_SLUG"
+# Which tracker (#752). `state` reads the committed profile only, so it costs no network. The poll
+# reads `commit-checks` on every tracker; the host resolution and the workflow-runs fallback below
+# are GitHub's alone, so they run only there.
+[ -x "$TRACKER_SH" ] || { echo "$TOOL: REFUSED — cannot find $TRACKER_SH; reinstall the kit" >&2; exit 64; }
+TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+[ -n "$TRACKER_NAME" ] \
+  || { echo "$TOOL: REFUSED — tracker.sh state could not name this repository's tracker" >&2; exit 64; }
+
+OWNER_REPO=""
+if [ "$TRACKER_NAME" = github ]; then
+  command -v gh > /dev/null 2>&1 || refuse "gh is missing — there is no other way to read check-runs"
+  gh_host_resolve "$REPO" || exit 64
+  # `{owner}/{repo}` is gh's own placeholder, resolved from the repository gh is pointed at. An
+  # explicit -R overrides it, which is what lets a caller standing in a worktree of one repo read
+  # another's base branch.
+  OWNER_REPO="{owner}/{repo}"
+  [ -n "$REPO" ] && OWNER_REPO="$KIT_REPO_SLUG"
+fi
 
 # ------------------------------------------------------------------------------- 3. the answer
 #
@@ -236,18 +253,20 @@ source=check-runs
 while :; do
   raw=""
   rc=0
-  # The two failures are kept apart deliberately. `gh` failing (rate limit, a network blip, an
+  # The two failures are kept apart deliberately. The read failing (rate limit, a network blip, an
   # unauthenticated host) is NOT evidence about the base branch, so it must not read as `no-ci`
   # — which is why it is retried until the deadline rather than answered on the first attempt.
-  raw=$(gh api "repos/$OWNER_REPO/commits/$SHA/check-runs" --paginate --slurp 2>/dev/null) || rc=$?
+  # `commit-checks` exits non-zero on a host error and prints `[]` only for a genuine "no checks".
+  raw=$("$TRACKER_SH" ${REPO:+-R "$REPO"} commit-checks "$SHA" 2>/dev/null) || rc=$?
   source=check-runs
-  if [ "$rc" -ne 0 ] || [ -z "$raw" ]; then
+  if { [ "$rc" -ne 0 ] || [ -z "$raw" ]; } && [ "$TRACKER_NAME" = github ]; then
     # check-runs failed (a fresh sha 404s on GHES, #479): ask workflow-runs FOR THIS SHA and map
-    # the answer into the check-runs shape — same reduction, no second rule set. Still by sha.
+    # the answer into commit-checks' normalised list — same reduction, no second rule set. Still
+    # by sha. GitHub-only and direct (#752), like approve-runs.sh.
     wr=""; wrc=0
     wr=$(gh api "repos/$OWNER_REPO/actions/runs?head_sha=$SHA&per_page=100" 2>/dev/null) || wrc=$?
     if [ "$wrc" -eq 0 ] && [ -n "$wr" ]; then
-      mapped=$(printf '%s' "$wr" | jq -c '[{total_count: 0, check_runs: [ .workflow_runs[]? | {name, id, app: {id: 0}, started_at: (.run_started_at // .created_at), html_url, status, conclusion} ]}]' 2>/dev/null) || mapped=""
+      mapped=$(printf '%s' "$wr" | jq -c '[ .workflow_runs[]? | {name, id, app: null, html_url, state: (.conclusion // .status), bucket: null} ]' 2>/dev/null) || mapped=""
       if [ -n "$mapped" ]; then raw="$mapped"; rc=0; source=workflow-runs; fi
     fi
   fi

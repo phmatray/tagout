@@ -20,11 +20,11 @@ call's own stdout, which is `MERGED <sha>`:
 BASE_SHA=$(printf '%s' "$MERGE_OUT" | awk '$1 == "MERGED" { print $2 }')
 
 # The guard reads the sha back itself when it can't, and prints the literal `<unknown-sha>` rather
-# than nothing — a null `mergeCommit.oid` on a readback taken seconds after the merge. That string
+# than nothing — a null `mergeSha` on a readback taken seconds after the merge. That string
 # is not a sha, so recover it before spending a poll on it; the helper would refuse it (exit 64),
 # which is the one case where it does NOT answer.
 case "$BASE_SHA" in
-  *[!0-9a-fA-F]*|"") BASE_SHA=$(gh pr view "$PR" --json mergeCommit --jq '.mergeCommit.oid // ""') ;;
+  *[!0-9a-fA-F]*|"") BASE_SHA=$("<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r '.mergeSha // ""') ;;
 esac
 
 # An empty $BASE_SHA has nothing to resolve, and the helper refuses it (exit 64, no stdout) rather
@@ -67,13 +67,14 @@ armed alongside a real failure for this sha, asserting the line still reads `RED
 **By the sha, never by recency.** `gh run list --branch main` answers "the newest run on the branch",
 which under a merge train — the ordinary `auto-dev` shape — is routinely a *sibling* merge's run
 landing seconds later. That would blame this merge for someone else's red, and hide this merge's red
-behind someone else's green. The helper asks the check-runs endpoint, which is keyed on the sha by
+behind someone else's green. The helper asks `tracker.sh commit-checks`, which is keyed on the sha by
 construction, and delegates the rules to the registered `ci.verdict` decision rather than growing a
 second CI reader. The resolution recipe lives beside §3's in `references/merge-mechanics.md`; the
 `gh run list` trap is pinned red by `tests/merge-base-ci/test.sh`.
 
 **When check-runs fails, the helper falls back to the workflow-runs endpoint — still by sha
-(`actions/runs?head_sha=<sha>`), never by branch (#479).** On GitHub Enterprise Server the
+(`actions/runs?head_sha=<sha>`), never by branch (#479).** That fallback is a GitHub Enterprise
+workaround and stays a direct, GitHub-only `gh` call (#752); on any other tracker it is skipped. On GitHub Enterprise Server the
 check-runs endpoint 404s on a just-created squash sha while the run is already visible; twelve
 merges of one fleet run reported `unverified (query-failed)` that way and a base that went red
 twice was never seen. A verdict from the fallback says so: `green (base-run)`, `RED (base-run)`,
@@ -97,8 +98,9 @@ changes nothing about them):
 ```bash
 case "$BASE_LINE" in
   "unverified (timeout)")
-    # $BASE is the baseRefName Step 1 already captured. One `gh run list` call, no sleep, no
-    # re-poll of base-run-verdict.sh itself — never a second poll loop.
+    # $BASE is the baseBranch Step 1 already captured. One `gh run list` call, no sleep, no
+    # re-poll of base-run-verdict.sh itself — never a second poll loop. GitHub-only (#752): on
+    # any other tracker the helper calls nothing and prints `unverified (timeout)`.
     BASE_LINE=$(skills/merge-pr/scripts/base-run-followup.sh "$BASE" "$BASE_SHA")
     base_verdict_word=${BASE_LINE%% *}
     ;;
@@ -115,12 +117,11 @@ Then act on `$base_verdict_word` — three outcomes, and all three are reported 
 - **`green`** → nothing to do. Continue to Step 6 unchanged.
 - **`RED`** → the merge is done and **is not being reverted**. File it once, as a `bug`, through the
   same `create-issue` inlet Step 6 already uses, carrying the base sha, the run URL, this PR and its
-  issue, and the failing job name(s) — read those off the check-runs endpoint directly, a single
+  issue, and the failing job name(s) — read those off `commit-checks` directly, a single
   non-polling read (the run is already settled, so there is nothing left to wait for — this is not a
   second `base-run-verdict.sh` call, which would re-run its whole poll loop for no reason):
   ```bash
-  gh api "repos/${OWNER_REPO:-{owner}/{repo}}/commits/$BASE_SHA/check-runs" --hostname <host> --paginate --slurp \
-    | jq -r '.[].check_runs[] | select(.conclusion != null and .conclusion != "success") | .name' | sort -u
+  "<kit>/scripts/tracker.sh" commit-checks "$BASE_SHA" | jq -r '.[] | select(.bucket == "fail") | .name' | sort -u
   ```
   **Fold on the breakage, not on the sha.** A sibling merge in the train produces a *different*
   squash sha and inherits the same red, so a sha-keyed search never matches and three workers file

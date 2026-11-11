@@ -11,7 +11,9 @@ description: >-
   (create-issue).
 license: MIT
 compatibility: >-
-  Requires an authenticated gh CLI with merge/push rights, and git. Files follow-ups via the
+  Requires an authenticated gh CLI with merge/push rights, or an authenticated glab CLI on a
+  GitLab project, or the az CLI + azure-devops extension on Azure DevOps (the tracker contract's
+  backends, #752), and git. Files follow-ups via the
   create-issue skill. Reads the committed repo profile (.claude/skills/repo-profile.md) generated
   by init.
 metadata:
@@ -24,7 +26,7 @@ metadata:
 ## What this does
 
 `implement-issue` builds a PR and flips it to ready. This skill is the final step: it **lands** that PR
-cleanly and cleans up after itself. The job isn't just `gh pr merge` — a PR that's ready isn't
+cleanly and cleans up after itself. The job isn't just the merge call — a PR that's ready isn't
 necessarily *mergeable* minutes later, because `main` moves, CI runs, and reviewers leave comments. So
 this skill closes the gap: waits for CI, fixes whatever is actually blocking the merge, squashes the PR
 in, turns deferred work into tracked issues, and removes the throwaway branch and worktree.
@@ -40,7 +42,7 @@ Run **hands-off** once started — the user points at a PR and walks away. See
 decision scope. Whenever a step *could* stop for a question, pick the reasonable default, state the
 assumption, keep going. Stop only for a genuine blocker:
 
-- `gh` not authenticated, or no merge/push rights.
+- The tracker's CLI (`gh`, `glab` or `az`) not authenticated, or no merge/push rights.
 - The PR doesn't exist, is already merged/closed, or the number is ambiguous.
 - **CI stays red after a real fix attempt.** Don't merge over a red bar, don't disable a failing test, don't `--admin`-override a required check. Fix it for real or stop and show the failing output.
 - **A merge conflict you can't resolve with confidence** — both `main` and the branch rewrote the *same logic*. The mechanical conflicts (version, changelog, snapshots, lockfiles) have known-correct fixes (Step 4) — handle those; stop only for genuinely ambiguous ones, showing both sides.
@@ -55,18 +57,18 @@ before it files.
 
 ## Inputs
 
-- **PR identifier** (required) — a number (`279`), an issue/PR URL, or a `gh` PR link. Resolve to a number (Step 1).
+- **PR identifier** (required) — a number (`279`), an issue/PR URL, or a PR/MR link. Resolve to a number (Step 1).
 - **`--follow-up "<idea>"`** (optional, repeatable) — follow-up work to file as issues after the merge, e.g. `/merge-pr 279 --follow-up "add Rust snapshot tests" --follow-up "document minimap config"`. *Added to* whatever Step 6 discovers in the PR itself.
 
 ## Checklist
 
 Create a task per item and work them in order. Step 4 is a loop — repeat until the PR is mergeable.
 
-1. **Preconditions & resolve the PR** — `gh` works, you're in the target repo, normalize the PR number, confirm it's open, capture its head branch + merge state.
+1. **Preconditions & resolve the PR** — the tracker CLI works, you're in the target repo, normalize the PR number, confirm it's open, capture its head branch + merge state.
 2. **Locate (or create) the branch's worktree** — find the local worktree/branch for the PR's head so corrections land in the right checkout; create one tracking the remote branch if none exists.
-3. **Wait for CI** — let the checks finish; read the rollup.
+3. **Wait for CI** — let the checks finish; read every check on the head sha (`commit-checks`).
 4. **Apply corrections (loop)** — clear each blocker the merge state reports (red CI · behind/dirty vs `main` · unresolved review · draft), push, re-wait until the PR is `CLEAN`.
-5. **Merge (squash)** — `<kit>/skills/merge-pr/scripts/guarded-pr-merge.sh` once green and mergeable; it runs the merge and decides the outcome from GitHub's `state`, never from the raw `gh pr merge` exit code. If that call is refused (an agent confined to its worktree, the path resolving outside it), see the fallback in [`_shared/guard-invocation.md`](../_shared/guard-invocation.md).
+5. **Merge (squash)** — `<kit>/skills/merge-pr/scripts/guarded-pr-merge.sh` once green and mergeable; it runs the merge through `tracker.sh pr-merge` and decides the outcome from the state `pr-view` reads back, never from the merge call's raw exit code. If that call is refused (an agent confined to its worktree, the path resolving outside it), see the fallback in [`_shared/guard-invocation.md`](../_shared/guard-invocation.md).
 5b. **Read the base's CI run** — the merge just triggered one on `main`; resolve it **by the squash sha**, wait (bounded), and carry the answer into Step 8. Green, red, or an honest non-verdict — never silence.
 5c. **Note a decomposed child's landing on its tracking parent** — when the merge closed an issue that is itself a child of a decomposed tracking parent (#315), append one line to the parent's `## Decisions so far` section; a silent no-op for every merge that isn't part of a decomposition.
 6. **Triage follow-ups** — gather inline `--follow-up` args + ones discovered in the PR, cluster them by root cause, fold instances into the issue that already owns them, and file at most 3 new issues via `create-issue`.
@@ -74,7 +76,7 @@ Create a task per item and work them in order. Step 4 is a loop — repeat until
 8. **Recap** — the shared closing shape ([`../_shared/recap.md`](../_shared/recap.md), with its [Boundary findings block](../_shared/recap.md#the-boundary-findings-block)): merged PR URL, corrections applied, follow-ups filed, cleanup done.
 
 Resume-safe: re-running mid-flight is fine. If the PR is already merged, skip to Step 5b (recover
-the sha from `gh pr view --json mergeCommit`) and then Step 5c and Steps 6–7 — call Step 5c
+the sha from `"<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r .mergeSha`) and then Step 5c and Steps 6–7 — call Step 5c
 unconditionally on a resume too, the same way Step 5b's own base-CI read does; its script is
 idempotent per PR number, so a second call on an already-noted parent is a no-op, not a duplicate
 line. If the

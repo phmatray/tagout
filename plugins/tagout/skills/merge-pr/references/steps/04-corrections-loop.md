@@ -20,6 +20,10 @@ name carrying a diff confined to the paths `release-please-config.json` declares
 |---|---|
 | `needs-approval` | Run `skills/merge-pr/scripts/approve-runs.sh "$PR"` (below), then act on its exit code. |
 
+**GitHub-only, and a direct `gh` call by name (#752).** `needs-approval` comes from GitHub's
+`action_required` check-run state; no other backend's `commit-checks` maps a state to it, so on GitLab
+or Azure DevOps this branch never fires and `approve-runs.sh` is never reached.
+
 ```bash
 if [ "$ci_verdict" = "needs-approval" ]; then
   # rc=0 BEFORE the call, `|| rc=$?` after: under this skill's own `set -euo pipefail` convention,
@@ -35,7 +39,7 @@ if [ "$ci_verdict" = "needs-approval" ]; then
 fi
 ```
 
-**No `-R`.** Run from the PR's own worktree, exactly like every other `gh` call in this skill — the
+**No `-R`.** Run from the PR's own worktree, like every tracker call in this skill — the
 script resolves the repository itself (`skills/_shared/scripts/_gh-host.sh`, the same helper
 `base-run-verdict.sh` uses); passing `{owner}/{repo}` as a literal `-R` value would only break it,
 since `gh` expands that placeholder in a REST *path*, never in the `-R` flag itself.
@@ -67,11 +71,11 @@ that deferring the worktree does not defer the guard past the thing it guards �
 [`../_shared/worktree-ignore-check.md`](../../../_shared/worktree-ignore-check.md). Reading the check in
 Step 2 and then obtaining the worktree here is how it ends up never running at all.
 
-Build the state and run the decision. The state block — four reads folded into one object — is
+Build the state and run the decision. The state block — `pr-merge-state` and the CI verdict folded into one object — is
 [`references/merge-mechanics.md` §4](../merge-mechanics.md), which is its single home
 because the program reads those seven fields **by name** and a rename on one side only is the exact
 bug this replaced. **Run it as one command**: it ends in an assertion that the assembled state
-really carries `unresolved_threads`, and that assertion is worth nothing if `$threads` was built in
+really carries an `unresolved_threads` list, and that assertion is worth nothing if `$ms` was built in
 a different shell. Then:
 
 ```bash
@@ -189,7 +193,7 @@ This fallback only covers the self-imposed staleness check (`behind_by > 0` whil
 still reports `CLEAN`) — GitHub doesn't block that merge either way. It does not cover a real
 GitHub-side gate: a PR reported `DIRTY` needs its conflict resolution pushed to the real branch, and a
 PR reported literal `BEHIND` (base requires branches to be up to date) needs the real branch actually
-updated — `gh pr merge` won't succeed on either without that push. If the branch has no writable
+updated — the merge won't succeed on either without that push. If the branch has no writable
 checkout (not the transient sandbox push failure of Step 2/§8, which is just a retry) and
 `mergeStateStatus` is `DIRTY` or `BEHIND`, that combination is a genuine blocker: stop and report it
 rather than running this fallback.
@@ -197,18 +201,18 @@ rather than running this fallback.
 **Address unresolved review (for `blocked-changes-requested` / `changes-requested` /
 `unresolved-threads`).** Read the
 comments and unresolved threads, implement the real asks in the worktree, commit + push, then reply
-to and resolve the threads. GraphQL for listing/resolving threads in
-`references/merge-mechanics.md` §6.
+to and resolve the threads — `pr-threads` to list them and `pr-thread-resolve` (reply, then
+resolve) in `references/merge-mechanics.md` §6.
 
 ⚠️ **What clears this gate is the thread being resolved — not the review decision flipping.** They
 are different facts, and conflating them hangs the loop: a `COMMENTED` review never set
 `reviewDecision` in the first place, so waiting for it to change is waiting for something that
 cannot happen. Resolve the threads.
 
-⚠️ **An empty review body is not "no feedback".** `gh pr view --json reviews` renders a bot's
-`COMMENTED` review with an **empty `body`** — the substance lives only in the inline `reviewThreads`.
+⚠️ **An empty review body is not "no feedback".** GitHub renders a bot's `COMMENTED` review with an
+**empty `body`** — the substance lives only in the inline review threads.
 Reading the review list, seeing nothing, and concluding there was nothing to address is precisely how
-#294's findings went unread across two merges. §6's thread query is what actually answers it. Triage the findings — fix the
+#294's findings went unread across two merges. §6's `pr-threads` read is what actually answers it. Triage the findings — fix the
 legitimate ones; for any you disagree with, reply on the thread with technical reasoning rather than
 silently ignoring. (This
 skill does **not** run a fresh `code-review` pass — `implement-issue` did that before ready; it only

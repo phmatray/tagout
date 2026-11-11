@@ -57,7 +57,9 @@ if [ "$VERB" = verbs ]; then
     issue-search issue-comments issue-create issue-edit-body \
     issue-add-labels issue-remove-labels issue-reopen issue-comment label-list label-create \
     issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
-    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits
+    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits \
+    pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete \
+    issue-parent pr-closing-issues pr-comment
   exit 0
 fi
 
@@ -215,6 +217,28 @@ _parse_link_args() {
     esac
   done
 }
+
+# A list read, every page: `--paginate` fetches them, and `jq -s add` joins them whether glab hands
+# back one array or one per page. `pipefail` carries glab's failure past the jq — a failed read is
+# never an empty list.
+_list() { _api --paginate "$1" | jq -sc 'add // []'; }
+
+# The resolvable discussions of MR $1, as the contract's pr-threads array — the one read pr-threads
+# and pr-merge-state both answer from (github.sh's `_threads`). A system note is not resolvable.
+_threads() {
+  _list "projects/$(_id)/merge_requests/$1/discussions?per_page=100" | jq -c \
+    '[.[] | select(.notes[0].resolvable == true) | .notes[0] as $n
+      | {id, path: ($n.position.new_path // null), line: ($n.position.new_line // null),
+         body: $n.body, isResolved: ($n.resolved == true)}]'
+}
+
+# github.sh's bucket rule over the check-run words commit-checks maps to: anything unrecognised —
+# UNKNOWN included — is pending, so an unmapped state waits and never reads as clear.
+JQ_BUCKET='def bucket: if . == "success" then "pass"
+  elif . == "skipped" or . == "neutral" then "skipping"
+  elif . == "cancelled" then "cancel"
+  elif . == "failure" then "fail"
+  else "pending" end;'
 
 case "$VERB" in
   auth)
@@ -509,7 +533,8 @@ case "$VERB" in
       state: (if .state == "opened" then "open" else .state end),
       isDraft: (.draft // .work_in_progress // false), body: .description,
       headBranch: .source_branch, baseBranch: .target_branch, headSha: .sha,
-      author: (.author.username // null)}'
+      author: (.author.username // null), mergedAt: (.merged_at // null),
+      mergeSha: (.merge_commit_sha // .squash_commit_sha // null)}'
     ;;
 
   pr-edit-body)
@@ -557,6 +582,211 @@ case "$VERB" in
     [ -n "$n" ] || { echo "gitlab: pr-commits needs a merge request iid" >&2; exit 2; }
     out=$(_api "projects/$(_id)/merge_requests/$n/commits?per_page=100") || exit 1
     printf '%s' "$out" | jq -c '[.[].id]'
+    ;;
+
+  # The ten merge-pr verbs (#752), mapped as the Spec's GitLab column says. merge_when_pipeline_succeeds
+  # (and so a merge train) is never set: pr-merge merges now or fails.
+  pr-merge-state)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: pr-merge-state needs a merge request iid" >&2; exit 2; }
+    # Every read lands in a variable before anything prints: a failed read is exit 1 with an EMPTY
+    # stdout, never a partial state a caller could hand to merge.step4.
+    view=$(_api "projects/$(_id)/merge_requests/$n?include_diverged_commits_count=true&with_merge_status_recheck=true") || exit 1
+    behind=$(printf '%s' "$view" | jq -r '.diverged_commits_count // empty')
+    case "$behind" in
+      ''|*[!0-9]*) echo "gitlab: pr-merge-state: MR !$n answered diverged_commits_count '$behind'" >&2; exit 1 ;;
+    esac
+    threads=$(_threads "$n") || {
+      echo "gitlab: pr-merge-state: the discussions read failed — an unanswered read is not 'no threads'" >&2
+      exit 1; }
+    # CLEAN only on GitLab's own `mergeable`; a word not in this table (checking, ci_still_running,
+    # one GitLab adds tomorrow) is UNKNOWN, which merge.step4 waits on.
+    printf '%s' "$view" | jq -c --argjson b "$behind" --argjson t "$threads" '
+      .detailed_merge_status as $s
+      | {behind_by: $b,
+         mergeStateStatus: (
+           if $s == "mergeable" then "CLEAN"
+           elif $s == "need_rebase" then "BEHIND"
+           elif $s == "conflict" or $s == "broken_status" then "DIRTY"
+           elif $s == "draft_status" then "DRAFT"
+           elif (["not_approved", "requested_changes", "discussions_not_resolved", "blocked_status",
+                  "external_status_checks", "jira_association_missing", "security_policy_violations",
+                  "locked_paths", "locked_lfs_files", "title_regex", "merge_request_blocked"]
+                 | any(. == $s)) then "BLOCKED"
+           else "UNKNOWN" end),
+         isDraft: (.draft // .work_in_progress // false),
+         reviewDecision: (if $s == "requested_changes" then "CHANGES_REQUESTED"
+                          elif $s == "not_approved" then "REVIEW_REQUIRED" else null end),
+         unresolved_threads: [$t[] | select(.isResolved == false) | .path // "(pr-level)"]}'
+    ;;
+
+  pr-threads)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: pr-threads needs a merge request iid" >&2; exit 2; }
+    threads=$(_threads "$n") || {
+      echo "gitlab: pr-threads: the discussions read failed — an unanswered read is not 'no threads'" >&2
+      exit 1; }
+    printf '%s\n' "$threads"
+    ;;
+
+  pr-checks)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: pr-checks needs a merge request iid" >&2; exit 2; }
+    mr=$(_api "projects/$(_id)/merge_requests/$n") || exit 1
+    pid=$(printf '%s' "$mr" | jq -r '.head_pipeline.id // empty')
+    # No head pipeline is the genuine "no checks" answer; anything that fails below is exit 1.
+    [ -n "$pid" ] || { echo '[]'; exit 0; }
+    jobs=$(_list "projects/$(_id)/pipelines/$pid/jobs?per_page=100") || exit 1
+    printf '%s' "$jobs" | jq -c '[.[] | {name, state: .status, bucket: (
+      if .status == "success" then "pass"
+      elif .status == "failed" then (if .allow_failure == true then "pass" else "fail" end)
+      elif .status == "canceled" then "cancel"
+      elif .status == "skipped" or .status == "manual" then "skipping"
+      else "pending" end)}]'
+    ;;
+
+  commit-checks)
+    sha="${1-}"
+    [ -n "$sha" ] || { echo "gitlab: commit-checks needs a commit sha" >&2; exit 2; }
+    # `all=true` keeps retried statuses: every run on the sha, unreduced — the #91 reduction is
+    # ci.verdict's job, not this verb's.
+    out=$(_list "projects/$(_id)/repository/commits/$sha/statuses?all=true&per_page=100") || exit 1
+    printf '%s' "$out" | jq -c "$JQ_BUCKET"'
+      [.[] | .status as $g | (.allow_failure == true) as $af
+       | (if $g == "success" then "success"
+          elif $g == "failed" then (if $af then "neutral" else "failure" end)
+          elif $g == "canceled" then "cancelled"
+          elif $g == "skipped" then "skipped"
+          elif $g == "running" then "in_progress"
+          elif $g == "pending" or $g == "created" or $g == "preparing" then "queued"
+          elif $g == "waiting_for_resource" or $g == "scheduled" then "waiting"
+          elif $g == "manual" then (if $af then "skipped" else "waiting" end)
+          else "UNKNOWN" end) as $s
+       | {name, state: $s, bucket: ($s | bucket), id, app: null, html_url: (.target_url // null)}]'
+    ;;
+
+  pr-thread-resolve)
+    POS=(); BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "gitlab: pr-thread-resolve: unknown option: $1" >&2; exit 2 ;;
+        *)  POS+=("$1"); shift ;;
+      esac
+    done
+    n="${POS[0]-}"; tid="${POS[1]-}"
+    [ -n "$n" ] && [ -n "$tid" ] \
+      || { echo "gitlab: pr-thread-resolve needs <iid> <discussion-id>" >&2; exit 2; }
+    # The reply is REQUIRED (merge-mechanics.md §6: never resolve silently). Reply first, resolve second.
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "gitlab: pr-thread-resolve refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    ep="projects/$(_id)/merge_requests/$n/discussions/$tid"
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN glab api -X POST $ep/notes -F body=@$BODY_FILE then -X PUT $ep?resolved=true"
+      exit 0
+    fi
+    _api -X POST "$ep/notes" -F "body=@$BODY_FILE" > /dev/null || exit 1
+    _api -X PUT "$ep?resolved=true" > /dev/null || exit 1
+    ;;
+
+  pr-merge)
+    n=""; SUBJECT=""; BODY_FILE=""; HAS_BODY=0; DRY=0; FIELDS=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --squash)        FIELDS+=(-F squash=true); shift ;;
+        --delete-branch) FIELDS+=(-F should_remove_source_branch=true); shift ;;
+        --subject)   [ $# -ge 2 ] || { echo "gitlab: pr-merge: --subject needs a value" >&2; exit 2; }
+                     SUBJECT="$2"; shift 2 ;;
+        --body-file) HAS_BODY=1; BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "gitlab: pr-merge: unknown option: $1 (only --squash, --delete-branch, --subject, --body-file)" >&2; exit 2 ;;
+        *)  [ -z "$n" ] || { echo "gitlab: pr-merge: unexpected argument: $1" >&2; exit 2; }
+            n="$1"; shift ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "gitlab: pr-merge needs a merge request iid" >&2; exit 2; }
+    if [ "$HAS_BODY" -eq 1 ]; then
+      [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+        || { echo "gitlab: pr-merge refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    fi
+    ARGS=(-X PUT "projects/$(_id)/merge_requests/$n/merge" ${FIELDS[@]+"${FIELDS[@]}"})
+    HAS_MSG=0; { [ -n "$SUBJECT" ] || [ "$HAS_BODY" -eq 1 ]; } && HAS_MSG=1
+    if [ "$DRY" -eq 1 ]; then
+      if [ "$HAS_MSG" -eq 1 ]; then
+        echo "DRY-RUN glab api ${ARGS[*]} -F squash_commit_message=@<subject, a blank line, the body file>"
+      else
+        echo "DRY-RUN glab api ${ARGS[*]}"
+      fi
+      exit 0
+    fi
+    if [ "$HAS_MSG" -eq 1 ]; then
+      # The message goes through a file, never an argument: `<subject>`, a blank line, the body.
+      msgf=$(mktemp "${TMPDIR:-/tmp}/gitlab-merge-msg.XXXXXX") || exit 1
+      trap 'rm -f "$msgf"' EXIT
+      if [ -n "$SUBJECT" ] && [ "$HAS_BODY" -eq 1 ]; then
+        { printf '%s\n\n' "$SUBJECT"; cat "$BODY_FILE"; } > "$msgf"
+      elif [ -n "$SUBJECT" ]; then
+        printf '%s\n' "$SUBJECT" > "$msgf"
+      else
+        cat "$BODY_FILE" > "$msgf"
+      fi
+      ARGS+=(-F "squash_commit_message=@$msgf")
+    fi
+    # The exit code is a hint, never the verdict — the caller reads the outcome back through pr-view.
+    _api "${ARGS[@]}" > /dev/null || exit 1
+    ;;
+
+  branch-delete)
+    b=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "gitlab: branch-delete: unknown option: $a" >&2; exit 2 ;;
+        *)  b="$a" ;;
+      esac
+    done
+    [ -n "$b" ] || { echo "gitlab: branch-delete needs a branch name" >&2; exit 2; }
+    # The whole name is one path segment here (GitLab wants `/` as %2F), unlike github.sh's ref path.
+    ep="projects/$(_id)/repository/branches/$(_urlenc "$b")"
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN glab api -X DELETE $ep"; exit 0; fi
+    if err=$(_api -X DELETE "$ep" 2>&1); then echo ok; exit 0; fi
+    # A 404 naming the branch is one already gone (a concurrent should_remove_source_branch). A wrong
+    # project 404s too ("Project Not Found", or a bare 404) — that, and anything else, is real.
+    if grep -qE 'Branch Not Found \(HTTP 404\)$' <<<"$err"; then echo gone; exit 0; fi
+    echo "gitlab: branch-delete: failed to delete $b: $err" >&2; exit 1
+    ;;
+
+  # No issue→issue parent relation (see issue-link-parent): `fallback`, and never a request.
+  issue-parent)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: issue-parent needs an issue number" >&2; exit 2; }
+    echo "fallback"
+    ;;
+
+  pr-closing-issues)
+    n="${1-}"
+    [ -n "$n" ] || { echo "gitlab: pr-closing-issues needs a merge request iid" >&2; exit 2; }
+    out=$(_list "projects/$(_id)/merge_requests/$n/closes_issues?per_page=100") || exit 1
+    printf '%s' "$out" | jq -c '[.[].iid]'
+    ;;
+
+  pr-comment)
+    n=""; BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "gitlab: pr-comment: unknown option: $1" >&2; exit 2 ;;
+        *)  n="$1"; shift ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "gitlab: pr-comment needs a merge request iid" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "gitlab: pr-comment refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    ARGS=(-X POST "projects/$(_id)/merge_requests/$n/notes" -F "body=@$BODY_FILE")
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN glab api ${ARGS[*]}"; exit 0; fi
+    _api "${ARGS[@]}" > /dev/null || exit 1
     ;;
 
   *)

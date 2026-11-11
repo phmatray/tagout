@@ -74,7 +74,7 @@ if [ -n "${GH_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_CALL_LOG"; fi
 fail_http() {
   local code="$1" msg
   case "$code" in
-    404) msg="Not Found" ;;
+    404) msg="${GH_404_MESSAGE:-Not Found}" ;;
     422) msg="${GH_422_MESSAGE:-Validation Failed}" ;;
     *)   msg="Server Error" ;;
   esac
@@ -117,6 +117,25 @@ if [ -n "$endpoint" ]; then
     "GET "*/sub_issues)
       s="${GH_CHILDREN_STATUS:-200}"
       case "$s" in 2??) payload="${GH_CHILDREN_JSON:-[]}" ;; *) fail_http "$s" ;; esac ;;
+    # The merge-pr endpoints (#752). /parent before the bare issue GET, which would swallow it.
+    # GH_PARENT_STATUS/GH_PARENT_JSON, GH_CHECKRUNS_STATUS and GH_REF_STATUS pick each one's answer.
+    "GET repos/"*/issues/[0-9]*/parent)
+      s="${GH_PARENT_STATUS:-200}"
+      default_parent='{"number":40,"repository_url":"https://api.github.com/repos/acme/widgets"}'
+      case "$s" in 2??) payload="${GH_PARENT_JSON:-$default_parent}" ;; *) fail_http "$s" ;; esac ;;
+    "GET repos/"*/compare/*)
+      payload='{"behind_by":3,"ahead_by":1}' ;;
+    "GET repos/"*/commits/*/check-runs)
+      s="${GH_CHECKRUNS_STATUS:-200}"
+      # Already the --slurp shape (an array of pages): a superseded run of `build`, its rerun, and a
+      # run with neither status nor conclusion.
+      case "$s" in
+        2??) payload='[{"total_count":3,"check_runs":[{"name":"build","id":1,"app":{"id":15368},"html_url":"https://example.invalid/runs/1","status":"completed","conclusion":"failure"},{"name":"build","id":2,"app":{"id":15368},"html_url":"https://example.invalid/runs/2","status":"in_progress","conclusion":null},{"name":"lint","id":3,"app":{"id":15368},"html_url":"https://example.invalid/runs/3","status":null,"conclusion":null}]}]' ;;
+        *) fail_http "$s" ;;
+      esac ;;
+    "DELETE repos/"*/git/refs/heads/*)
+      s="${GH_REF_STATUS:-204}"
+      case "$s" in 2??) exit 0 ;; *) fail_http "$s" ;; esac ;;
     "GET repos/"*/issues/[0-9]*)
       s="${GH_ISSUE_STATUS:-200}"
       case "$s" in
@@ -152,9 +171,36 @@ else
     # The PR verbs (#751): gh-shaped answers the backend must normalise (headRefName, OPEN, author.login).
     "pr create")    echo "https://example.invalid/o/r/pull/51"; exit 0 ;;
     "pr list")      payload='[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"OPEN","isDraft":true,"headRefName":"feat/7-x","body":"Closes #7","mergedAt":null}]' ;;
-    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}]}' ;;
+    "pr view")      payload='{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"MERGED","isDraft":false,"body":"Closes #7","headRefName":"feat/7-x","baseRefName":"main","headRefOid":"abc123","author":{"login":"octocat"},"commits":[{"oid":"aaa"},{"oid":"bbb"}],"mergedAt":"2026-11-11T10:00:00Z","mergeCommit":{"oid":"def456"},"mergeStateStatus":"BLOCKED","reviewDecision":"REVIEW_REQUIRED","closingIssuesReferences":[{"number":12},{"number":13}]}'
+                    # GH_PR_FORK=<login> makes it a fork PR: its head branch lives in <login>'s repository.
+                    if [ -n "${GH_PR_FORK:-}" ]; then
+                      payload=$(printf '%s' "$payload" | jq -c --arg o "$GH_PR_FORK" '. + {isCrossRepository: true, headRepositoryOwner: {login: $o}}')
+                    else
+                      payload=$(printf '%s' "$payload" | jq -c '. + {isCrossRepository: false, headRepositoryOwner: {login: "acme"}}')
+                    fi ;;
     "pr edit")      exit 0 ;;
     "pr ready")     exit 0 ;;
+    # The merge-pr verbs (#752). GH_CHECKS_MODE=none is gh's "no checks reported", =fail any other
+    # failure; GH_GRAPHQL_FAIL fails the reviewThreads query the way a GHES host without
+    # --hostname does.
+    "pr checks")
+      case "${GH_CHECKS_MODE:-}" in
+        none) echo "no checks reported on the 'feat/7-x' branch" >&2; exit 1 ;;
+        fail) echo "gh: Server Error (HTTP 502)" >&2; exit 1 ;;
+      esac
+      payload='[{"name":"build","state":"SUCCESS","bucket":"pass"}]' ;;
+    "pr merge")     exit 0 ;;
+    "pr comment")   exit 0 ;;
+    "api graphql")
+      case "$*" in
+        *addPullRequestReviewThreadReply*|*resolveReviewThread*) exit 0 ;;
+        *reviewThreads*)
+          if [ -n "${GH_GRAPHQL_FAIL:-}" ]; then
+            echo "gh: Could not resolve to a Repository with the name 'acme/widgets'." >&2; exit 1
+          fi
+          payload='{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"id":"T1","isResolved":false,"comments":{"nodes":[{"path":"a.sh","line":3,"body":"fix this"}]}},{"id":"T2","isResolved":true,"comments":{"nodes":[{"path":"b.sh","line":9,"body":"done"}]}},{"id":"T3","isResolved":false,"comments":{"nodes":[{"path":null,"line":null,"body":"overall"}]}}]}}}}}' ;;
+        *) echo "gh stub: unsupported graphql call" >&2; exit 1 ;;
+      esac ;;
     *)              echo "gh stub: unsupported call: $*" >&2; exit 1 ;;
   esac
 fi
@@ -703,9 +749,9 @@ pr_case "pr-list --search — searches the body, normalises state and headBranch
   '[{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"open","isDraft":true,"headBranch":"feat/7-x","body":"Closes #7","mergedAt":null}]' \
   "pr list --search 7 in:body --state open --limit 100 --json number,title,url,state,isDraft,headRefName,body,mergedAt" -- \
   pr-list --search 7 --state open --limit 100
-pr_case "pr-view — the ten decided keys" 0 \
-  '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat"}' \
-  "pr view 51 --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author" -- \
+pr_case "pr-view — the ten decided keys, plus mergedAt and mergeSha (#752)" 0 \
+  '{"number":51,"title":"feat: x (#7)","url":"https://example.invalid/o/r/pull/51","state":"merged","isDraft":false,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"octocat","mergedAt":"2026-11-11T10:00:00Z","mergeSha":"def456"}' \
+  "pr view 51 --json number,title,url,state,isDraft,body,headRefName,baseRefName,headRefOid,author,mergedAt,mergeCommit" -- \
   pr-view 51
 pr_case "pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pr view 51 --json commits" -- pr-commits 51
 pr_case "pr-ready — exactly gh pr ready <n>" 0 '' "pr ready 42" -- pr-ready 42
@@ -718,20 +764,129 @@ pr_case "pr-edit-body — refuses a missing --body-file, exit 2, no gh call" 2 -
   pr-edit-body 51 --body-file "$WORK/no-such-file"
 pr_dry_runs "$PR_BODY"
 
+echo "== A5. the merge-pr verbs (#752)"
+
+# Every case names the repository, so the recorded argv carries the `--repo <slug>` today's scripts
+# send — the argv tests/merge-base-ci and tests/guarded-pr-merge will match once they route here.
+R=(--repo acme/widgets)
+
+pr_case "pr-merge-state — behind_by from compare, only unresolved paths, (pr-level) for none" 0 \
+  '{"behind_by":3,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","unresolved_threads":["a.sh","(pr-level)"]}' \
+  "api repos/acme/widgets/compare/main...feat/7-x" -- "${R[@]}" pr-merge-state 7
+grep -Fq "pr view 7 --repo acme/widgets --json mergeStateStatus,isDraft,reviewDecision,baseRefName,headRefName" "$GH_CALL_LOG" \
+  || note_fail "pr-merge-state — the pr view argv is not today's: $(cat "$GH_CALL_LOG")"
+# The threads query paginates: without BOTH the $endCursor variable and the pageInfo selection,
+# `--paginate` quietly fetches one page and a 101st unresolved thread reads as resolved.
+for frag in 'after:$endCursor' 'pageInfo{ hasNextPage endCursor }'; do
+  grep -Fq -- "$frag" "$GH_CALL_LOG" || note_fail "pr-merge-state — the reviewThreads query lacks '$frag': $(cat "$GH_CALL_LOG")"
+done
+# A fork PR's head branch is not in the base repository: a bare main...feat/7-x 404s there.
+export GH_PR_FORK=forker
+pr_case "pr-merge-state — a fork PR compares <base>...<owner>:<head>" 0 - \
+  "api repos/acme/widgets/compare/main...forker:feat/7-x" -- "${R[@]}" pr-merge-state 7
+unset GH_PR_FORK
+export GH_GRAPHQL_FAIL=1
+pr_case "pr-merge-state — a failed thread read exits 1 and prints nothing" 1 '' - -- "${R[@]}" pr-merge-state 7
+pr_case "pr-threads — a failed thread read is exit 1, never []" 1 '' - -- "${R[@]}" pr-threads 7
+unset GH_GRAPHQL_FAIL
+pr_case "pr-threads — one entry per thread, first comment's path/line/body" 0 \
+  '[{"id":"T1","path":"a.sh","line":3,"body":"fix this","isResolved":false},{"id":"T2","path":"b.sh","line":9,"body":"done","isResolved":true},{"id":"T3","path":null,"line":null,"body":"overall","isResolved":false}]' \
+  "api graphql --paginate" -- "${R[@]}" pr-threads 7
+
+pr_case "commit-checks — every run on the sha, superseded included, with id and app" 0 \
+  '[{"name":"build","state":"failure","bucket":"fail","id":1,"app":15368,"html_url":"https://example.invalid/runs/1"},{"name":"build","state":"in_progress","bucket":"pending","id":2,"app":15368,"html_url":"https://example.invalid/runs/2"},{"name":"lint","state":"UNKNOWN","bucket":"pending","id":3,"app":15368,"html_url":"https://example.invalid/runs/3"}]' \
+  - -- "${R[@]}" commit-checks abc123
+[ "$(cat "$GH_CALL_LOG")" = "api repos/acme/widgets/commits/abc123/check-runs --paginate --slurp" ] \
+  || note_fail "commit-checks — argv is not exactly today's check-runs call: $(cat "$GH_CALL_LOG")"
+export GH_CHECKRUNS_STATUS=502
+pr_case "commit-checks — a host error is exit 1, never []" 1 '' - -- "${R[@]}" commit-checks abc123
+unset GH_CHECKRUNS_STATUS
+
+pr_case "pr-checks — gh pr checks, name/state/bucket" 0 '[{"name":"build","state":"SUCCESS","bucket":"pass"}]' \
+  "pr checks 7 --repo acme/widgets --json name,state,bucket" -- "${R[@]}" pr-checks 7
+export GH_CHECKS_MODE=none
+pr_case "pr-checks — 'no checks reported' is [] and exit 0" 0 '[]' - -- "${R[@]}" pr-checks 7
+export GH_CHECKS_MODE=fail
+pr_case "pr-checks — any other failure is exit 1" 1 '' - -- "${R[@]}" pr-checks 7
+unset GH_CHECKS_MODE
+
+pr_case "pr-thread-resolve — replies, then resolves" 0 '' resolveReviewThread -- \
+  "${R[@]}" pr-thread-resolve 7 T1 --body-file "$PR_BODY"
+reply_at=$(grep -n addPullRequestReviewThreadReply "$GH_CALL_LOG" | head -1 | cut -d: -f1)
+resolve_at=$(grep -n 'resolveReviewThread(' "$GH_CALL_LOG" | head -1 | cut -d: -f1)
+if [ -z "$reply_at" ] || [ -z "$resolve_at" ] || [ "$reply_at" -ge "$resolve_at" ]; then
+  note_fail "pr-thread-resolve — the reply must be logged before the resolve: $(cat "$GH_CALL_LOG")"
+fi
+
+pr_case "pr-merge — exactly gh pr merge <n> --repo <slug> <flags>" 0 '' - -- "${R[@]}" pr-merge 7 --squash --subject s
+[ "$(cat "$GH_CALL_LOG")" = "pr merge 7 --repo acme/widgets --squash --subject s" ] \
+  || note_fail "pr-merge — argv is not exactly today's: $(cat "$GH_CALL_LOG")"
+pr_case "pr-merge — a flag outside the four is exit 2, no gh call" 2 - EMPTY -- "${R[@]}" pr-merge 7 --admin
+
+pr_case "branch-delete — per-segment @uri, ok" 0 ok \
+  "api -X DELETE repos/acme/widgets/git/refs/heads/feature/x%231" -- "${R[@]}" branch-delete 'feature/x#1'
+export GH_REF_STATUS=422 GH_422_MESSAGE="Reference does not exist"
+pr_case "branch-delete — 'Reference does not exist' is gone" 0 gone - -- "${R[@]}" branch-delete feature/x
+unset GH_422_MESSAGE
+export GH_REF_STATUS=404
+pr_case "branch-delete — any other failure is exit 1" 1 '' - -- "${R[@]}" branch-delete feature/x
+unset GH_REF_STATUS
+
+pr_case "issue-parent — the parent's number" 0 40 "api -H Accept: application/vnd.github+json repos/acme/widgets/issues/5/parent" -- \
+  "${R[@]}" issue-parent 5
+export GH_PARENT_STATUS=404 GH_404_MESSAGE="No parent issue found"
+pr_case "issue-parent — 'No parent issue found' is none" 0 none - -- "${R[@]}" issue-parent 5
+unset GH_404_MESSAGE
+pr_case "issue-parent — any other 404 is fallback (#762)" 0 fallback - -- "${R[@]}" issue-parent 5
+unset GH_PARENT_STATUS
+export GH_PARENT_JSON='{"number":40,"repository_url":"https://api.github.com/repos/acme/other"}'
+pr_case "issue-parent — a parent in another repository is exit 1 (#781)" 1 '' - -- "${R[@]}" issue-parent 5
+unset GH_PARENT_JSON
+
+pr_case "pr-closing-issues — an array of numbers" 0 '[12,13]' \
+  "pr view 7 --repo acme/widgets --json closingIssuesReferences" -- "${R[@]}" pr-closing-issues 7
+pr_case "pr-comment — gh pr comment --body-file" 0 '' "pr comment 7 --repo acme/widgets --body-file $PR_BODY" -- \
+  "${R[@]}" pr-comment 7 --body-file "$PR_BODY"
+
+for refusal in "pr-thread-resolve 7 T1 --body-file $PR_EMPTY" "pr-thread-resolve 7 T1" \
+               "pr-comment 7 --body-file $PR_EMPTY" "pr-comment 7 --body-file $WORK/no-such-file" \
+               "pr-merge 7 --squash --body-file $PR_EMPTY"; do
+  # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+  pr_case "${refusal%% *} — refuses a missing or empty --body-file, exit 2, no gh call" 2 - EMPTY -- "${R[@]}" $refusal
+done
+for dry in "pr-merge 7 --squash --delete-branch --dry-run" "pr-thread-resolve 7 T1 --body-file $PR_BODY --dry-run" \
+           "pr-comment 7 --body-file $PR_BODY --dry-run" "branch-delete feature/x --dry-run"; do
+  # shellcheck disable=SC2086
+  pr_case "${dry%% *} --dry-run — no gh call" 0 - EMPTY -- "${R[@]}" $dry
+  if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+    note_fail "${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+  fi
+done
+
+# merge-pr is on the contract now, so a host whose backend lacks its verbs is missing for THAT
+# reason — not because the skill is absent from the contract. Every real backend answers all ten
+# since #752, so the report is azure-devops' own with one merge verb struck from `implements`.
+run_tracker "$PROFILED" --tracker azure-devops state merge-pr
+got=$(printf '%s' "$OUT" | jq -c '.implements -= ["pr-merge"]' \
+  | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+[ "$got" = missing/verb-not-implemented ] \
+  && ok "state merge-pr, a backend lacking pr-merge — missing/verb-not-implemented" \
+  || note_fail "state merge-pr, a backend lacking pr-merge — want missing/verb-not-implemented, got $got"
+
 echo "== B. the state report, and the tracker.capable verdict"
 
-# The report itself: five facts, judging none of them. `needs` is null because no skill is on the
-# contract yet, and that is a different absence from `implements` being null — the decision below is
-# what tells them apart, which is only possible if the report keeps them distinct.
-run_tracker "$PROFILED" state merge-pr
+# The report itself: five facts, judging none of them. `needs` is null because auto-dev is not on
+# the contract yet (#753), and that is a different absence from `implements` being null — the
+# decision below is what tells them apart, which is only possible if the report keeps them distinct.
+run_tracker "$PROFILED" state auto-dev
 if [ "$RC" -ne 0 ]; then
   note_fail "state — exited $RC ($ERR)"
 else
   got=$(printf '%s' "$OUT" | jq -r '[.tracker, .skill, (.needs|tostring), (.implements|length|tostring)] | join("|")' 2>/dev/null) \
     || got="<unparseable: $OUT>"
-  if [ "$got" != 'github|merge-pr|null|24' ]; then
+  if [ "$got" != 'github|auto-dev|null|34' ]; then
     note_fail "state — wrong report
-      want: github|merge-pr|null|24
+      want: github|auto-dev|null|34
       got:  $got"
   else
     ok "state — reports {tracker, skill, needs, implements} and judges nothing"
@@ -803,6 +958,18 @@ if [ "$RC" -ne 0 ] || [ "$got" != "$want_needs" ]; then
       got:  $got"
 else
   ok "state implement-issue — needs names the twelve verbs (#751)"
+fi
+
+# #752: merge-pr is on the contract — the ten inherited verbs plus its ten own.
+run_tracker "$PROFILED" state merge-pr
+got=$(printf '%s' "$OUT" | jq -r '.needs | join(" ")' 2>/dev/null) || got="<unparseable: $OUT>"
+want_needs='auth repo issue-view issue-search issue-edit-body issue-reopen issue-comment pr-list pr-view pr-ready pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete issue-parent pr-closing-issues pr-comment'
+if [ "$RC" -ne 0 ] || [ "$got" != "$want_needs" ]; then
+  note_fail "state merge-pr — wrong needs (rc $RC)
+      want: $want_needs
+      got:  $got"
+else
+  ok "state merge-pr — needs names the twenty verbs (#752)"
 fi
 
 echo "== C. contract coverage over create-issue's prose (#506)"
@@ -939,6 +1106,66 @@ else
   ok "D2 real tree — no gh issue|label|repo|pr under skills/implement-issue/scripts or in pr-existence-guard.sh"
 fi
 
+echo "== C3. contract coverage over merge-pr's prose (#752)"
+
+FIXTURE_MP="$WORK/merge-pr-fixture"
+mkdir -p "$FIXTURE_MP"
+cp "$KIT_ROOT/skills/merge-pr/references/merge-mechanics.md" "$FIXTURE_MP/"
+printf '\n"<kit>/scripts/tracker.sh" pr-frobnicate 5\n' >> "$FIXTURE_MP/merge-mechanics.md"
+fixture_out=$(check_coverage "$FIXTURE_MP" merge-pr)
+if ! grep -Fq 'pr-frobnicate' <<<"$fixture_out"; then
+  note_fail "C3 fixture — a verb absent from the contract was not named: '$fixture_out'"
+else
+  ok "C3 fixture — a verb absent from the contract fails coverage, named"
+fi
+real_out=$(check_coverage "$KIT_ROOT/skills/merge-pr" merge-pr)
+# Every verb the Task 6 prose rewrite moves onto the contract must be spelled at least once, so a
+# section that silently fell back to a direct `gh` call goes red here rather than staying covered.
+missing_spelled=""
+for v in pr-view commit-checks pr-merge-state pr-threads pr-thread-resolve pr-closing-issues \
+  issue-parent issue-search issue-reopen issue-comment pr-comment; do
+  collect_verbs "$KIT_ROOT/skills/merge-pr" | grep -Fxq "$v" || missing_spelled="$missing_spelled $v"
+done
+if [ -n "$real_out" ]; then
+  note_fail "C3 real tree — coverage reported gaps:
+      $real_out"
+elif [ -n "$missing_spelled" ]; then
+  note_fail "C3 real tree — merge-pr's prose never spells these verbs through \"<kit>/scripts/tracker.sh\":$missing_spelled"
+else
+  ok "C3 real tree — every tracker.sh verb merge-pr's prose invokes is on skills.merge-pr, and each migrated call site spells one"
+fi
+
+echo "== D3. no direct gh tracker call in merge-pr's migrated scripts (#752)"
+
+# Comments may still describe gh (the GitHub case is the reference); only executable lines count.
+# GitHub-only paths kept direct by name (approve-runs.sh, base-run-verdict.sh's workflow-runs
+# fallback, base-run-followup.sh's `gh run list`) match neither alternative.
+GUARD_PATTERN_MP='\bgh (issue|label|repo|pr)\b|gh api [^|]*(check-runs|git/refs|/parent|graphql)'
+d3_grep() {
+  grep -nE "$GUARD_PATTERN_MP" "$@" 2>/dev/null | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true
+}
+FIXTURE_GH_MP="$WORK/merge-pr-gh-fixture"
+mkdir -p "$FIXTURE_GH_MP"
+cp "$KIT_ROOT/skills/merge-pr/scripts/guarded-pr-merge.sh" "$FIXTURE_GH_MP/"
+printf '\ngh pr view 7 --json state\n' >> "$FIXTURE_GH_MP/guarded-pr-merge.sh"
+fixture_gh_out=$(d3_grep "$FIXTURE_GH_MP/guarded-pr-merge.sh" /dev/null)
+if ! grep -Fq 'guarded-pr-merge.sh' <<<"$fixture_gh_out"; then
+  note_fail "D3 fixture — a reintroduced 'gh pr view' line was not named: '$fixture_gh_out'"
+else
+  ok "D3 fixture — a direct gh pr call reintroduced into guarded-pr-merge.sh fails the guard, named"
+fi
+real_gh_out=$(d3_grep "$KIT_ROOT/skills/merge-pr/scripts/guarded-pr-merge.sh" \
+  "$KIT_ROOT/skills/merge-pr/scripts/parent-decision-note.sh" \
+  "$KIT_ROOT/skills/merge-pr/scripts/remote-branch-teardown.sh" \
+  "$KIT_ROOT/skills/merge-pr/scripts/base-run-verdict.sh" \
+  "$KIT_ROOT/skills/auto-dev/scripts/wait-ci.sh")
+if [ -n "$real_gh_out" ]; then
+  note_fail "D3 real tree — a direct gh call survives:
+      $real_gh_out"
+else
+  ok "D3 real tree — no direct gh tracker call in merge-pr's migrated scripts or wait-ci.sh"
+fi
+
 echo "== E. the gitlab backend (#508)"
 
 # A fixture repository carrying a committed profile whose Tracker line names gitlab.
@@ -1061,6 +1288,26 @@ case "$method $endpoint_dispatch" in
     payload=$(_pl GLAB_MR_LIST_JSON '[{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"merged","draft":false,"source_branch":"feat/7-x","description":"Closes #7","merged_at":"2026-11-01T00:00:00Z"}]') ;;
   "GET projects/:id/merge_requests/"[0-9]*"/commits"*)
     payload='[{"id":"aaa"},{"id":"bbb"}]' ;;
+  # The merge verbs (#752). Every sub-resource before the bare MR patterns below, whose `[0-9]*`
+  # would swallow it.
+  "GET projects/:id/merge_requests/"[0-9]*"/discussions"*)
+    s="${GLAB_DISCUSSIONS_STATUS:-200}"
+    case "$s" in 2??) payload=$(_pl GLAB_DISCUSSIONS_JSON '[{"id":"d1","notes":[{"body":"fix this","resolvable":true,"resolved":false,"position":{"new_path":"a.sh","new_line":3}}]},{"id":"d2","notes":[{"body":"done","resolvable":true,"resolved":true,"position":{"new_path":"b.sh","new_line":9}}]},{"id":"d3","notes":[{"body":"overall","resolvable":true,"resolved":false}]},{"id":"d4","notes":[{"body":"changed the title","resolvable":false,"system":true}]}]') ;;
+      *) fail_http "$s" ;; esac ;;
+  "POST projects/:id/merge_requests/"[0-9]*"/discussions/"*"/notes") : ;;
+  "PUT projects/:id/merge_requests/"[0-9]*"/discussions/"*) : ;;
+  "PUT projects/:id/merge_requests/"[0-9]*"/merge") : ;;
+  "GET projects/:id/merge_requests/"[0-9]*"/closes_issues"*)
+    payload='[{"iid":12},{"iid":13}]' ;;
+  "POST projects/:id/merge_requests/"[0-9]*"/notes") : ;;
+  "GET projects/:id/pipelines/"[0-9]*"/jobs"*)
+    payload=$(_pl GLAB_JOBS_JSON '[]') ;;
+  "GET projects/:id/repository/commits/"*"/statuses"*)
+    s="${GLAB_STATUSES_STATUS:-200}"
+    case "$s" in 2??) payload=$(_pl GLAB_STATUSES_JSON '[]') ;; *) fail_http "$s" ;; esac ;;
+  "DELETE projects/:id/repository/branches/"*)
+    s="${GLAB_BRANCH_DELETE_STATUS:-204}"
+    case "$s" in 2??) : ;; *) fail_http "$s" "${GLAB_BRANCH_DELETE_MESSAGE:-}" ;; esac ;;
   "GET projects/:id/merge_requests/"[0-9]*)
     payload=$(_pl GLAB_MR_JSON '{"iid":51,"title":"Draft: x","web_url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"opened","draft":true,"description":"Closes #7","source_branch":"feat/7-x","target_branch":"main","sha":"abc123","author":{"username":"gl_user"}}') ;;
   "PUT projects/:id/merge_requests/"[0-9]*) : ;;
@@ -1093,16 +1340,16 @@ else
   ok "AC1 create-issue on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
-# merge-pr has not migrated (#508's own Out of scope) — missing, not capable, and not unsupported:
-# the backend exists, this skill's verbs just are not on the contract yet.
+# merge-pr is on the contract (#752) and gitlab.sh answers its twenty verbs: capable (section E3
+# drives each of the ten merge verbs through the stub).
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 rc=$?
 if [ "$rc" -ne 0 ]; then
   note_fail "AC1 merge-pr on gitlab — the Step 1 pipe exited $rc: $out"
-elif [ "$out" != "missing" ]; then
-  note_fail "AC1 merge-pr on gitlab — expected 'missing', got '$out'"
+elif [ "$out" != "capable" ]; then
+  note_fail "AC1 merge-pr on gitlab — expected 'capable', got '$out'"
 else
-  ok "AC1 merge-pr on gitlab — not yet migrated, missing rather than capable or unsupported"
+  ok "AC1 merge-pr on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
 # ------------------------------------------------------------------------------------------- repo
@@ -1415,7 +1662,7 @@ pr_case "gitlab pr-list --search 9 — a non-matching short term returns nothing
 pr_case "gitlab pr-list --head — defaults to state=opened" 0 - \
   "merge_requests?source_branch=feat%2F7-x&state=opened" -- pr-list --head feat/7-x
 pr_case "gitlab pr-view — opened→open, sha→headSha, author.username→author" 0 \
-  '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user"}' \
+  '{"number":51,"title":"Draft: x","url":"https://gitlab.example.invalid/acme/widgets/-/merge_requests/51","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"gl_user","mergedAt":null,"mergeSha":null}' \
   "api projects/:id/merge_requests/51" -- pr-view 51
 pr_case "gitlab pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "merge_requests/51/commits?per_page=100" -- pr-commits 51
 pr_case "gitlab pr-edit-body — PUT description=@file" 0 '' "-X PUT projects/:id/merge_requests/51 -F description=@$PR_BODY" -- \
@@ -1440,8 +1687,143 @@ if [ "$out" != capable ]; then
 else
   ok "gitlab state implement-issue — capable once the six PR verbs land"
 fi
+echo "== E3. the merge verbs on gitlab (#752)"
+
+# Same pr_case seam as E2: tracker.sh's stdout and exit code, and GLAB_CALL_LOG. Each case feeds a
+# raw GitLab reply through the stub and asserts the normalised stdout, never gitlab.sh's own jq.
+PR_TRACKER=gitlab; PR_DIR="$GITLAB_PROFILED"; PR_LOG="$GLAB_CALL_LOG"
+
+# detailed_merge_status → mergeStateStatus. CLEAN only on `mergeable`; anything unmapped, including
+# a word GitLab adds tomorrow, is UNKNOWN — merge.step4 waits on it rather than merging.
+for pair in mergeable:CLEAN need_rebase:BEHIND conflict:DIRTY broken_status:DIRTY draft_status:DRAFT \
+            not_approved:BLOCKED discussions_not_resolved:BLOCKED ci_still_running:UNKNOWN \
+            checking:UNKNOWN some_new_word:UNKNOWN; do
+  export GLAB_MR_JSON="{\"iid\":7,\"draft\":false,\"detailed_merge_status\":\"${pair%%:*}\",\"diverged_commits_count\":3}"
+  pr_case "gitlab pr-merge-state — ${pair%%:*} is ${pair#*:}" 0 - \
+    "merge_requests/7?include_diverged_commits_count=true&with_merge_status_recheck=true" -- pr-merge-state 7
+  got=$(printf '%s' "$OUT" | jq -r .mergeStateStatus 2>/dev/null)
+  [ "$got" = "${pair#*:}" ] || note_fail "gitlab pr-merge-state ${pair%%:*} — want ${pair#*:}, got '$got' ($OUT)"
+done
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"not_approved","diverged_commits_count":3}'
+pr_case "gitlab pr-merge-state — diverged_commits_count is behind_by, unresolved resolvable paths, (pr-level) for none" 0 \
+  '{"behind_by":3,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"REVIEW_REQUIRED","unresolved_threads":["a.sh","(pr-level)"]}' \
+  "merge_requests/7/discussions" -- pr-merge-state 7
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"requested_changes","diverged_commits_count":0}'
+pr_case "gitlab pr-merge-state — requested_changes is BLOCKED / CHANGES_REQUESTED" 0 \
+  '{"behind_by":0,"mergeStateStatus":"BLOCKED","isDraft":false,"reviewDecision":"CHANGES_REQUESTED","unresolved_threads":["a.sh","(pr-level)"]}' \
+  - -- pr-merge-state 7
+
+# AC3 end to end: an UNKNOWN from the verb, projected the way merge-mechanics.md §4 builds the
+# merge.step4 state (the five fields by name, plus the CI gate's failed/pending — empty here), must
+# answer wait/unknown through the dispatcher, never merge. Reused by F3.
+step4_of() {
+  printf '%s' "$1" | jq -c '{behind_by, mergeStateStatus, isDraft, reviewDecision, unresolved_threads}
+                           + {failed: [], pending: []}' \
+    | "$DECIDE" merge.step4 --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null || echo "<unparseable>"
+}
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"checking","diverged_commits_count":0}' GLAB_DISCUSSIONS_JSON='[]'
+pr_case "gitlab pr-merge-state — checking, no threads, not behind" 0 - - -- pr-merge-state 7
+got=$(step4_of "$OUT")
+[ "$got" = wait/unknown ] && ok "gitlab checking → merge.step4 wait/unknown, never merge" \
+  || note_fail "gitlab checking → merge.step4 — want wait/unknown, got $got ($OUT)"
+unset GLAB_DISCUSSIONS_JSON
+export GLAB_MR_JSON='{"iid":7,"draft":false,"detailed_merge_status":"requested_changes","diverged_commits_count":0}'
+export GLAB_DISCUSSIONS_STATUS=500
+pr_case "gitlab pr-merge-state — a failed discussions read exits 1 and prints nothing" 1 '' - -- pr-merge-state 7
+pr_case "gitlab pr-threads — a failed discussions read is exit 1, never []" 1 '' - -- pr-threads 7
+unset GLAB_DISCUSSIONS_STATUS GLAB_MR_JSON
+pr_case "gitlab pr-threads — resolvable discussions only, first note's path/line/body" 0 \
+  '[{"id":"d1","path":"a.sh","line":3,"body":"fix this","isResolved":false},{"id":"d2","path":"b.sh","line":9,"body":"done","isResolved":true},{"id":"d3","path":null,"line":null,"body":"overall","isResolved":false}]' \
+  - -- pr-threads 7
+
+# Commit statuses → check-run words; `all=true` keeps the retried ones (ci.verdict reduces, not the verb).
+export GLAB_STATUSES_JSON='[{"id":1,"name":"build","status":"success","allow_failure":false,"target_url":"https://ci.invalid/1"},{"id":2,"name":"lint","status":"failed","allow_failure":true,"target_url":"https://ci.invalid/2"},{"id":3,"name":"test","status":"failed","allow_failure":false,"target_url":null},{"id":4,"name":"deploy","status":"manual","allow_failure":false},{"id":5,"name":"e2e","status":"running"},{"id":6,"name":"odd","status":"some_new_word"}]'
+pr_case "gitlab commit-checks — failed+allow_failure is neutral, unknown is UNKNOWN, app null, html_url from target_url" 0 \
+  '[{"name":"build","state":"success","bucket":"pass","id":1,"app":null,"html_url":"https://ci.invalid/1"},{"name":"lint","state":"neutral","bucket":"skipping","id":2,"app":null,"html_url":"https://ci.invalid/2"},{"name":"test","state":"failure","bucket":"fail","id":3,"app":null,"html_url":null},{"name":"deploy","state":"waiting","bucket":"pending","id":4,"app":null,"html_url":null},{"name":"e2e","state":"in_progress","bucket":"pending","id":5,"app":null,"html_url":null},{"name":"odd","state":"UNKNOWN","bucket":"pending","id":6,"app":null,"html_url":null}]' \
+  "repository/commits/abc123/statuses?all=true" -- commit-checks abc123
+unset GLAB_STATUSES_JSON
+export GLAB_STATUSES_STATUS=502
+pr_case "gitlab commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
+unset GLAB_STATUSES_STATUS
+
+pr_case "gitlab pr-checks — no head pipeline is [] and exit 0" 0 '[]' - -- pr-checks 7
+grep -q '/jobs' "$GLAB_CALL_LOG" && note_fail "gitlab pr-checks — read jobs with no head pipeline: $(cat "$GLAB_CALL_LOG")"
+export GLAB_MR_JSON='{"iid":7,"head_pipeline":{"id":88}}'
+export GLAB_JOBS_JSON='[{"name":"build","status":"success"},{"name":"lint","status":"failed","allow_failure":true},{"name":"test","status":"failed","allow_failure":false},{"name":"deploy","status":"manual"},{"name":"old","status":"canceled"},{"name":"e2e","status":"running"}]'
+pr_case "gitlab pr-checks — the head pipeline's jobs, bucketed" 0 \
+  '[{"name":"build","state":"success","bucket":"pass"},{"name":"lint","state":"failed","bucket":"pass"},{"name":"test","state":"failed","bucket":"fail"},{"name":"deploy","state":"manual","bucket":"skipping"},{"name":"old","state":"canceled","bucket":"cancel"},{"name":"e2e","state":"running","bucket":"pending"}]' \
+  "pipelines/88/jobs" -- pr-checks 7
+unset GLAB_MR_JSON GLAB_JOBS_JSON
+
+pr_case "gitlab pr-thread-resolve — posts the reply, then resolves" 0 '' \
+  "-X PUT projects/:id/merge_requests/7/discussions/d1?resolved=true" -- pr-thread-resolve 7 d1 --body-file "$PR_BODY"
+note_at=$(grep -n -- '-X POST projects/:id/merge_requests/7/discussions/d1/notes' "$GLAB_CALL_LOG" | head -1 | cut -d: -f1)
+put_at=$(grep -n -- '-X PUT projects/:id/merge_requests/7/discussions/d1' "$GLAB_CALL_LOG" | head -1 | cut -d: -f1)
+if [ -z "$note_at" ] || [ -z "$put_at" ] || [ "$note_at" -ge "$put_at" ]; then
+  note_fail "gitlab pr-thread-resolve — the note POST must be logged before the PUT: $(cat "$GLAB_CALL_LOG")"
+fi
+
+MERGE_BODY="$WORK/merge-body.md"; printf 'the body\n' > "$MERGE_BODY"
+rm -f "$GLAB_CAPTURE_DIR/squash_commit_message.bin"
+pr_case "gitlab pr-merge --squash --delete-branch --subject — PUT merge with squash and branch removal" 0 '' \
+  "-X PUT projects/:id/merge_requests/7/merge" -- \
+  pr-merge 7 --squash --delete-branch --subject s --body-file "$MERGE_BODY"
+for want in "-F squash=true" "-F should_remove_source_branch=true" "-F squash_commit_message=@"; do
+  grep -Fq -- "$want" "$GLAB_CALL_LOG" || note_fail "gitlab pr-merge — '$want' not sent: $(cat "$GLAB_CALL_LOG")"
+done
+grep -q merge_when_pipeline_succeeds "$GLAB_CALL_LOG" && note_fail "gitlab pr-merge — set merge_when_pipeline_succeeds"
+[ "$(cat "$GLAB_CAPTURE_DIR/squash_commit_message.bin" 2>/dev/null)" = "$(printf 's\n\nthe body')" ] \
+  || note_fail "gitlab pr-merge — the message is not '<subject>, blank line, body': $(cat "$GLAB_CAPTURE_DIR/squash_commit_message.bin" 2>/dev/null)"
+pr_case "gitlab pr-merge — a flag outside the four is exit 2, no glab call" 2 - EMPTY -- pr-merge 7 --admin
+
+pr_case "gitlab branch-delete — DELETE the url-encoded branch, ok" 0 ok \
+  "-X DELETE projects/:id/repository/branches/feature%2Fx%231" -- branch-delete 'feature/x#1'
+export GLAB_BRANCH_DELETE_STATUS=404 GLAB_BRANCH_DELETE_MESSAGE="404 Branch Not Found"
+pr_case "gitlab branch-delete — a 404 Branch Not Found is gone" 0 gone - -- branch-delete feature/x
+# A wrong project 404s too — that is not the branch being gone.
+export GLAB_BRANCH_DELETE_MESSAGE="404 Project Not Found"
+pr_case "gitlab branch-delete — a 404 Project Not Found is exit 1, never gone" 1 '' - -- branch-delete feature/x
+export GLAB_BRANCH_DELETE_MESSAGE=""
+pr_case "gitlab branch-delete — a bare HTTP 404 is exit 1, never gone" 1 '' - -- branch-delete feature/x
+export GLAB_BRANCH_DELETE_STATUS=403 GLAB_BRANCH_DELETE_MESSAGE="403 Forbidden"
+pr_case "gitlab branch-delete — any other failure is exit 1" 1 '' - -- branch-delete feature/x
+unset GLAB_BRANCH_DELETE_STATUS GLAB_BRANCH_DELETE_MESSAGE
+
+pr_case "gitlab issue-parent — fallback, with no request" 0 fallback EMPTY -- issue-parent 5
+pr_case "gitlab pr-closing-issues — closes_issues' iids" 0 '[12,13]' "merge_requests/7/closes_issues" -- pr-closing-issues 7
+pr_case "gitlab pr-comment — POST an MR note from the file" 0 '' \
+  "-X POST projects/:id/merge_requests/7/notes -F body=@$PR_BODY" -- pr-comment 7 --body-file "$PR_BODY"
+
+for refusal in "pr-thread-resolve 7 d1 --body-file $PR_EMPTY" "pr-thread-resolve 7 d1" \
+               "pr-comment 7 --body-file $PR_EMPTY" "pr-comment 7 --body-file $WORK/no-such-file" \
+               "pr-merge 7 --squash --body-file $PR_EMPTY"; do
+  # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+  pr_case "gitlab ${refusal%% *} — refuses a missing or empty --body-file, exit 2, no glab call" 2 - EMPTY -- $refusal
+done
+for dry in "pr-merge 7 --squash --delete-branch --subject s --dry-run" \
+           "pr-thread-resolve 7 d1 --body-file $PR_BODY --dry-run" \
+           "pr-comment 7 --body-file $PR_BODY --dry-run" "branch-delete feature/x --dry-run"; do
+  # shellcheck disable=SC2086
+  pr_case "gitlab ${dry%% *} --dry-run — no glab call" 0 - EMPTY -- $dry
+  if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+    note_fail "gitlab ${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+  fi
+done
+
+export GLAB_MR_JSON='{"iid":51,"state":"merged","merged_at":"2026-11-11T10:00:00Z","merge_commit_sha":null,"squash_commit_sha":"sq123"}'
+pr_case "gitlab pr-view — mergedAt from merged_at, mergeSha falls back to squash_commit_sha" 0 - - -- pr-view 51
+[ "$(printf '%s' "$OUT" | jq -c '[.state, .mergedAt, .mergeSha]' 2>/dev/null)" = '["merged","2026-11-11T10:00:00Z","sq123"]' ] \
+  || note_fail "gitlab pr-view — merged fields wrong: $OUT"
+unset GLAB_MR_JSON
+
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
-[ "$out" = missing ] || note_fail "gitlab state merge-pr — expected 'missing', got '$out'"
+if [ "$out" = capable ]; then
+  ok "gitlab state merge-pr — capable once the ten merge verbs land"
+else
+  note_fail "gitlab state merge-pr — expected 'capable', got '$out'"
+fi
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] || note_fail "gitlab state implement-issue — expected 'capable' still, got '$out'"
 
 echo "== F. the Azure DevOps backend (#509)"
 
@@ -1477,6 +1859,14 @@ fi
 default_pr='{"pullRequestId":9,"title":"x","status":"active","isDraft":true,"description":"Closes #7","sourceRefName":"refs/heads/feat/7-x","targetRefName":"refs/heads/main","lastMergeSourceCommit":{"commitId":"abc123"},"createdBy":{"uniqueName":"me@acme.example"},"repository":{"name":"widgets","project":{"name":"Shop"}}}'
 default_pr_list='[{"pullRequestId":9,"title":"x","status":"completed","isDraft":false,"sourceRefName":"refs/heads/feat/7-x","description":"Closes #7","closedDate":"2026-11-01T00:00:00Z","repository":{"name":"widgets","project":{"name":"Shop"}}}]'
 default_pr_create='{"pullRequestId":9,"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+# #752: pr-merge's message travels as `@<file>`; copy it to $AZ_MSG_CAPTURE when set.
+if [ -n "${AZ_MSG_CAPTURE:-}" ]; then
+  prev=""
+  for a in "$@"; do [ "$prev" = --merge-commit-message ] && cp "${a#@}" "$AZ_MSG_CAPTURE"; prev="$a"; done
+fi
+default_threads='{"value":[{"id":1,"status":"active","threadContext":{"filePath":"/src/a.sh","rightFileStart":{"line":3}},"comments":[{"id":1,"content":"fix this","commentType":"text"}]},{"id":2,"status":"fixed","threadContext":{"filePath":"/b.sh","rightFileStart":{"line":9}},"comments":[{"id":1,"content":"done","commentType":"text"}]},{"id":3,"status":"pending","threadContext":null,"comments":[{"id":1,"content":"overall","commentType":"text"}]},{"id":4,"status":"active","comments":[{"id":1,"content":"Policy updated","commentType":"system"}]},{"id":5,"status":"active","isDeleted":true,"comments":[{"id":1,"content":"gone","commentType":"text"}]}]}'
+default_wi_show='{"id":5,"relations":[]}'
+default_branch_stats='{"behindCount":0}'
 
 # Pull the flags every dispatch below needs, regardless of position.
 resource=""; http_method="GET"; route_id=""; route_type=""; capture=0
@@ -1512,8 +1902,26 @@ case "${1-} ${2-}" in
       list)   printf '%s' "${AZ_PR_LIST_JSON:-$default_pr_list}" ;;
       show)   printf '%s' "${AZ_PR_JSON:-$default_pr}" ;;
       update) printf '{}' ;;
+      policy)
+        [ -z "${AZ_POLICY_FAIL:-}" ] || { echo "az stub: policy list failed" >&2; exit 1; }
+        printf '%s' "${AZ_POLICY_JSON:-[]}" ;;
+      work-item) printf '%s' "${AZ_PR_WI_JSON:-[]}" ;;
       *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
     esac
+    exit 0 ;;
+  "repos ref")
+    case "${3-}" in
+      list)   printf '%s' "${AZ_REF_JSON:-[]}" ;;
+      delete) printf '{"success":true}' ;;
+      *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
+    esac
+    exit 0 ;;
+  "pipelines runs")
+    [ -z "${AZ_RUNS_FAIL:-}" ] || { echo "az stub: runs list failed" >&2; exit 1; }
+    printf '%s' "${AZ_RUNS_JSON:-[]}"
+    exit 0 ;;
+  "boards work-item")
+    printf '%s' "${AZ_WI_SHOW_JSON:-$default_wi_show}"
     exit 0 ;;
   "devops invoke") : ;;
   "devops project")
@@ -1559,6 +1967,11 @@ case "$resource $http_method" in
   "pullRequests POST") printf '%s' "$default_pr_create" ;;
   "pullRequests PATCH") printf '{}' ;;
   "pullRequestCommits GET") printf '%s' '{"value":[{"commitId":"aaa"},{"commitId":"bbb"}]}' ;;
+  "branchStats GET") printf '%s' "${AZ_BRANCH_STATS_JSON:-$default_branch_stats}" ;;
+  "pullRequestThreads GET")
+    s="${AZ_THREADS_STATUS:-200}"
+    case "$s" in 2??) printf '%s' "${AZ_THREADS_JSON:-$default_threads}" ;; *) fail "$s" "threads" ;; esac ;;
+  "pullRequestThreads POST"|"pullRequestThreads PATCH"|"pullRequestThreadComments POST") printf '{}' ;;
   *) echo "az stub: unsupported invoke: resource=$resource method=$http_method" >&2; exit 1 ;;
 esac
 AZSTUB
@@ -1973,7 +2386,7 @@ pr_case "azure pr-list --search — re-reads each candidate's full description" 
 [ "$(printf '%s' "$OUT" | jq -r '.[0].body' 2>/dev/null)" = "Closes #7" ] \
   || note_fail "azure pr-list --search — the matching PR was not returned: $OUT"
 pr_case "azure pr-view — refs/heads/ stripped, web URL built, author a login" 0 \
-  '{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"me@acme.example"}' \
+  '{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"me@acme.example","mergedAt":null,"mergeSha":null}' \
   "repos pr show" -- pr-view 9
 pr_case "azure pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pullRequestCommits" -- pr-commits 9
 pr_case "azure pr-edit-body — PATCH {description} through --in-file" 0 '' "pullRequestId=9" -- \
@@ -1998,8 +2411,166 @@ if [ "$out" != capable ]; then
 else
   ok "azure state implement-issue — capable once the six PR verbs land"
 fi
+
+echo "== F3. the merge verbs on Azure DevOps (#752)"
+
+# Same pr_case seam as F2: tracker.sh's stdout and exit code, and AZ_CALL_LOG. Each case feeds a raw
+# Azure DevOps reply through the stub and asserts the normalised stdout, never azure-devops.sh's jq.
+PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
+AZ_PR_TMPL='{"pullRequestId":9,"status":"active","isDraft":DRAFT,"mergeStatus":"MS","sourceRefName":"refs/heads/feat/7-x","targetRefName":"refs/heads/main","reviewers":[{"vote":10,"isRequired":true}],"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+POL_OK='[{"status":"approved","configuration":{"isBlocking":true,"type":{"displayName":"Build"},"settings":{"displayName":"CI build"}}},{"status":"notApplicable","configuration":{"isBlocking":true,"type":{"displayName":"Work item linking"}}},{"status":"rejected","configuration":{"isBlocking":false,"type":{"displayName":"Comment requirements"}}}]'
+POL_REJ='[{"status":"rejected","configuration":{"isBlocking":true,"type":{"displayName":"Build"}}}]'
+POL_RUN='[{"status":"running","configuration":{"isBlocking":true,"type":{"displayName":"Build"}}}]'
+
+# mergeStatus + blocking policies → mergeStateStatus. CLEAN only on `succeeded` with every blocking
+# policy approved/notApplicable (a non-blocking rejection does not count); anything else is UNKNOWN.
+for c in "false:succeeded:OK:CLEAN" "false:conflicts:OK:DIRTY" "false:succeeded:REJ:BLOCKED" \
+         "false:rejectedByPolicy:OK:BLOCKED" "false:queued:OK:UNKNOWN" "false:succeeded:RUN:UNKNOWN" \
+         "false:someNewWord:OK:UNKNOWN" "true:succeeded:OK:DRAFT"; do
+  IFS=: read -r d ms pol want <<<"$c"
+  pj=$(printf '%s' "$AZ_PR_TMPL" | sed "s/DRAFT/$d/; s/\"MS\"/\"$ms\"/")
+  case "$pol" in OK) pv="$POL_OK" ;; REJ) pv="$POL_REJ" ;; RUN) pv="$POL_RUN" ;; esac
+  export AZ_PR_JSON="$pj" AZ_POLICY_JSON="$pv"
+  pr_case "azure pr-merge-state — draft=$d $ms + $pol policies is $want" 0 - "repos pr policy list --id 9" -- pr-merge-state 9
+  got=$(printf '%s' "$OUT" | jq -r .mergeStateStatus 2>/dev/null)
+  [ "$got" = "$want" ] || note_fail "azure pr-merge-state draft=$d $ms/$pol — want $want, got '$got' ($OUT)"
+done
+# AC3 end to end, as E3: a running blocking policy is UNKNOWN, and merge.step4 waits on it.
+AZ_PR_JSON=$(printf '%s' "$AZ_PR_TMPL" | sed 's/DRAFT/false/; s/"MS"/"succeeded"/'); export AZ_PR_JSON
+export AZ_POLICY_JSON="$POL_RUN" AZ_THREADS_JSON='{"value":[]}'
+pr_case "azure pr-merge-state — a running policy, no threads, not behind" 0 - - -- pr-merge-state 9
+got=$(step4_of "$OUT")
+[ "$got" = wait/unknown ] && ok "azure running policy → merge.step4 wait/unknown, never merge" \
+  || note_fail "azure running policy → merge.step4 — want wait/unknown, got $got ($OUT)"
+unset AZ_THREADS_JSON
+AZ_PR_JSON=$(printf '%s' "$AZ_PR_TMPL" | sed 's/DRAFT/false/; s/"MS"/"succeeded"/'); export AZ_PR_JSON
+export AZ_POLICY_JSON="$POL_OK" AZ_BRANCH_STATS_JSON='{"name":"feat/7-x","aheadCount":2,"behindCount":3}'
+pr_case "azure pr-merge-state — behindCount is behind_by, active text threads' paths without the leading /" 0 \
+  '{"behind_by":3,"mergeStateStatus":"CLEAN","isDraft":false,"reviewDecision":"APPROVED","unresolved_threads":["src/a.sh","(pr-level)"]}' \
+  "branchStats" -- pr-merge-state 9
+for want in "name=feat/7-x" "baseVersionDescriptor.version=main"; do
+  grep -Fq -- "$want" "$AZ_CALL_LOG" || note_fail "azure pr-merge-state — branch stats not asked for '$want': $(cat "$AZ_CALL_LOG")"
+done
+unset AZ_BRANCH_STATS_JSON
+for c in "-10:true:CHANGES_REQUESTED" "-5:false:CHANGES_REQUESTED" "0:true:REVIEW_REQUIRED" "10:false:null"; do
+  IFS=: read -r v req want <<<"$c"
+  AZ_PR_JSON=$(printf '%s' "$AZ_PR_JSON" | jq -c --argjson v "$v" --argjson r "$req" '.reviewers = [{vote: $v, isRequired: $r}]')
+  pr_case "azure pr-merge-state — a vote of $v (required=$req) is reviewDecision $want" 0 - - -- pr-merge-state 9
+  got=$(printf '%s' "$OUT" | jq -r .reviewDecision 2>/dev/null)
+  [ "$got" = "$want" ] || note_fail "azure pr-merge-state vote $v/$req — want $want, got '$got' ($OUT)"
+done
+export AZ_THREADS_STATUS=500
+pr_case "azure pr-merge-state — a failed threads read exits 1 and prints nothing" 1 '' - -- pr-merge-state 9
+pr_case "azure pr-threads — a failed threads read is exit 1, never []" 1 '' - -- pr-threads 9
+unset AZ_THREADS_STATUS
+export AZ_POLICY_FAIL=1
+pr_case "azure pr-merge-state — a failed policy read exits 1 and prints nothing" 1 '' - -- pr-merge-state 9
+pr_case "azure pr-checks — a failed policy read is exit 1, never []" 1 '' - -- pr-checks 9
+unset AZ_POLICY_FAIL
+pr_case "azure pr-threads — live text threads only, path without the leading /, resolved off active/pending" 0 \
+  '[{"id":1,"path":"src/a.sh","line":3,"body":"fix this","isResolved":false},{"id":2,"path":"b.sh","line":9,"body":"done","isResolved":true},{"id":3,"path":null,"line":null,"body":"overall","isResolved":false}]' \
+  "pullRequestThreads" -- pr-threads 9
+
+pr_case "azure pr-checks — the PR's policies, by display name, bucketed" 0 \
+  '[{"name":"CI build","state":"approved","bucket":"pass"},{"name":"Work item linking","state":"notApplicable","bucket":"skipping"},{"name":"Comment requirements","state":"rejected","bucket":"fail"}]' \
+  "repos pr policy list --id 9" -- pr-checks 9
+export AZ_POLICY_JSON='[{"status":"queued","configuration":{"isBlocking":true,"type":{"displayName":"Build"}}},{"status":"broken","configuration":{"isBlocking":true,"type":{"displayName":"Status"}}}]'
+pr_case "azure pr-checks — broken is fail, anything else pending" 0 \
+  '[{"name":"Build","state":"queued","bucket":"pending"},{"name":"Status","state":"broken","bucket":"fail"}]' - -- pr-checks 9
+unset AZ_POLICY_JSON
+pr_case "azure pr-checks — no policies is [] and exit 0" 0 '[]' - -- pr-checks 9
+unset AZ_PR_JSON
+
+# Pipeline runs → check-run words, filtered to the sha: every run on it, unreduced.
+export AZ_RUNS_JSON='[{"id":1,"sourceVersion":"abc123","status":"completed","result":"succeeded","definition":{"name":"build"},"_links":{"web":{"href":"https://dev.azure.com/acme/Shop/_build/results?buildId=1"}}},{"id":2,"sourceVersion":"abc123","status":"completed","result":"partiallySucceeded","definition":{"name":"test"}},{"id":3,"sourceVersion":"other","status":"completed","result":"failed","definition":{"name":"build"}},{"id":4,"sourceVersion":"abc123","status":"inProgress","definition":{"name":"lint"}},{"id":5,"sourceVersion":"abc123","status":"completed","result":"none","definition":{"name":"odd"}},{"id":6,"sourceVersion":"abc123","status":"notStarted","definition":{"name":"e2e"}},{"id":7,"sourceVersion":"abc123","status":"completed","result":"canceled","definition":{"name":"old"}},{"id":8,"sourceVersion":"abc123","status":"postponed","definition":{"name":"later"}}]'
+pr_case "azure commit-checks — runs on the sha only, partiallySucceeded is failure, unknown is UNKNOWN" 0 \
+  '[{"name":"build","state":"success","bucket":"pass","id":1,"app":null,"html_url":"https://dev.azure.com/acme/Shop/_build/results?buildId=1"},{"name":"test","state":"failure","bucket":"fail","id":2,"app":null,"html_url":null},{"name":"lint","state":"in_progress","bucket":"pending","id":4,"app":null,"html_url":null},{"name":"odd","state":"UNKNOWN","bucket":"pending","id":5,"app":null,"html_url":null},{"name":"e2e","state":"queued","bucket":"pending","id":6,"app":null,"html_url":null},{"name":"old","state":"cancelled","bucket":"cancel","id":7,"app":null,"html_url":null},{"name":"later","state":"waiting","bucket":"pending","id":8,"app":null,"html_url":null}]' \
+  "pipelines runs list" -- commit-checks abc123
+grep -Fq -- "--top 100" "$AZ_CALL_LOG" || note_fail "azure commit-checks — runs list without --top 100: $(cat "$AZ_CALL_LOG")"
+# A PR validation build runs on the test merge commit: its sourceVersion is that merge, and the PR
+# head merge-pr passes (pr-view's headSha) is only in triggerInfo."pr.sourceSha".
+export AZ_RUNS_JSON='[{"id":9,"sourceVersion":"merge999","triggerInfo":{"pr.sourceSha":"abc123"},"status":"completed","result":"succeeded","definition":{"name":"pr-build"}},{"id":10,"sourceVersion":"merge888","triggerInfo":{"pr.sourceSha":"other"},"status":"completed","result":"failed","definition":{"name":"pr-build"}}]'
+pr_case "azure commit-checks — a PR build whose triggerInfo pr.sourceSha is the sha counts" 0 \
+  '[{"name":"pr-build","state":"success","bucket":"pass","id":9,"app":null,"html_url":null}]' - -- commit-checks abc123
+unset AZ_RUNS_JSON
+export AZ_RUNS_FAIL=1
+pr_case "azure commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
+unset AZ_RUNS_FAIL
+
+AZ_INFILE_CAPTURE="$WORK/az-infile.json"; export AZ_INFILE_CAPTURE
+pr_case "azure pr-thread-resolve — replies, then closes the thread" 0 '' "pullRequestThreads" -- \
+  pr-thread-resolve 9 1 --body-file "$PR_BODY"
+reply_at=$(grep -n -- '--resource pullRequestThreadComments' "$AZ_CALL_LOG" | grep -- 'POST' | head -1 | cut -d: -f1)
+close_at=$(grep -n -- '--resource pullRequestThreads ' "$AZ_CALL_LOG" | grep -- 'PATCH' | head -1 | cut -d: -f1)
+if [ -z "$reply_at" ] || [ -z "$close_at" ] || [ "$reply_at" -ge "$close_at" ]; then
+  note_fail "azure pr-thread-resolve — the comment POST must be logged before the thread PATCH: $(cat "$AZ_CALL_LOG")"
+fi
+[ "$(jq -c . "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '{"status":"closed"}' ] \
+  || note_fail "azure pr-thread-resolve — the PATCH does not close the thread: $(cat "$AZ_INFILE_CAPTURE")"
+
+MERGE_BODY="$WORK/merge-body.md"; printf 'the body\n' > "$MERGE_BODY"
+AZ_MSG_CAPTURE="$WORK/az-merge-msg.txt"; export AZ_MSG_CAPTURE; rm -f "$AZ_MSG_CAPTURE"
+pr_case "azure pr-merge --squash --delete-branch --subject — completes with squash and branch deletion" 0 '' \
+  "repos pr update --id 9 --status completed --squash true --delete-source-branch true" -- \
+  pr-merge 9 --delete-branch --squash --subject s --body-file "$MERGE_BODY"
+grep -q -- '--auto-complete' "$AZ_CALL_LOG" && note_fail "azure pr-merge — set auto-complete: $(cat "$AZ_CALL_LOG")"
+[ "$(cat "$AZ_MSG_CAPTURE" 2>/dev/null)" = "$(printf 's\n\nthe body')" ] \
+  || note_fail "azure pr-merge — the message is not '<subject>, blank line, body': $(cat "$AZ_MSG_CAPTURE" 2>/dev/null)"
+unset AZ_MSG_CAPTURE
+pr_case "azure pr-merge — a flag outside the four is exit 2, no az call" 2 - EMPTY -- pr-merge 9 --admin
+
+export AZ_REF_JSON='[{"name":"refs/heads/feature/xy","objectId":"111"}]'
+pr_case "azure branch-delete — no exact ref is gone, and no delete call" 0 gone "repos ref list" -- branch-delete feature/x
+grep -q 'repos ref delete' "$AZ_CALL_LOG" && note_fail "azure branch-delete — deleted with no ref: $(cat "$AZ_CALL_LOG")"
+export AZ_REF_JSON='[{"name":"refs/heads/feature/x","objectId":"abc"},{"name":"refs/heads/feature/xy","objectId":"111"}]'
+pr_case "azure branch-delete — deletes the exact ref by its objectId, ok" 0 ok \
+  "repos ref delete --name heads/feature/x --object-id abc" -- branch-delete feature/x
+unset AZ_REF_JSON
+
+export AZ_WI_SHOW_JSON='{"id":5,"relations":[{"rel":"System.LinkTypes.Related","url":"https://dev.azure.com/acme/_apis/wit/workItems/99"},{"rel":"System.LinkTypes.Hierarchy-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/40"}]}'
+pr_case "azure issue-parent — the Hierarchy-Reverse id" 0 40 "boards work-item show --id 5" -- issue-parent 5
+grep -Fq -- "--expand relations" "$AZ_CALL_LOG" || note_fail "azure issue-parent — no --expand relations: $(cat "$AZ_CALL_LOG")"
+unset AZ_WI_SHOW_JSON
+pr_case "azure issue-parent — no parent relation is none" 0 none - -- issue-parent 5
+export AZ_PR_WI_JSON='[{"id":"12","url":"https://dev.azure.com/acme/_apis/wit/workItems/12"},{"id":"13","url":"x"}]'
+pr_case "azure pr-closing-issues — the linked work items' ids" 0 '[12,13]' "repos pr work-item list --id 9" -- pr-closing-issues 9
+unset AZ_PR_WI_JSON
+pr_case "azure pr-comment — POST a closed one-comment thread from the file" 0 '' "pullRequestThreads" -- \
+  pr-comment 9 --body-file "$PR_BODY"
+[ "$(jq -c '[.status, (.comments|length), .comments[0].content]' "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '["closed",1,"Closes #7\n"]' ] \
+  || note_fail "azure pr-comment — wrong thread body: $(cat "$AZ_INFILE_CAPTURE")"
+unset AZ_INFILE_CAPTURE
+
+for refusal in "pr-thread-resolve 9 1 --body-file $PR_EMPTY" "pr-thread-resolve 9 1" \
+               "pr-comment 9 --body-file $PR_EMPTY" "pr-comment 9 --body-file $WORK/no-such-file" \
+               "pr-merge 9 --squash --body-file $PR_EMPTY"; do
+  # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+  pr_case "azure ${refusal%% *} — refuses a missing or empty --body-file, exit 2, no az call" 2 - EMPTY -- $refusal
+done
+for dry in "pr-merge 9 --squash --delete-branch --subject s --dry-run" \
+           "pr-thread-resolve 9 1 --body-file $PR_BODY --dry-run" \
+           "pr-comment 9 --body-file $PR_BODY --dry-run" "branch-delete feature/x --dry-run"; do
+  # shellcheck disable=SC2086
+  pr_case "azure ${dry%% *} --dry-run — no az call" 0 - EMPTY -- $dry
+  if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+    note_fail "azure ${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+  fi
+done
+
+export AZ_PR_JSON='{"pullRequestId":51,"status":"completed","closedDate":"2026-11-11T10:00:00Z","lastMergeCommit":{"commitId":"sq123"},"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+pr_case "azure pr-view — mergedAt from closedDate, mergeSha from lastMergeCommit" 0 - - -- pr-view 51
+[ "$(printf '%s' "$OUT" | jq -c '[.state, .mergedAt, .mergeSha]' 2>/dev/null)" = '["merged","2026-11-11T10:00:00Z","sq123"]' ] \
+  || note_fail "azure pr-view — merged fields wrong: $OUT"
+unset AZ_PR_JSON
+
 out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
-[ "$out" = missing ] || note_fail "azure state merge-pr — expected 'missing', got '$out'"
+if [ "$out" = capable ]; then
+  ok "azure state merge-pr — capable once the ten merge verbs land"
+else
+  note_fail "azure state merge-pr — expected 'capable', got '$out'"
+fi
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] || note_fail "azure state implement-issue — expected 'capable' still, got '$out'"
 
 if [ "$FAILED" -ne 0 ]; then
   echo

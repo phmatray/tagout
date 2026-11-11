@@ -8,8 +8,10 @@
 # wrote. The suite stubs `gh` (never a real issue, per this kit's testing rule — see
 # skills/_shared/test-seams.md and the fixture/stub-only instruction this issue was worked under)
 # and keeps a scratch FILE standing in for "the parent issue's body on GitHub", updated by the
-# script's own `gh issue edit --body-file -` call and read back by the next `gh issue view`, so the
-# suite exercises the real read-modify-write-readback cycle rather than a canned response per call.
+# `gh issue edit --body-file <file>` the GitHub backend sends and read back by the next
+# `gh issue view`, so the suite exercises the real read-modify-write-readback cycle rather than a
+# canned response per call. Every call reaches the stub through `scripts/tracker.sh` (#752), so the
+# stub answers the backend's argv and raw JSON, and the backend's normalisation is under test too.
 set -euo pipefail
 # A GH_HOST in the developer's or CI's shell would decide the host cases (#514) on its own.
 unset GH_HOST
@@ -31,9 +33,9 @@ STATE_BODY="$WORK/state-body.txt"
 
 # ------------------------------------------------------------------------------------ the gh stub
 #
-# Routed on the NOUN/VERB and, for `issue view`, the requested --json fields — never on the issue
-# number — because the script queries the CHILD (`--json parent`) and the PARENT (`--json body`)
-# through the identically-shaped `gh issue view <n> -R <repo> --json <fields>` call.
+# Routed on the NOUN/VERB and, for `issue view`, the requested --json fields. The issue number
+# matters only for the `Part of #N` fallback: an issue with a file under $CHILD_BODY_DIR answers
+# that file's body (the CHILD); every other issue answers $STATE_BODY (the PARENT).
 #
 #   GH_PARENT_REST_JSON     raw JSON for `gh api repos/<r>/issues/<child>/parent`; unset = 404 no parent
 #   GH_PARENT_REST_404      nofound | bare — answer 404 as "No parent issue found" / a bare "HTTP 404"
@@ -41,14 +43,15 @@ STATE_BODY="$WORK/state-body.txt"
 #   GH_PARENT_REST_STATUS   an HTTP status (e.g. 500) to make the parent lookup fail with
 #   `gh issue view --json parent` answers `Unknown JSON field: "parent"` as gh 2.87.3 does (#762).
 #   GH_BODY_VIEW_STATUS     non-zero to make every `--json body` read fail
-#   GH_PR_JSON              raw JSON for `gh pr view <pr> --json title,url`     default {}
+#   GH_PR_JSON              raw JSON for `gh pr view <pr> --json …,title,url,…`  default {}
 #   GH_PR_VIEW_STATUS       non-zero to make the PR lookup fail
-#   GH_ISSUE_EDIT_STATUS    non-zero to make `gh issue edit --body-file -` fail
+#   GH_ISSUE_EDIT_STATUS    non-zero to make `gh issue edit --body-file <file>` fail
 #
 # `$STATE_BODY` is the fake GitHub: seeded by the test before each run, read by every
 # `--json body` view, and overwritten by `gh issue edit`'s stdin. That is what lets the
 # idempotent-rerun and second-child cases assert against what the FIRST call actually produced,
-# not a hand-written expectation of it.
+# not a hand-written expectation of it. `--body-file -` (stdin) is refused: the write goes
+# through a file, never a pipe.
 #
 # Each log line carries the GH_HOST the call ran under (#514). `gh auth token --hostname H`, the
 # host helper's credential probe, succeeds only for a host listed in $GH_STUB_HOSTS.
@@ -68,7 +71,7 @@ case "$noun" in
     verb="${1:-}"; shift || true
     case "$verb" in
       view)
-        shift || true   # the issue number — routing never keys on it, see the header above
+        n="${1:-}"; shift || true
         fields=""
         while [ $# -gt 0 ]; do
           case "$1" in
@@ -80,22 +83,27 @@ case "$noun" in
           parent)   # gh 2.87.3 has no such field (#762)
             echo 'Unknown JSON field: "parent"' >&2
             exit 1 ;;
-          body)
+          *body*)
             [ "${GH_BODY_VIEW_STATUS:-0}" = 0 ] || { echo "gh: simulated failure" >&2; exit "$GH_BODY_VIEW_STATUS"; }
-            body=$(cat "$STATE_BODY" 2>/dev/null || true)
-            jq -n --arg b "$body" '{body: $b}'
+            src="$STATE_BODY"
+            [ -f "${CHILD_BODY_DIR:-/nonexistent}/$n" ] && src="$CHILD_BODY_DIR/$n"
+            body=$(cat "$src" 2>/dev/null || true)
+            jq -n --arg b "$body" --argjson n "$n" \
+              '{number: $n, title: "t", state: "OPEN", body: $b, labels: [], url: "https://github.com/o/r/issues/\($n)"}'
             exit 0 ;;
           *) echo "unexpected --json fields for issue view: '$fields'" >&2; exit 99 ;;
         esac ;;
       edit)
         shift || true   # the issue number
+        bf=""
         while [ $# -gt 0 ]; do
           case "$1" in
-            --body-file) shift 2 ;;
+            --body-file) bf="$2"; shift 2 ;;
             *) shift ;;
           esac
         done
-        newbody=$(cat)
+        case "$bf" in ''|-) echo "gh stub: issue edit must get --body-file <file>, got '$bf'" >&2; exit 99 ;; esac
+        newbody=$(cat "$bf")
         [ "${GH_ISSUE_EDIT_STATUS:-0}" = 0 ] || { echo "gh: simulated edit failure" >&2; exit "$GH_ISSUE_EDIT_STATUS"; }
         printf '%s' "$newbody" > "$STATE_BODY"
         exit 0 ;;
@@ -123,7 +131,8 @@ case "$noun" in
     case "$verb" in
       view)
         [ "${GH_PR_VIEW_STATUS:-0}" = 0 ] || { echo "gh: simulated failure" >&2; exit "$GH_PR_VIEW_STATUS"; }
-        printf '%s\n' "${GH_PR_JSON:-EMPTY_PR}" | sed 's/^EMPTY_PR$/{}/'
+        pj="${GH_PR_JSON:-}"; [ -n "$pj" ] || pj='{}'
+        printf '%s\n' "$pj" | jq -c '{number: 0, state: "MERGED", isDraft: false} + .'
         exit 0 ;;
       *) echo "unexpected pr verb: $verb" >&2; exit 99 ;;
     esac ;;
@@ -133,6 +142,9 @@ STUB
 chmod +x "$WORK/bin/gh"
 export PATH="$WORK/bin:$PATH"
 export STATE_BODY
+CHILD_BODY_DIR="$WORK/child-bodies"
+mkdir -p "$CHILD_BODY_DIR"
+export CHILD_BODY_DIR
 
 fails=0
 case_n=0
@@ -277,8 +289,31 @@ if grep -qE 'ARGS: issue edit' "$GH_CALL_LOG"; then
 fi
 
 GH_PARENT_REST_STATUS=500 run_case "rest-500" 42 76 "$REPO"
-expect_rc 1 && expect_stderr_contains "parent-decision-note: gh api" \
+expect_rc 1 && expect_stderr_contains "parent-decision-note:" \
+  && expect_stderr_contains "gh api repos/o/r/issues/42/parent failed" \
   && ok "an HTTP 500 is a refusal (exit 1), never read as no-parent"
+
+# ------------------------------------- 5c. no sub-issues API: the child's `Part of #N` line (#752)
+# A tracker without a native parent link answers `fallback`; the child's body opening
+# `Part of #N — …` names the parent instead, and a body without that line is parentless.
+printf '## Destination\n\nShip the epic.\n' > "$STATE_BODY"
+printf 'Part of #40 — the decomposed epic\n\nThe slice.\n' > "$CHILD_BODY_DIR/43"
+GH_PARENT_REST_404=bare \
+  GH_PR_JSON='{"title":"feat(p): part-of slice (#43) (#77)","url":"https://github.com/o/r/pull/77"}' \
+  run_case "fallback-part-of" 43 77 "$REPO"
+expect_rc 0 \
+  && expect_stdout "appended #43's PR #77 to parent #40's Decisions so far" \
+  && expect_body_contains "- #43 — feat(p): part-of slice ([#77](https://github.com/o/r/pull/77))" \
+  && expect_call '^GH_HOST=.* ARGS: issue edit 40 ' \
+  && ok "fallback + a 'Part of #40 — …' first line appends to #40"
+
+printf 'Just a standalone fix.\n\nNo epic here.\n' > "$CHILD_BODY_DIR/44"
+GH_PARENT_REST_404=bare run_case "fallback-no-part-of" 44 78 "$REPO"
+expect_rc 0 && expect_stdout "no-parent" && expect_stderr_contains "Part of #N" \
+  && ok "fallback + no 'Part of #N' line is no-parent, exit 0, with a stderr note"
+if grep -qE 'ARGS: (issue edit|pr view)' "$GH_CALL_LOG"; then
+  echo "FAIL: [$CASE] a PR lookup or edit happened despite no parent"; fails=$((fails + 1))
+fi
 
 # --------------------------------------------------------------------------- 6. usage errors
 run_argv "usage-wrong-arg-count" 42 "$REPO"   # only 2 positionals — the 3rd (repo) is missing
@@ -339,7 +374,7 @@ GH_PARENT_REST_JSON='{"number":100,"title":"Elsewhere","html_url":"https://githu
   GH_PR_JSON='{"title":"feat(x): slice (#42) (#76)","url":"https://github.com/o/r/pull/76"}' \
   run_case "cross-repo-parent" 42 76 "$REPO"
 expect_rc 1 && expect_stderr_contains "cross-repository parent" \
-  && { ! grep -q -- '--json body' "$GH_CALL_LOG" || { echo "FAIL: [$CASE] read the parent body"; fails=$((fails + 1)); false; }; } \
+  && { ! grep -q -- 'ARGS: issue view' "$GH_CALL_LOG" || { echo "FAIL: [$CASE] read the parent body"; fails=$((fails + 1)); false; }; } \
   && ok "a parent in another repository is refused by name, its body never read"
 
 # A GHES repository_url (https://<host>/api/v3/repos/<o>/<r>) naming THIS repo passes (#781).
@@ -383,9 +418,9 @@ cd "$KIT_ROOT"
 expect_rc 0 \
   && expect_stdout "appended #61's PR #91 to parent #300's Decisions so far" \
   && expect_call '^GH_HOST=ghe\.example\.com ARGS: api -H Accept: application/vnd.github\+json repos/acme/widgets/issues/61/parent$' \
-  && expect_call '^GH_HOST=ghe\.example\.com ARGS: pr view 91 -R acme/widgets --json title,url$' \
-  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue view 300 -R acme/widgets --json body$' \
-  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue edit 300 -R acme/widgets --body-file -$' \
+  && expect_call '^GH_HOST=ghe\.example\.com ARGS: pr view 91 --repo acme/widgets --json [a-zA-Z,]*title,url' \
+  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue view 300 --repo acme/widgets --json [a-zA-Z,]*body' \
+  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue edit 300 --repo acme/widgets --body-file [^-][^ ]*$' \
   && expect_all_hosted \
   && ok "a GHE checkout: all five issue/pr calls ran under GH_HOST=ghe.example.com"
 
@@ -398,10 +433,10 @@ GH_PARENT_REST_JSON='{"number":300}' \
 expect_rc 0 \
   && expect_stdout "appended #62's PR #92 to parent #300's Decisions so far" \
   && expect_call '^GH_HOST=ghe\.example\.com ARGS: api -H Accept: application/vnd.github\+json repos/acme/widgets/issues/62/parent$' \
-  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue edit 300 -R acme/widgets --body-file -$' \
+  && expect_call '^GH_HOST=ghe\.example\.com ARGS: issue edit 300 --repo acme/widgets --body-file [^-][^ ]*$' \
   && expect_all_hosted \
-  && ok "HOST/OWNER/REPO is accepted: every call got -R acme/widgets under GH_HOST=ghe.example.com"
-if grep -qF -- '-R ghe.example.com/' "$GH_CALL_LOG"; then
+  && ok "HOST/OWNER/REPO is accepted: every call got --repo acme/widgets under GH_HOST=ghe.example.com"
+if grep -qE -- '(-R|--repo) ghe\.example\.com/' "$GH_CALL_LOG"; then
   echo "FAIL: [$CASE] the host leaked into a -R value:"; cat "$GH_CALL_LOG"; fails=$((fails + 1))
 fi
 
@@ -424,6 +459,18 @@ run_case "missing-helper" 42 76 "$REPO"
 SCRIPT="$SCRIPT_KEEP"
 expect_rc 2 && expect_no_calls && expect_stderr_contains "_shared/scripts/_gh-host.sh; reinstall the kit" \
   && ok "without its host helper: exit 2, the missing file named, calls nothing"
+
+# Every call goes through the tracker (#752): an install without scripts/tracker.sh refuses, naming
+# it, rather than reaching for gh on its own.
+NOTRACKER="$WORK/notracker"
+mkdir -p "$NOTRACKER/skills/merge-pr/scripts" "$NOTRACKER/skills/_shared/scripts"
+cp "$SCRIPT" "$NOTRACKER/skills/merge-pr/scripts/parent-decision-note.sh"
+cp "$KIT_ROOT/skills/_shared/scripts/_gh-host.sh" "$NOTRACKER/skills/_shared/scripts/"
+SCRIPT_KEEP="$SCRIPT"; SCRIPT="$NOTRACKER/skills/merge-pr/scripts/parent-decision-note.sh"
+run_case "missing-tracker" 42 76 "$REPO"
+SCRIPT="$SCRIPT_KEEP"
+expect_rc 2 && expect_no_calls && expect_stderr_contains "scripts/tracker.sh; reinstall the kit" \
+  && ok "without scripts/tracker.sh: exit 2, the dispatcher named, calls nothing"
 
 # ----------------------------------------------------------------------------------- verdict
 if [ "$fails" -ne 0 ]; then

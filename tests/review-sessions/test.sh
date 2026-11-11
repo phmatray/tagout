@@ -209,7 +209,7 @@ if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then
   echo "a required status check has not passed" >&2
   exit 1
 elif [ "$1" = "pr" ] && [ "$2" = "view" ]; then
-  printf 'OPEN\t\t\n'
+  printf '{"number":999,"state":"OPEN","mergedAt":null,"mergeCommit":null}\n'
 else
   echo "gh stub: unexpected invocation: $*" >&2
   exit 99

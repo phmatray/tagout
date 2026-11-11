@@ -66,20 +66,47 @@ if ! jq -f "$PROG" < /dev/null > /dev/null 2>"$WORK/parse.err"; then
   exit 1
 fi
 
+# The gate's input is `commit-checks`' normalised list (#752), so every fixture below — a raw
+# check-runs reply, exactly as GitHub pages it — reaches the program THROUGH the GitHub backend: a
+# tiny `gh` stub prints the fixture for the check-runs path, `tracker.sh --tracker github
+# commit-checks` normalises it, and the extracted program judges that. The suite therefore pins the
+# backend's mapping and the decision together, which is the pair a real PR goes through.
+mkdir -p "$WORK/bin"
+cat > "$WORK/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "ARGS: $*" >> "$GH_CALL_LOG"
+case "$*" in
+  *"/commits/"*"/check-runs"*) cat "$GH_FIXTURE" ;;
+  *) exit 1 ;;   # gh auth token from the host helper: no credentials, gh's default host
+esac
+STUB
+chmod +x "$WORK/bin/gh"
+export GH_CALL_LOG="$WORK/gh-calls.log"
+unset GH_HOST
+
+# judge <fixture-path> — the fixture through the backend, then the program; stdout is the verdict.
+judge() {
+  : > "$GH_CALL_LOG"
+  GH_FIXTURE="$1" PATH="$WORK/bin:$PATH" \
+    "$KIT_ROOT/scripts/tracker.sh" --tracker github commit-checks 0123456789abcdef \
+    | jq -f "$PROG"
+}
+
 # Pagination is load-bearing and easy to lose in a rewrite: without --paginate --slurp the gate
 # judges the first page and calls a PR green on the strength of the checks it happened to see.
-#
-# Asked of the `gh api` INVOCATION, not of the file. A whole-file grep passes while the flags
-# survive only in a comment or in prose — including the comment two lines above the call, which
-# spells `--slurp` — so it would go green over exactly the regression it names.
-CALL=$(grep -F -- 'gh api' "$RECIPE" | grep -F -- 'check-runs' || true)
-if [ -z "$CALL" ]; then
-  note_fail "$RECIPE has no \`gh api\` line fetching check-runs — the gate has lost its input."
-elif ! grep -q -F -- '--paginate --slurp' <<<"$CALL"; then
-  note_fail "the check-runs call in $RECIPE no longer carries \`--paginate --slurp\`, so the gate
-      would judge one page of a multi-page SHA:
-      $CALL"
+# Asked of the call the backend actually SENDS (the stub's log), not of any file's text: a grep
+# passes while the flags survive only in a comment.
+judge "$FIXTURES/no-checks.json" > /dev/null 2>"$WORK/run.err" || true
+if ! grep -q -F -- 'check-runs --paginate --slurp' "$GH_CALL_LOG"; then
+  note_fail "commit-checks no longer asks check-runs with \`--paginate --slurp\`, so the gate would
+      judge one page of a multi-page SHA:
+$(sed 's/^/      /' "$GH_CALL_LOG")"
 fi
+
+# §3's recipe feeds the decision from the verb, not from a host's raw reply.
+grep -q -E -- 'commit-checks "\$SHA" \| "\$DECIDE" ci\.verdict' "$RECIPE" || \
+  note_fail "$RECIPE's §3 recipe no longer pipes \`tracker.sh commit-checks\` into ci.verdict — the
+      gate has lost its input."
 
 # The refusal that keeps a failed query from reading as "no CI". `gh api` writes nothing on
 # failure and the pipeline still exits 0 without pipefail, so an unguarded empty verdict is a pass.
@@ -98,7 +125,7 @@ verdict() {
     note_fail "$fixture — fixture missing ($what)"
     return 0
   fi
-  if ! out=$(jq -f "$PROG" < "$path" 2>"$WORK/run.err"); then
+  if ! out=$(judge "$path" 2>"$WORK/run.err"); then
     note_fail "$fixture — the verdict program errored ($what):
 $(sed 's/^/      /' "$WORK/run.err")"
     return 0
@@ -208,7 +235,7 @@ verdict_word() {
     note_fail "$fixture — fixture missing ($what)"
     return 0
   fi
-  if ! out=$(jq -f "$PROG" < "$path" 2>"$WORK/run.err"); then
+  if ! out=$(judge "$path" 2>"$WORK/run.err"); then
     note_fail "$fixture — the verdict program errored ($what):
 $(sed 's/^/      /' "$WORK/run.err")"
     return 0
@@ -235,6 +262,16 @@ verdict_word needs-approval-cleared.json clear \
   'once nothing needs approval any more, the verdict is clear'
 
 # ---------------------------------------------------------------------------------------- verdict
+# A state no backend could map (`UNKNOWN`, #752) waits; it never reads as clear. Fed straight to the
+# program, because it is the decision's own rule, whichever backend printed it.
+got=$(printf '%s' '[{"name":"build","state":"UNKNOWN","bucket":"pending","id":1,"app":null,"html_url":"u"}]' \
+  | jq -f "$PROG" 2>"$WORK/run.err" | jq -r .verdict 2>/dev/null) || got=""
+if [ "$got" = pending ]; then
+  echo "ok: unknown-state — an UNKNOWN state is pending, never clear"
+else
+  note_fail "unknown-state — want verdict=pending, got verdict=${got:-<none>}"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo
   echo "merge-gate: FAILED"

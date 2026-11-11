@@ -23,9 +23,15 @@ PR token alone.
 Confirm it's a real, open PR before doing anything irreversible:
 
 ```bash
-gh pr view "$PR" --json number,title,state,isDraft,mergeStateStatus,headRefName,baseRefName,url \
-  --jq '"\(.number) [\(.state)\(if .isDraft then "/draft" else "" end)] \(.mergeStateStatus) \(.headRefName) — \(.title)"'
+"<kit>/scripts/tracker.sh" pr-view "$PR" \
+  | jq -r '"\(.number) [\(.state)\(if .isDraft then "/draft" else "" end)] \(.headBranch) — \(.title)"'
 ```
+
+Every PR and issue call in this file goes through the tracker contract (`<kit>` is the kit root), so
+the same recipe runs on GitHub, GitLab and Azure DevOps (#752). `pr-view` lower-cases `state`
+(`open`/`closed`/`merged`) and prints bare branch names (`headBranch`, `baseBranch`). What stays a
+direct, GitHub-only `gh` call is named where it appears: `approve-runs.sh` (SKILL Step 4), `gh pr checks
+--watch` (a human-facing view), and Step 5b's workflow-runs fallback.
 
 ---
 
@@ -34,7 +40,7 @@ gh pr view "$PR" --json number,title,state,isDraft,mergeStateStatus,headRefName,
 Corrections must land in a checkout of the PR's head branch. List worktrees and match the branch:
 
 ```bash
-HEAD_BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+HEAD_BRANCH=$("<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r .headBranch)
 
 # Print "<path> <branch>" per worktree, then grep the branch. `substr($0, N)` — not `$2` — for both
 # fields: splitting on whitespace truncates a checkout under a path containing a space
@@ -118,26 +124,29 @@ Keep `$WORKTREE` — Step 4's guarded writes take it, and Step 7 removes that pa
 
 ## 3. Waiting on CI
 
-The authority is the **check-runs on the PR's head SHA**, not `gh pr checks` — the latter can print a
-phantom `skipped` check-run alongside the real one for the same job (a known GitHub Actions behavior
-when a draft-gated job re-triggers), so its verdict can't be trusted directly:
+The authority is **every check on the PR's head SHA** — `commit-checks`, the tracker verb that reads
+GitHub's check-runs (GitLab's commit statuses, Azure DevOps' pipeline runs) into one normalised list
+(#752) — not `gh pr checks`, which can print a phantom `skipped` check-run alongside the real one for
+the same job (a known GitHub Actions behavior when a draft-gated job re-triggers), so its verdict
+can't be trusted directly:
 
 ```bash
-SHA=$(gh pr view "$PR" --json headRefOid --jq .headRefOid)
-# --slurp piped into the dispatcher (gh's --jq can't combine with --slurp) flattens every page's
-# {total_count, check_runs:[...]} into one list — safe even if check-runs ever exceed a page.
+SHA=$("<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r .headSha)
+# commit-checks prints every run on the sha — every page, superseded runs included — as
+# [{name, state, bucket, id, app, html_url}]. The #91 reduction is NOT the verb's job; it is the
+# decision's, below.
 #
 # The reduction and the rules are NOT pasted here any more (#208). `decide.sh` extracts them from
 # the marked block below and runs THAT, so the program applied to a real PR is byte-for-byte the
 # one tests/merge-gate/test.sh pins over fixtures — a pasted copy could drift from it, and a
 # drifted copy of a gate is the failure this whole reduction exists to prevent, wearing a passing
 # test. `--json` asks for the whole object, because the counts read below are part of it.
-verdict=$(gh api "repos/{owner}/{repo}/commits/$SHA/check-runs" --hostname <host> --paginate --slurp | "$DECIDE" ci.verdict --json)
+verdict=$("<kit>/scripts/tracker.sh" commit-checks "$SHA" | "$DECIDE" ci.verdict --json)
 
 # A failed query prints nothing, and without `pipefail` the pipeline still exits 0 — at which point
-# an empty verdict reads as "this SHA has no check-runs", i.e. as a pass. No verdict is not a pass.
+# an empty verdict reads as "this SHA has no checks", i.e. as a pass. No verdict is not a pass.
 # `decide.sh` makes the same refusal one layer down (exit 2 on empty input); this line is what
-# catches a `gh` that failed BEFORE the pipe, where the dispatcher was never reached at all.
+# catches a read that failed BEFORE the pipe, where the dispatcher was never reached at all.
 [ -n "$verdict" ] || { echo "check-runs query returned nothing — no verdict; do not merge"; exit 1; }
 
 latest=$(printf '%s' "$verdict"  | jq .latest)   # one run per job — the set the rules apply to
@@ -167,7 +176,8 @@ R1 refuses a second copy of these markers, because two homes for a gate is how a
   # >>> decision ci.verdict rule — extracted verbatim and run over fixtures by tests/merge-gate/test.sh >>>
   # One SHA carries a HISTORY PER JOB, not one run per job, so reduce before judging: keep the
   # newest run of each job and apply the rules to that alone.
-  [ .[].check_runs[] | {name, id, app: .app.id, started_at, html_url, state: (.conclusion // .status)} ]
+  # The input is the list `tracker.sh commit-checks` prints (#752): one entry per run, normalised.
+  [ .[] | {name, id, app, html_url, state} ]
   # A job is identified by the check name AND the app that posted it. Two products can both
   # publish a check called build — GitHub Actions and a CI app — and grouping on the name alone
   # would let whichever posted later silently retire the other one verdict.
@@ -197,8 +207,9 @@ R1 refuses a second copy of these markers, because two homes for a gate is how a
       # anything — merging on it would be merging on a job that never ran. This is an ENUMERATION
       # of the check-run status enum, not a proof: a status GitHub adds later still falls in the
       # unhandled default and reads as green. Re-check https://docs.github.com/rest/checks/runs
-      # when this gate is next touched.
-      pending: [ .[] | select(.state == "queued" or .state == "in_progress" or .state == "waiting" or .state == "requested" or .state == "pending") ] }
+      # when this gate is next touched. `UNKNOWN` (#752) is the word a backend prints for a host
+      # state it could not map: a state no backend could map waits, and never reads as clear.
+      pending: [ .[] | select(.state == "queued" or .state == "in_progress" or .state == "waiting" or .state == "requested" or .state == "pending" or .state == "UNKNOWN") ] }
   # Same program, one more question: the reduction above, and the verdict a caller acts on. Purely
   # additive — .latest, .failed and .pending are untouched, so every fixture assertion in
   # tests/merge-gate keeps its exact meaning. The rule name is what the event log attributes a
@@ -228,7 +239,8 @@ forever when a workflow path filter legitimately skips a job the PR's files don'
 `SKILL.md` Step 3 for the full breakdown of why a check-run may not be its job's verdict).
 
 **Why the runs are reduced first (#91).** GitHub attaches a *history per job* to a SHA, not one run
-per job — and this repo's own `ci.yml` manufactures those histories deliberately: `cancel-in-progress`
+per job, and `commit-checks` hands that history over whole, because the reduction is this decision's
+job and no backend's. This repo's own `ci.yml` manufactures those histories deliberately: `cancel-in-progress`
 (#27/#29) exists so a retitle cannot leave two runs racing to publish the same `kit` check. Its
 unavoidable consequence is that a **superseded `cancelled` stays attached to the head SHA forever**,
 beside the real `success` for the same job. Pushing twice in quick succession, editing a PR body, or
@@ -256,11 +268,10 @@ timeout — is a genuine non-verdict and still blocks. `tests/merge-gate/test.sh
 above from this file and drives both cases over fixtures, so a rewrite that weakens the gate into
 blanket-ignoring cancellations goes red instead of quiet.
 
-Inspect failures via the rollup (gives the log URL to read):
+Inspect failures from the same list (`html_url` is the run to read):
 
 ```bash
-gh pr view "$PR" --json statusCheckRollup \
-  --jq '.statusCheckRollup[] | select(.conclusion=="FAILURE") | {name, detailsUrl}'
+"<kit>/scripts/tracker.sh" commit-checks "$SHA" | jq '.[] | select(.bucket == "fail") | {name, html_url}'
 ```
 
 - **`n_latest` is 0** (no check-runs at all) → the PR has no CI; treat CI as satisfied and let
@@ -270,8 +281,9 @@ gh pr view "$PR" --json statusCheckRollup \
   "there is no CI" are opposite verdicts that an unguarded empty string spells identically.
 - **Long pipelines** → re-poll the check-runs recipe rather than busy-looping. If you'd rather not hold
   the turn open, come back later (e.g. via `ScheduleWakeup`).
-- `gh pr checks "$PR" --watch` is still useful as a **human-facing** progress view in a terminal, but
-  don't wire its exit code or printed verdict into the gate — re-derive from the check-runs recipe above.
+- `gh pr checks "$PR" --watch` (GitHub-only) is still useful as a **human-facing** progress view in a
+  terminal, but don't wire its exit code or printed verdict into the gate — re-derive from the
+  check-runs recipe above.
 
 The repo's CI gates (so you can reproduce a red check locally) are the profile's *CI gates* — its build,
 test, and format/lint **verify** commands, plus any prerequisite the profile flags (a workload, a
@@ -363,75 +375,69 @@ only one side is a red build rather than a guard that silently stops guarding.
 
 ```bash
 # >>> decision merge.step4 shape >>>
-# The thread read is its OWN statement with its OWN failure branch, deliberately not a fourth line
-# inside the group below: a query that fails there contributes nothing, `unresolved_threads`
-# defaults to empty, and empty reads as "no threads" — which merges. That is #294 wearing the
-# fix's clothes. On a GitHub Enterprise host add `--hostname <host>`; without it this query fails
-# with "Could not resolve to a Repository", and the `||` branch is what stops that reading as a
-# clean bill of health.
-threads=$( set -o pipefail
-           gh api graphql --paginate -f query='
-  query($owner:String!,$repo:String!,$pr:Int!,$endCursor:String){ repository(owner:$owner,name:$repo){
-    pullRequest(number:$pr){ reviewThreads(first:100, after:$endCursor){
-      pageInfo{ hasNextPage endCursor }
-      nodes{ isResolved comments(first:1){ nodes{ path } } } } } } }' \
-             -F owner='{owner}' -F repo='{repo}' -F pr="$PR" \
-             --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-                   | select(.isResolved == false)
-                   | .comments.nodes[0].path // "(pr-level)"' \
-           | jq -Rsc 'split("\n") | map(select(length > 0))' ) \
-  || { echo "merge-pr: the reviewThreads query failed — an unanswered query is not 'no threads'" >&2
+# The merge-state read is its OWN statement with its OWN failure branch, deliberately not a line
+# inside the group below: a read that fails there contributes nothing, `unresolved_threads` goes
+# missing, and a missing list reads as "no threads" — which merges. That is #294 wearing the fix's
+# clothes. The verb exits 1 with nothing printed when any of its reads fails, and the `||` branch
+# is what stops that reading as a clean bill of health.
+ms=$("<kit>/scripts/tracker.sh" pr-merge-state "$PR") \
+  || { echo "merge-pr: pr-merge-state did not answer — an unanswered read is not a clean state" >&2
        exit 1; }
-state=$( { gh api "repos/{owner}/{repo}/compare/$BASE...$BRANCH" --hostname <host> \
-             --jq '{behind_by, ahead_by}'
-           gh pr view "$PR" --json mergeStateStatus,isDraft,reviewDecision \
-             --jq '{mergeStateStatus, isDraft, reviewDecision}'
+state=$( { printf '%s' "$ms" | jq '{behind_by, mergeStateStatus, isDraft, reviewDecision, unresolved_threads}'
            printf '%s' "$ci" | jq '{failed: [.failed[].name], pending: [.pending[].name]}'
-           printf '%s' "$threads" | jq '{unresolved_threads: .}'
          } | jq -s add )
-printf '%s' "$state" | jq -e 'has("unresolved_threads")' > /dev/null \
-  || { echo "merge-pr: the assembled state carries no unresolved_threads key — the read above did" >&2
-       echo "  not reach it (empty \$threads, or a different shell). Do NOT decide on this state." >&2
+printf '%s' "$state" | jq -e '.unresolved_threads | type == "array"' > /dev/null \
+  || { echo "merge-pr: the assembled state carries no unresolved_threads list — the read above did" >&2
+       echo "  not reach it (empty \$ms, or a different shell). Do NOT decide on this state." >&2
        exit 1; }
 # <<< decision merge.step4 shape <<<
 verdict=$(printf '%s' "$state" | "$DECIDE" merge.step4)
 ```
 
-`$ci` is §3's `$verdict`, the check-runs object. That is what gives the two decisions a real
+`$ci` is §3's `$verdict`, the `ci.verdict` object. That is what gives the two decisions a real
 composition instead of two unrelated reads of the same PR: the CI gate's *reduced* `failed` and
 `pending` sets are inputs to the merge-state precedence, not a separate question asked afterwards.
 
-`$BASE...$BRANCH` — three dots — gives `behind_by` relative to the base; reversing it silently
-inverts the answer.
+`pr-merge-state` (#752) prints the five merge-state fields in the words of the
+contract (`scripts/tracker/contract.json`): GitHub's own on GitHub, each backend's mapping elsewhere,
+and `UNKNOWN` for a state a host cannot map — which `merge.step4` answers with `wait` (rule
+`unknown`), never `merge`. The block projects the five by name rather than passing `$ms` through, so
+R6 still sees every field the program reads constructed here. On GitHub the verb sends the reads
+this block used to send itself: `gh pr view` for the state, the `compare` endpoint for `behind_by`
+(`base...head`, three dots — reversing it silently inverts the answer), and the paginated
+`reviewThreads` query for the threads.
 
 `unresolved_threads` carries the threads' **paths**, not a count — the same way `failed` and
 `pending` carry job names rather than a tally, so the Step 8 recap can say *which* threads were
 cleared. Only the length decides; the strings are for the human. A thread with no inline path (a
 PR-level conversation) still counts, under `(pr-level)`.
 
-⚠️ **A failed thread query must abort the state build, never yield an empty list.** This is
+⚠️ **A failed thread read must abort the state build, never yield an empty list.** This is
 `decide.sh`'s own doctrine — *no verdict is not a pass* — applied one layer earlier: a failed query
 and a PR with nothing open spell the same `[]`, and one of them merges unreviewed. That equivalence
-is what made #294 survivable for two PRs, so the read is a separate statement with an explicit
-`|| … exit 1`, and `set -o pipefail` is what carries `gh`'s exit status across the `jq` after it.
+is what made #294 survivable for two PRs, so the verb exits 1 with an empty stdout when its thread
+read fails (each backend pins it), and the read here is a separate statement with an explicit
+`|| … exit 1`.
 
-⚠️ **The `has("unresolved_threads")` assertion is not belt-and-braces — it is the only check that
-survives this block being run in pieces.** `printf '%s' "" | jq '{unresolved_threads: .}'` prints
-*nothing* and exits 0, so an empty `$threads` does not yield an empty list: it drops the key
-entirely, and `// []` then reads that as "no threads". An agent that runs the read and the assembly
-as two separate commands loses `$threads` between them and lands exactly there. The assertion
-inspects the artifact actually being handed to the decision, which no amount of care upstream
-substitutes for.
+⚠️ **The `type == "array"` assertion is not belt-and-braces — it is the only check that survives
+this block being run in pieces.** `printf '%s' "" | jq '{…}'` prints *nothing* and exits 0, so an
+empty `$ms` does not yield an empty list: it drops the keys entirely, and `// []` then reads that as
+"no threads". An agent that runs the read and the assembly as two separate commands loses `$ms`
+between them and lands exactly there. And it asserts the *type*, not `has(…)`: projecting a key
+that `$ms` lacks yields `null`, which `has` would pass. The assertion inspects the artifact actually
+being handed to the decision, which no amount of care upstream substitutes for.
 
-⚠️ **`--paginate` is load-bearing.** `reviewThreads(first:100)` sits at GitHub's page maximum, so
-without it a PR whose 101st thread is the unresolved one reads as fully resolved and merges — a
-fail-open of precisely the shape this section exists to close. `--paginate` needs *both* the
-`$endCursor` variable and the `pageInfo` selection; drop either and it quietly fetches one page.
+⚠️ **Pagination is load-bearing, and now lives in the backend.** `reviewThreads(first:100)` sits at
+GitHub's page maximum, so without `--paginate` a PR whose 101st thread is the unresolved one reads as
+fully resolved and merges — a fail-open of precisely the shape this section exists to close.
+`scripts/tracker/github.sh` carries the paginated query (`$endCursor` *and* the `pageInfo`
+selection; drop either and it quietly fetches one page); a backend that reads threads must read
+every page.
 
-⚠️ **The compare read and the pr-view read are sequential and not atomic.** A sibling PR merging
-between them yields `behind_by: 0` beside a merge state of `BEHIND`, which is precisely why the
-program carries a `behind-state` rule as well as a `behind` one. Neither read can be made to answer
-for the other, so the program answers for both.
+⚠️ **The verb's reads are sequential and not atomic.** A sibling PR merging between the state read
+and the `behind_by` read yields `behind_by: 0` beside a merge state of `BEHIND`, which is precisely
+why the program carries a `behind-state` rule as well as a `behind` one. Neither read can be made to
+answer for the other, so the program answers for both.
 
 `mergeable` is deliberately **not** fetched. Step 4 used to ask for it and nothing ever read it —
 and a field that is fetched and unread is the same shape as a field that is read and never fetched,
@@ -488,7 +494,7 @@ This fallback only covers the self-imposed staleness check (`behind_by > 0` whil
 still reports `CLEAN`) — GitHub doesn't block that merge either way. It does not cover a real
 GitHub-side gate: a PR reported `DIRTY` needs its conflict resolution pushed to the real branch, and a
 PR reported literal `BEHIND` (base requires branches to be up to date) needs the real branch actually
-updated — `gh pr merge` won't succeed on either without that push. If the branch has no writable
+updated — the merge won't succeed on either without that push. If the branch has no writable
 checkout (not the transient sandbox push failure of Step 2/§8, which is just a retry) and
 `mergeStateStatus` is `DIRTY` or `BEHIND`, that combination is a genuine blocker: stop and report it
 rather than running this fallback.
@@ -503,7 +509,7 @@ Where SKILL.md Step 4 sends you when `merge.step4` answers `review` with either 
 The overall decision — useful context, **not** the gate:
 
 ```bash
-gh pr view "$PR" --json reviewDecision --jq .reviewDecision   # APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null
+"<kit>/scripts/tracker.sh" pr-merge-state "$PR" | jq -r .reviewDecision   # APPROVED | CHANGES_REQUESTED | REVIEW_REQUIRED | null
 ```
 
 ⚠️ **`reviewDecision` is empty for a `COMMENTED` review, and that is the common case.** A review bot
@@ -511,56 +517,41 @@ gh pr view "$PR" --json reviewDecision --jq .reviewDecision   # APPROVED | CHANG
 the merge state clean. Until #294 that meant its findings reached no gate at all: two PRs merged with
 four and one unresolved thread on them. Read the threads, not the decision.
 
-⚠️ **`gh pr view --json reviews` shows those bot reviews with an EMPTY `body`.** The substance is
-only in the inline `reviewThreads` below. "Empty review body" must never be read as "no feedback" —
-that reading is what made the merges look defensible afterwards.
+⚠️ **GitHub shows those bot reviews with an EMPTY review `body`.** The substance is only in the
+inline review threads below. "Empty review body" must never be read as "no feedback" — that reading
+is what made the merges look defensible afterwards.
 
-Inline review comments (REST — quick read of what reviewers said and where):
+The review threads — one entry each, with its first comment's `path`, `line` and `body`:
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/$PR/comments" --hostname <host> --paginate \
-  --jq '.[] | {path, line, user:.user.login, body}'
+"<kit>/scripts/tracker.sh" pr-threads "$PR" \
+  | jq '.[] | select(.isResolved == false) | {id, path, line, body}'
 ```
 
-Unresolved **threads** need GraphQL (REST doesn't expose `isResolved`):
+A failed read exits 1 and prints nothing, never `[]` — and an unanswered query is not an empty
+answer, so check the exit code before reading "no threads" off it. §4's shape block aborts the whole
+state build on that path for the same reason.
+
+Fix the legitimate asks in the worktree, commit + push (project identity). Then reply to the thread
+and resolve it (`THREAD_ID` is the `id` from the read above). The verb posts the file as a reply,
+then resolves; it refuses a missing or empty `--body-file` (exit 2) and sends nothing:
 
 ```bash
-gh api graphql -f query='
-  query($owner:String!,$repo:String!,$pr:Int!){
-    repository(owner:$owner,name:$repo){
-      pullRequest(number:$pr){
-        reviewThreads(first:100){
-          nodes{ id isResolved isOutdated
-            comments(first:1){ nodes{ path body author{login} } } } } } } }' \
-  -F owner='{owner}' -F repo='{repo}' -F pr="$PR" \
-  --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | {id, path:.comments.nodes[0].path, body:.comments.nodes[0].body}'
-```
-
-⚠️ **On a GitHub Enterprise host `gh api graphql` needs an explicit `--hostname <host>`.** Without it
-the query fails with *"Could not resolve to a Repository"* — which reads exactly like "this PR has no
-threads" to anyone who does not check the exit code. Check it: an unanswered query is not an empty
-answer. §4's shape block aborts the whole state build on this path for the same reason.
-
-Fix the legitimate asks in the worktree, commit + push (project identity). Then either reply to the
-thread explaining the fix, or resolve it once addressed (`THREAD_ID` from the query above):
-
-```bash
-gh api graphql -f query='
-  mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' \
-  -F id="$THREAD_ID"
+"<kit>/scripts/tracker.sh" pr-thread-resolve "$PR" "$THREAD_ID" --body-file <reply>
 ```
 
 **A thread has two honest exits, and the `unresolved-threads` rule accepts both.** This matters more
 than it looks: the rule blocks the merge, so a gate clearable only by changing code would hang an
 autonomous run forever on the first finding the agent judges wrong or cannot satisfy.
 
-1. **Fix the ask**, push, then resolve the thread.
-2. **Reply on the thread with your reasoning, then resolve it.** Disagreeing is a legitimate
-   outcome of review.
+1. **Fix the ask**, push, then `pr-thread-resolve` with a reply that names the fix.
+2. **`pr-thread-resolve` with your reasoning as the reply.** Disagreeing is a legitimate outcome of
+   review.
 
 What is forbidden is resolving *silently*: it clears the gate and deletes the reason. Reply first,
 resolve second, always in that order — the reply is the artifact a human reads later to decide
-whether the agent was right.
+whether the agent was right. `pr-thread-resolve` makes that order its own: it has no way to resolve
+without the reply.
 
 The goal is that no thread is left both open and unanswered — not that `reviewDecision` flips, which
 for a `COMMENTED` review it never will. A required-approvals block you can't self-clear, or a thread
@@ -575,14 +566,15 @@ Two sources beyond the inline `--follow-up` args:
 **PR body** — look for a deferred-work section:
 
 ```bash
-gh pr view "$PR" --json body --jq .body \
+"<kit>/scripts/tracker.sh" pr-view "$PR" | jq -r '.body // ""' \
   | grep -iA12 -E '^#+ *(follow[ -]?ups?|deferred|out[ -]of[ -]scope|future work)'
 ```
 
-**Review comments that defer work** — phrases that explicitly punt to a later change:
+**Review threads that defer work** — phrases that explicitly punt to a later change (each thread's
+first comment):
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/$PR/comments" --hostname <host> --paginate --jq '.[].body' \
+"<kit>/scripts/tracker.sh" pr-threads "$PR" | jq -r '.[].body' \
   | grep -iE 'follow[ -]?up|separate (pr|issue)|in a (later|future) (pr|change)|out of scope|TODO.*(later|future)'
 ```
 
@@ -597,12 +589,12 @@ the two share almost no vocabulary and a keyword search on the symptom misses th
 
 ```bash
 # root causes are usually refactors — read the open ones first
-gh issue list --state open --label "type:refactor" --limit 30 \
-  --json number,title --jq '.[] | "#\(.number) \(.title)"'
+"<kit>/scripts/tracker.sh" issue-search --state open --label "type:refactor" --limit 30 \
+  | jq -r '.[] | "#\(.number) \(.title)"'
 
 # then search on the file the findings land in — CLOSED ones too (see below)
-gh issue list --state all --search "<TheFile> in:title,body" --limit 15 \
-  --json number,title,state,url --jq '.[] | "#\(.number) [\(.state)] \(.title)"'
+"<kit>/scripts/tracker.sh" issue-search --state all --query "<TheFile>" --limit 15 \
+  | jq -r '.[] | "#\(.number) [\(.state)] \(.title)"'
 ```
 
 **Why this one search spans closed issues.** The findings you are triaging came out of the PR you
@@ -616,8 +608,8 @@ exactly this reason.
 is closed and the finding is that same job resurfacing:
 
 ```bash
-gh issue reopen "$ANCESTOR" \
-  --comment "Reopening: #$PR closed this, but <what still fails> — \`<file>:<symbol>\`."
+# <reopen.md>: "Reopening: #$PR closed this, but <what still fails> — `<file>:<symbol>`."
+"<kit>/scripts/tracker.sh" issue-reopen "$ANCESTOR" --body-file <reopen.md>
 ```
 
 Reopen when the original scope still describes the work. File fresh only when the finding is a
@@ -631,7 +623,8 @@ That is an owner decision (hand it to `triage-backlog`), not another `create-iss
 **Fold an instance into that root** instead of filing a leaf — the comment carries the evidence:
 
 ```bash
-gh issue comment "$ROOT" --body "Another instance, found merging #$PR: <what broke> (\`<file>:<symbol>\`)."
+# <instance.md>: "Another instance, found merging #$PR: <what broke> (`<file>:<symbol>`)."
+"<kit>/scripts/tracker.sh" issue-comment "$ROOT" --body-file <instance.md>
 ```
 
 If the root issue carries an implementation-plan checklist, add the instance as a `- [ ]` item in the
@@ -640,7 +633,8 @@ body instead — those boxes drive the progress meter and `implement-issue` tick
 **Record — don't file — an observation** that's worth retrieving but not worth doing:
 
 ```bash
-gh pr comment "$PR" --body "Noted while merging: … (recorded, not filed — no action planned)."
+# <note.md>: "Noted while merging: … (recorded, not filed — no action planned)."
+"<kit>/scripts/tracker.sh" pr-comment "$PR" --body-file <note.md>
 ```
 
 Then hand only the clusters that earned an issue to the `create-issue` skill, noting the source PR
@@ -712,9 +706,9 @@ So finish the job here instead of assuming either mechanism reached it:
 skills/merge-pr/scripts/remote-branch-teardown.sh "$HEAD_BRANCH" "{owner}/{repo}"
 ```
 
-It runs `git ls-remote --heads origin <headRefName>` and, only if the branch is still there, `gh api
--X DELETE repos/{owner}/{repo}/git/refs/heads/<headRefName>` — tolerant of the same race gh's own
-`deleteRemoteBranch` tolerates (a 422/404 "Reference does not exist" from a concurrent
+It runs `git ls-remote --heads origin <headRefName>` and, only if the branch is still there,
+`"<kit>/scripts/tracker.sh" branch-delete <headRefName>` (#752; `ok` is `deleted`, `gone` is
+`already-gone`) — tolerant of the same race gh's own `deleteRemoteBranch` tolerates (a 422/404 "Reference does not exist" from a concurrent
 `delete_branch_on_merge` or a slow `--delete-branch` winning first). It always runs this check
 regardless of the repo's `delete_branch_on_merge` setting: that value is read from a profile
 snapshot that can go stale between refreshes, where a wrongly-trusted `true` would leave a branch
