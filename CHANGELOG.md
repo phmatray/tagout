@@ -8,6 +8,52 @@ Starting with the version after [1.9.1], the entries below this paragraph are ge
 adopt its format (*Features* / *Bug Fixes* sections, comparison link, sha per entry) rather than
 the hand-written entries below. Earlier entries are kept as written.
 
+## [4.2.0](https://github.com/phmatray/tagout/compare/v4.1.0...v4.2.0) (2026-11-11)
+
+
+### Features
+
+* **auto-dev:** drive the fleet through the tracker contract ([#753](https://github.com/phmatray/tagout/issues/753)) ([#804](https://github.com/phmatray/tagout/issues/804)) ([2fd4b95](https://github.com/phmatray/tagout/commit/2fd4b95047dee1062361f30a9ef944d842674a30))
+* **auto-dev:** hold every PR for the owner when the profile asks for merge approval ([#740](https://github.com/phmatray/tagout/issues/740)) ([#767](https://github.com/phmatray/tagout/issues/767)) ([d760ce0](https://github.com/phmatray/tagout/commit/d760ce07b9dc3901e81732290fe137fc01820a2d))
+* **auto-dev:** the dispatch guards are scripts, the survey prints the model tier and the area, and triage-backlog loads as a router ([#758](https://github.com/phmatray/tagout/issues/758)) ([67a2e9a](https://github.com/phmatray/tagout/commit/67a2e9a6e948f41661a55288cd96aeaa11ef628a))
+* **auto-dev:** worker reports and fleet counts are decided by programs, the skill loads as a router, and run-all-tests gains --jobs ([#756](https://github.com/phmatray/tagout/issues/756)) ([aa1abe2](https://github.com/phmatray/tagout/commit/aa1abe23ca59cebd0ea1f6d55b5775ce4b998ef0))
+* **docs:** the home page explains Tagout to an undecided visitor ([#784](https://github.com/phmatray/tagout/issues/784)) ([#800](https://github.com/phmatray/tagout/issues/800)) ([4f2b1f0](https://github.com/phmatray/tagout/commit/4f2b1f060dddbff1d2a5bf9da553f6aa9ffa90c3))
+* **evals:** publish how often a plan task's commit touches the files the task names ([#739](https://github.com/phmatray/tagout/issues/739)) ([#774](https://github.com/phmatray/tagout/issues/774)) ([fc10d0e](https://github.com/phmatray/tagout/commit/fc10d0ed6775ae51a9f4f1d0a2d8751f784b0d7d))
+* **hooks:** opt-in strict mode refuses a git write the gate cannot judge ([#743](https://github.com/phmatray/tagout/issues/743)) ([#769](https://github.com/phmatray/tagout/issues/769)) ([f3333e3](https://github.com/phmatray/tagout/commit/f3333e3198985a6dc299052b07886d593b84cc5d))
+* **implement-issue:** a kit-owned Standards reviewer when no code-review skill is loaded ([#738](https://github.com/phmatray/tagout/issues/738)) ([#761](https://github.com/phmatray/tagout/issues/761)) ([12ca76b](https://github.com/phmatray/tagout/commit/12ca76b16d1b4e32d65c3e9e7d39f396f31cb436))
+* **implement-issue:** put implement-issue on the tracker contract ([#751](https://github.com/phmatray/tagout/issues/751)) ([#792](https://github.com/phmatray/tagout/issues/792)) ([2f50446](https://github.com/phmatray/tagout/commit/2f5044684b784276ba638281242199f14f4f9bec))
+* **merge-pr:** put merge-pr on the tracker contract ([#752](https://github.com/phmatray/tagout/issues/752)) ([#797](https://github.com/phmatray/tagout/issues/797)) ([4e4aa00](https://github.com/phmatray/tagout/commit/4e4aa0028185825f564225cfc7e0dacf93bf00e6))
+* **scripts:** measure and document what installing the kit costs a session ([#736](https://github.com/phmatray/tagout/issues/736)) ([#760](https://github.com/phmatray/tagout/issues/760)) ([08d8934](https://github.com/phmatray/tagout/commit/08d8934989cb79acd95de0af89b65562e8946c32))
+* **skills:** a new request is sized before the lifecycle starts — spike, bounded change, or the full cycle ([#737](https://github.com/phmatray/tagout/issues/737)) ([#773](https://github.com/phmatray/tagout/issues/773)) ([3d915a2](https://github.com/phmatray/tagout/commit/3d915a2e44b5db124c23ece70ba50e7bd516402d))
+* **tracker:** define JQ_BUCKET once and bucket the base-run fallback ([#807](https://github.com/phmatray/tagout/issues/807)) ([#810](https://github.com/phmatray/tagout/issues/810)) ([d3e93b0](https://github.com/phmatray/tagout/commit/d3e93b021de7b53941bdd111e4cf0eebc6da12e2))
+
+
+### Bug Fixes
+
+* **adr:** AdrMcp no longer puts an inotify watch on every folder under its working directory ([#759](https://github.com/phmatray/tagout/issues/759)) ([2a4c0ce](https://github.com/phmatray/tagout/commit/2a4c0ce999b8c3b389ccd9e0d43557a5df00cf58))
+* **auto-dev:** the Stop gate counts only live slot lines, not DONE slots or notes ([#776](https://github.com/phmatray/tagout/issues/776)) ([2650476](https://github.com/phmatray/tagout/commit/26504764006f75ac7b93e9123d328cf08ae72a1d))
+* **deps:** update non-major dependencies ([#722](https://github.com/phmatray/tagout/issues/722)) ([c63fedd](https://github.com/phmatray/tagout/commit/c63feddea5c32cb550deb20fc96b9dc457e6ea8c))
+* **deps:** update non-major dependencies ([#754](https://github.com/phmatray/tagout/issues/754)) ([8be80f9](https://github.com/phmatray/tagout/commit/8be80f9d201fabe59afe19e6ed12876a9af44e96))
+* **implement-issue:** refuse malformed post-dash args in guarded-commit and guarded-merge ([#765](https://github.com/phmatray/tagout/issues/765)) ([#775](https://github.com/phmatray/tagout/issues/775)) ([11b5422](https://github.com/phmatray/tagout/commit/11b5422f3b8ca7d6b16eca7bbff59ebc16fe28c6))
+* **implement-issue:** resolve the tracker from the worktree, once per task close ([#796](https://github.com/phmatray/tagout/issues/796)) ([cc1c8fd](https://github.com/phmatray/tagout/commit/cc1c8fdee5df9c87ecd83bfebbfc7ae6de879b46))
+* **merge-pr:** read the tracking parent over REST ([#762](https://github.com/phmatray/tagout/issues/762)) ([#779](https://github.com/phmatray/tagout/issues/779)) ([e2a8964](https://github.com/phmatray/tagout/commit/e2a8964c4f936fe4b02487a980d3da0825e579f6))
+* **merge-pr:** refuse a cross-repository parent in parent-decision-note ([#781](https://github.com/phmatray/tagout/issues/781)) ([#782](https://github.com/phmatray/tagout/issues/782)) ([ab78e40](https://github.com/phmatray/tagout/commit/ab78e403c5da77eb4775af6caa7f94c9eb6bd8c6))
+* **review-sessions:** encode the cwd the way Claude Code does for Windows transcript dirs ([#766](https://github.com/phmatray/tagout/issues/766)) ([#777](https://github.com/phmatray/tagout/issues/777)) ([7f9b661](https://github.com/phmatray/tagout/commit/7f9b661ad0e6db2cae33bebcf7477d265aab6ffe))
+* **review-sessions:** match the project dir exactly, not by prefix ([#780](https://github.com/phmatray/tagout/issues/780)) ([#783](https://github.com/phmatray/tagout/issues/783)) ([2b04135](https://github.com/phmatray/tagout/commit/2b04135b03b56d09d896afc57e82acdbf0faf513))
+* **skills:** lead the guard fallback with the plugin-path call and drop the vcs-named copy ([#778](https://github.com/phmatray/tagout/issues/778)) ([42e267f](https://github.com/phmatray/tagout/commit/42e267f30ad257b8dabcfeccd9ffa2de2d1efde1))
+* **tests:** a killed subshell no longer deletes its suite's scratch root, and the worker command carries the rule without the measurement ([#772](https://github.com/phmatray/tagout/issues/772)) ([ceaadf1](https://github.com/phmatray/tagout/commit/ceaadf13079ffbe5b305314fdbd9a75bf290f9ae))
+* **tests:** guard-invocation reads the fallback section by here-string, not a negated pipe into grep -q ([#757](https://github.com/phmatray/tagout/issues/757)) ([7032343](https://github.com/phmatray/tagout/commit/7032343d4638e3ca9da63a0a35d6395d74306fdf))
+* **tests:** no assertion or pasted recipe pipes a producer into grep -q ([#768](https://github.com/phmatray/tagout/issues/768)) ([bda53a7](https://github.com/phmatray/tagout/commit/bda53a70d227a06db972613ede47646525e2997e))
+* **tests:** the golden suites no longer read the developer's locale, git excludes or pipe timing ([#744](https://github.com/phmatray/tagout/issues/744)) ([#771](https://github.com/phmatray/tagout/issues/771)) ([d3f4955](https://github.com/phmatray/tagout/commit/d3f49553d52836c53acbe406269ac29df823b4e4))
+* **tracker:** address GitLab projects under a subgroup ([#795](https://github.com/phmatray/tagout/issues/795)) ([#798](https://github.com/phmatray/tagout/issues/798)) ([70e148a](https://github.com/phmatray/tagout/commit/70e148ad06f05079c9534d7963cafcfb70c67b55))
+* **tracker:** azure commit-checks answers unverified for a sha outside the run window ([#806](https://github.com/phmatray/tagout/issues/806)) ([#808](https://github.com/phmatray/tagout/issues/808)) ([206d95a](https://github.com/phmatray/tagout/commit/206d95a7ac1a535762956d780be80786836d5069))
+* **tracker:** azure issue-list converts an HTML body and resolves edge state ([#814](https://github.com/phmatray/tagout/issues/814)) ([389c371](https://github.com/phmatray/tagout/commit/389c3714f1abe47303f86a1035a14d02796e7c9f))
+* **tracker:** backend reads survey.sh consumes keep their JSON contract ([#816](https://github.com/phmatray/tagout/issues/816)) ([0d06a95](https://github.com/phmatray/tagout/commit/0d06a95cc925bd0cc44b18a5ca0c62fb6623905b))
+* **tracker:** keep the whole project path in gitlab originSlug ([#799](https://github.com/phmatray/tagout/issues/799)) ([#802](https://github.com/phmatray/tagout/issues/802)) ([4266047](https://github.com/phmatray/tagout/commit/4266047c8d909e3ca1acc4b4635cf2cfb288d1fe))
+* **tracker:** name a dotless gitlab host through GITLAB_HOST ([#801](https://github.com/phmatray/tagout/issues/801)) ([#803](https://github.com/phmatray/tagout/issues/803)) ([f3e9128](https://github.com/phmatray/tagout/commit/f3e912822d3cce7d0f78ce6b634e0f4921cf1b34))
+* **tracker:** paginate the gitlab links read and add mergeStateStatus to pr-list ([#813](https://github.com/phmatray/tagout/issues/813)) ([#815](https://github.com/phmatray/tagout/issues/815)) ([a9fc791](https://github.com/phmatray/tagout/commit/a9fc791e1ef28ac9d85a1df4375e863427edd1c4))
+* **tracker:** resolve the backend from -R through one helper ([#805](https://github.com/phmatray/tagout/issues/805)) ([#809](https://github.com/phmatray/tagout/issues/809)) ([b9d433f](https://github.com/phmatray/tagout/commit/b9d433f9dce31650a937d9d2ec529bf3561ae606))
+
 ## [4.1.0](https://github.com/phmatray/tagout/compare/v4.0.0...v4.1.0) (2026-10-28)
 
 
