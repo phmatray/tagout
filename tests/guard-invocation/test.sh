@@ -64,6 +64,28 @@ if ! grep -qi -- 'guarded-pr-merge\.sh' <<<"$fallback_section"; then
   note_fail "$DOC names guarded-pr-merge.sh only outside '## The fallback' — its Step 1 cp recipe doesn't cover it"
 fi
 
+# ------------------------------------------------------------ 1b. the isolation-safe shape and bounded exit (#763)
+# The harness refuses on command TEXT, so the first thing under isolation is the plain absolute
+# plugin-path call; the copy is a last resort with a scratch name free of the vcs token; and the
+# whole fallback ends in a bounded BLOCKED report, not an open-ended retry.
+plugin_line=$(grep -n -i 'plugin.path' <<<"$fallback_section" | head -1 | cut -d: -f1 || true)
+cp_line=$(grep -n '^ *cp ' <<<"$fallback_section" | head -1 | cut -d: -f1 || true)
+{ [ -n "$plugin_line" ] && [ -n "$cp_line" ] && [ "$plugin_line" -lt "$cp_line" ]; } \
+  || note_fail "$DOC's fallback does not name the plugin-path call before the first cp"
+
+if grep -rIn -- '\.git-guards' skills commands >/dev/null 2>&1; then
+  note_fail "a scratch name containing the vcs token (.git-guards) remains under skills/ or commands/"
+fi
+
+copy_block=$(awk '/^ *```bash/{b=1;blk="";next} /^ *```/{if(b&&blk ~ /cp /)print blk;b=0} b{blk=blk"\n"$0}' <<<"$fallback_section")
+grep -q -- 'mkdir -p' <<<"$copy_block" \
+  || note_fail "$DOC's copy block does not create its target directory with mkdir -p"
+
+grep -q -- 'BLOCKED' <<<"$fallback_section" \
+  || note_fail "$DOC's fallback has no BLOCKED exit"
+grep -qi -- 'one attempt per' <<<"$fallback_section" \
+  || note_fail "$DOC's fallback has no one-attempt-per-shape clause"
+
 # A `file:line` site must be accompanied — within the next few lines — by a pointer to the shared
 # fallback doc, so the next skill that adds a guarded call site cannot forget it silently. Shared by
 # sections 2 and 2b below, so a change to the window logic can't silently apply to one and not the
