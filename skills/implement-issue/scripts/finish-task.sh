@@ -4,7 +4,7 @@
 # through the guard.
 #
 # Why (#499): implement-issue Step 6 closed a task in four to six tool turns — edit the plan file
-# per line, edit the PR mirror, tick-plan.sh, gh pr edit, guarded-commit.sh, guarded-push.sh — and
+# per line, edit the PR mirror, tick-plan.sh, the PR body edit, guarded-commit.sh, guarded-push.sh — and
 # every turn re-reads the whole context. Measured average: 127 turns per run. This is the same
 # sequence, in the same order Step 6 prescribes (commit → tick → mirror → push), in one turn.
 #

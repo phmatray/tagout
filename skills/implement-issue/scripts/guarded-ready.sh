@@ -10,7 +10,7 @@
 #
 # Exit codes:
 #   0  record present: runs the tracker contract's `pr-ready <pr>` (scripts/tracker.sh, #751) from
-#      <repo-path>, so the profile there picks the host — `gh pr ready` on GitHub, the Draft: prefix
+#      <repo-path>, so the profile there picks the host — gh's ready-flip on GitHub, the Draft: prefix
 #      stripped on GitLab, `az repos pr update --draft false` on Azure DevOps — and prints `guarded-ready: OK — review recorded at <sha>`.
 #   1  no record: prints REFUSED, never calls the tracker.
 #   2  usage error.

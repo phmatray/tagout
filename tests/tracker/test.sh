@@ -886,6 +886,58 @@ else
   ok "AC3 real tree — no gh api|issue|label|repo|pr spelling anywhere under skills/create-issue"
 fi
 
+echo "== C2. contract coverage over implement-issue's prose and open-pr.md (#751)"
+
+# The same check as C, over every file implement-issue's tracker calls are spelled in: its own tree
+# and the shared PR-open recipe it runs in Steps 4 and 5. A stray verb in a fixture must be named.
+II_TREE="$WORK/implement-issue-tree"
+mkdir -p "$II_TREE"
+cp -R "$KIT_ROOT/skills/implement-issue" "$II_TREE/"
+cp "$KIT_ROOT/skills/_shared/open-pr.md" "$II_TREE/"
+
+FIXTURE_II="$WORK/implement-issue-fixture"
+mkdir -p "$FIXTURE_II"
+cp "$KIT_ROOT/skills/_shared/open-pr.md" "$FIXTURE_II/"
+printf '\n"<kit>/scripts/tracker.sh" pr-frobnicate 5\n' >> "$FIXTURE_II/open-pr.md"
+fixture_out=$(check_coverage "$FIXTURE_II" implement-issue)
+if ! grep -Fq 'pr-frobnicate' <<<"$fixture_out"; then
+  note_fail "C2 fixture — a verb absent from the contract was not named: '$fixture_out'"
+else
+  ok "C2 fixture — a verb absent from the contract fails coverage, named"
+fi
+real_out=$(check_coverage "$II_TREE" implement-issue)
+if [ -n "$real_out" ]; then
+  note_fail "C2 real tree — coverage reported gaps:
+      $real_out"
+elif [ -z "$(collect_verbs "$II_TREE")" ]; then
+  note_fail "C2 real tree — no \"<kit>/scripts/tracker.sh\" verb is spelled anywhere; the check is vacuous"
+else
+  ok "C2 real tree — every tracker.sh verb implement-issue's prose and open-pr.md invoke is on skills.implement-issue"
+fi
+
+echo "== D2. no direct gh issue|label|repo|pr call in implement-issue's scripts (#751)"
+
+# `gh api` stays allowed here: the comment-hosted plan path is GitHub-only by name and keeps it.
+GUARD_PATTERN_II='\bgh (issue|label|repo|pr)\b'
+FIXTURE_GH_II="$WORK/implement-issue-gh-fixture"
+mkdir -p "$FIXTURE_GH_II"
+cp "$KIT_ROOT/skills/implement-issue/scripts/guarded-ready.sh" "$FIXTURE_GH_II/"
+printf '\ngh pr view 7 --json body\n' >> "$FIXTURE_GH_II/guarded-ready.sh"
+fixture_gh_out=$(grep -rnE "$GUARD_PATTERN_II" "$FIXTURE_GH_II" || true)
+if ! grep -Fq 'guarded-ready.sh' <<<"$fixture_gh_out"; then
+  note_fail "D2 fixture — a reintroduced 'gh pr view' line was not named: '$fixture_gh_out'"
+else
+  ok "D2 fixture — a direct gh pr call reintroduced into guarded-ready.sh fails the guard, named"
+fi
+real_gh_out=$(grep -rnE "$GUARD_PATTERN_II" "$KIT_ROOT/skills/implement-issue/scripts" \
+  "$KIT_ROOT/skills/_shared/scripts/pr-existence-guard.sh" || true)
+if [ -n "$real_gh_out" ]; then
+  note_fail "D2 real tree — a direct gh call survives:
+      $real_gh_out"
+else
+  ok "D2 real tree — no gh issue|label|repo|pr under skills/implement-issue/scripts or in pr-existence-guard.sh"
+fi
+
 echo "== E. the gitlab backend (#508)"
 
 # A fixture repository carrying a committed profile whose Tracker line names gitlab.
