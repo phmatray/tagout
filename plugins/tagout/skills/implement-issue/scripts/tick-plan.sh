@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# tick-plan.sh — write a checkbox-flipped plan back to a GitHub issue or comment, fail-closed.
+# tick-plan.sh — write a checkbox-flipped plan back to an issue or a GitHub comment, fail-closed.
+#
+# The issue body is written and read back through scripts/tracker.sh (`issue-edit-body`, then
+# `issue-view`), so the same guards hold on GitHub, GitLab and Azure DevOps (#751). A plan hosted in
+# a comment is a GitHub-only shape: it keeps its `gh api` PATCH there and is refused, with nothing
+# sent, on any other tracker.
 #
 # Replaces the recipe that destroyed two live issue bodies (Koine#1813):
 #
@@ -203,13 +208,31 @@ GH_HOST_LIB="$SCRIPT_DIR/../../_shared/scripts/_gh-host.sh"
 # CALLABLE, not merely readable: an empty or truncated helper sources cleanly and defines nothing.
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve >/dev/null 2>&1 || die "cannot load $GH_HOST_LIB; reinstall the kit"
-gh_host_resolve "$REPO" || exit 1
-REPO="$KIT_REPO_SLUG"
+
+# The issue body travels through the tracker contract (#751): `issue-edit-body` writes it and
+# `issue-view` reads it back, on whichever host the profile names. Which tracker that is costs no
+# network — `state` reads the committed profile only.
+TRACKER_SH="$SCRIPT_DIR/../../../scripts/tracker.sh"
+[ -x "$TRACKER_SH" ] || die "cannot find $TRACKER_SH; reinstall the kit"
+TRACKER_NAME=$("$TRACKER_SH" state implement-issue 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+[ -n "$TRACKER_NAME" ] || die "tracker.sh state could not name this repository's tracker"
+
+REPO_ARG="$REPO"
+if [ "$TRACKER_NAME" = github ]; then
+  # On GitHub the host is resolved here exactly as before (#514): a malformed slug is refused
+  # before anything is sent, and the comment path's `gh api` needs the exported GH_HOST.
+  gh_host_resolve "$REPO" || exit 1
+  REPO="$KIT_REPO_SLUG"
+elif [ -n "$COMMENT_ID" ]; then
+  die "a plan hosted in a comment is a GitHub-only shape (#750); move the plan into the issue body. Nothing sent"
+fi
 
 if [ -n "$COMMENT_ID" ]; then
   endpoint="repos/$REPO/issues/comments/$COMMENT_ID"
-else
+elif [ "$TRACKER_NAME" = github ]; then
   endpoint="repos/$REPO/issues/$ISSUE"
+else
+  endpoint="$TRACKER_NAME issue #$ISSUE"
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -299,12 +322,22 @@ payload_file=$(mktemp "${TMPDIR:-/tmp}/tick-plan-payload.XXXXXX") \
 readback_file=$(mktemp "${TMPDIR:-/tmp}/tick-plan-readback.XXXXXX") \
   || die "could not create a temp file for the read-back. Nothing sent"
 trap 'rm -f "$payload_file" "$readback_file"' EXIT
-printf '%s' "$payload" > "$payload_file"
+# The comment path PATCHes the validated JSON payload; the body path hands `issue-edit-body` the
+# --after bytes themselves, which the round-trip above proved are exactly the payload's body.
+if [ -n "$COMMENT_ID" ]; then
+  printf '%s' "$payload" > "$payload_file"
+else
+  cp "$AFTER" "$payload_file"
+fi
 [ -s "$payload_file" ] || die "the payload file came out empty. Nothing sent"
 
-# The PATCH runs under the deadline above, because an unbounded one has stalled a run for half an
+# The write runs under the deadline above, because an unbounded one has stalled a run for half an
 # hour (#113).
-run_bounded /dev/null gh api "$endpoint" -X PATCH --input "$payload_file"
+if [ -n "$COMMENT_ID" ]; then
+  run_bounded /dev/null gh api "$endpoint" -X PATCH --input "$payload_file"
+else
+  run_bounded /dev/null "$TRACKER_SH" --repo "$REPO_ARG" issue-edit-body "$ISSUE" --body-file "$payload_file"
+fi
 bounded=$BOUNDED
 patch_rc=$RC
 
@@ -326,8 +359,18 @@ fi
 # where the stall then lands.
 # A wrapper, because run_bounded takes an argv and this leg keeps gh's own stderr suppressed.
 quiet_gh() { gh "$@" 2>/dev/null; }
+# The body path's read-back: a failed `issue-view` fails the leg rather than reading as an empty body.
+quiet_view() {
+  local j
+  j=$("$TRACKER_SH" --repo "$REPO_ARG" issue-view "$ISSUE" 2>/dev/null) || return 1
+  printf '%s' "$j" | jq -r '.body // ""'
+}
 
-run_bounded "$readback_file" quiet_gh api "$endpoint" --jq .body
+if [ -n "$COMMENT_ID" ]; then
+  run_bounded "$readback_file" quiet_gh api "$endpoint" --jq .body
+else
+  run_bounded "$readback_file" quiet_view
+fi
 read_bounded=$BOUNDED
 read_rc=$RC
 

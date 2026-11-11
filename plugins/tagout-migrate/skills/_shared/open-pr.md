@@ -4,7 +4,7 @@ Shared procedure for opening a pull request the way the kit expects. `implement-
 Step 4, before it creates a worktree, and the whole of it in Step 5 for its draft PR; `create-pr`
 runs §1 in Step 2, before its push, and §2 in Step 3 for a finished feature branch. The caller owns
 what comes before (the commit, the guarded push) and what to do about a PR that already exists; the
-lookup, the title and `gh pr create` live **here**, once.
+lookup, the title and the `pr-create` call live **here**, once.
 
 Six names have to be in scope, and the caller sets them before it gets here (§1 reads only the
 first two):
@@ -23,10 +23,11 @@ BODY_FILE=<a file holding the PR body>  # carries `Closes #$ISSUE` when $ISSUE i
 
 ## 1. Look for an existing PR
 
-**By branch name first** — a live-ref lookup:
+**By branch name first** — a live-ref lookup, through the tracker contract (`<kit>` is the kit
+root, so this runs the same on GitHub, GitLab and Azure DevOps — #751):
 
 ```bash
-gh pr list --head "$BRANCH" --json number,url,isDraft,headRefName --jq '.[0] // empty'
+"<kit>/scripts/tracker.sh" pr-list --head "$BRANCH" | jq '.[0] // empty'
 # `// empty`: `.[0]` of a no-match `[]` is `null`, and jq prints that as the string "null" — output.
 ```
 
@@ -49,15 +50,15 @@ first line, then one row per closing PR — `RESUME` for the one to resume onto,
 other. Exit `2` with a `REFUSED — …` line is **no verdict** (the issue is not digits, the search
 came back empty, or a commit count could not be read): retry it, never read it as `0`.
 
-⚠️ **Residual limitation, not fixable from this side:** `gh pr list --search` hits GitHub's Search
-API, which is *eventually consistent* — unlike the branch-name lookup's `gh pr list --head`, a live-ref
+⚠️ **Residual limitation, not fixable from this side:** on GitHub, `pr-list --search` hits the Search
+API, which is *eventually consistent* — unlike the branch-name lookup's `pr-list --head`, a live-ref
 lookup. A PR created seconds ago can still search as absent. This narrows the #195-shaped race, it
 does not close it to zero; the branch-name lookup (checked first) is the fast path that still catches
 a same-slug race this cannot.
 
 - `0` → nothing found; go on to §2.
 - `1` → an open PR already closes this issue: report it (its `RESUME` row carries the PR number,
-  the branch and the URL) and **stop** — no second `gh pr create`. The caller
+  the branch and the URL) and **stop** — no second `pr-create`. The caller
   decides whether to resume onto it.
 - `2`+ → a pre-existing duplicate pair already on GitHub (the exact #195 shape). The one to resume
   onto is the `RESUME` row — the script picks it, by the rule in its header, so two independent runs
@@ -116,14 +117,15 @@ symptom wording — so the example issue becomes e.g.
 ```bash
 TITLE="<type>(<scope>): <subject>$SUFFIX"      # the title the dry-run accepted
 if [ "$DRAFT" = 1 ]; then DRAFT_FLAG=--draft; else DRAFT_FLAG=; fi
-gh pr create $DRAFT_FLAG --base "$BASE" --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE"
+OUT=$("<kit>/scripts/tracker.sh" pr-create $DRAFT_FLAG --base "$BASE" --head "$BRANCH" --title "$TITLE" --body-file "$BODY_FILE")
 
-# Read it back: a zero exit is a claim about what gh attempted, not a receipt.
-gh pr view "$BRANCH" --json number,url,isDraft,headRefName
+# Read it back: a zero exit is a claim about what the host attempted, not a receipt.
+"<kit>/scripts/tracker.sh" pr-view "$(printf '%s' "$OUT" | jq -r .number)"
 ```
 
-The readback's `headRefName` must be `$BRANCH` and `isDraft` must match `$DRAFT`; anything else is a
-stop, not a retry. Hand `number` and `url` back to the caller.
+The readback's `headBranch` must be `$BRANCH` and `isDraft` must match `$DRAFT`; anything else is a
+stop, not a retry. Hand `number` and `url` back to the caller. On GitLab a draft is the `Draft: `
+title prefix and on Azure DevOps the `isDraft` flag — `pr-create` maps `--draft` to each.
 
 ## Consumers
 

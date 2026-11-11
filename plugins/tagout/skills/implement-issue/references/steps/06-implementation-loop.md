@@ -47,7 +47,7 @@ Then, for each task in plan order whose checkboxes aren't all `- [x]`:
    It takes the commit message from the task's last step (`Commit: \`…\``; pass `-m` when the
    plan spells it otherwise), flips **only** `### Task <N>`'s `- [ ]` lines, writes the issue plan
    through `tick-plan.sh` (fail-closed, read back) and the PR's `### Plan` mirror through
-   `gh pr edit --body-file`, then pushes through `guarded-push.sh`. Re-running it is safe: a stage
+   the tracker contract's `pr-edit-body`, then pushes through `guarded-push.sh`. Re-running it is safe: a stage
    already done says so and is skipped. `--comment-id <id>` when the plan lives in a comment.
 
    **When a stage fails, the exit code is that guard's own, and the line names the stage** — read
@@ -72,6 +72,6 @@ Then, for each task in plan order whose checkboxes aren't all `- [x]`:
    `guarded-commit.sh -C "$WORKTREE" <commit-identity> "$BRANCH" -- -am "<message>"`,
    `tick-plan.sh --repo … --issue … --before … --after …` (never `jq | gh api` — that pipeline
    wiped two live issue bodies with exit 0, `references/github-mechanics.md` §4),
-   `gh pr edit --body-file`, `guarded-push.sh -C "$WORKTREE" "$BRANCH"`.
+   `pr-edit-body --body-file`, `guarded-push.sh -C "$WORKTREE" "$BRANCH"`.
 
 Continue until no task has an unchecked box. The issue's plan now reads all-`- [x]`.

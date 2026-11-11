@@ -85,6 +85,15 @@ one home, and this file does not restate it.
 3. Replace the skill's direct `gh` calls with `tracker.sh <verb>` calls, one step at a time.
 4. Extend `tests/tracker/test.sh` with the new verbs' normalised stdout, under a stub `gh`.
 
+`implement-issue` is the second skill on the contract (#751). It adds six PR verbs — `pr-create`,
+`pr-list`, `pr-view`, `pr-edit-body`, `pr-ready` and `pr-commits` (the last one because
+`pr-existence-guard.sh` breaks a tie between open PRs closing one issue by commit count). GitLab marks
+a draft with the `Draft: ` title prefix, which `pr-ready` strips; Azure DevOps uses `isDraft` and
+`az repos pr update --draft false`. Azure DevOps refuses a PR description over 4000 characters, so
+`pr-create` and `pr-edit-body` refuse one there before sending anything. A plan hosted in a comment
+stays a GitHub-only shape: on any other tracker `tick-plan.sh` and `finish-task.sh` refuse
+`--comment-id` by name, with nothing sent.
+
 Until step 2 happens for a skill, it is `missing` on every non-GitHub host — which is the honest
 answer, not a gap: nothing has established which verbs it needs there.
 

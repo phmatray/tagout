@@ -31,7 +31,8 @@ if [ "$VERB" = verbs ]; then
   printf '%s\n' verbs auth repo issue-view \
     issue-search issue-comments issue-create issue-edit-body \
     issue-add-labels issue-remove-labels issue-reopen issue-comment label-list label-create \
-    issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count
+    issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
+    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits
   exit 0
 fi
 
@@ -161,6 +162,46 @@ _first_state() {
   esac
 }
 
+# The repository name: `origin`'s `_git/<name>` (https) or last segment (ssh), else the project's
+# own name — Azure DevOps names a project's first repository after the project. Shared by `repo` and
+# the PR verbs, which address a repository and build its web URL (#751).
+_repo_name() {
+  local origin name=""
+  if origin=$(git remote get-url origin 2>/dev/null); then
+    case "$origin" in
+      *dev.azure.com/*/_git/*) name="${origin##*/_git/}"; name="${name%.git}" ;;
+      *ssh.dev.azure.com:v3/*) name="${origin##*/}"; name="${name%.git}" ;;
+    esac
+  fi
+  [ -n "$name" ] || name="$PROJECT"
+  printf '%s' "$name"
+}
+
+# The service's pull-request description limit. A longer one is refused before anything is sent,
+# rather than truncated by the host or rejected after a partial write.
+PR_DESC_MAX=4000
+_body_ok() {  # _body_ok <verb> <file> — exit 2, nothing sent, on a missing, empty or over-long body
+  [ -n "$2" ] && [ -s "$2" ] \
+    || { echo "azure-devops: $1 refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+  local n
+  n=$(jq -Rs 'length' < "$2") || exit 2
+  [ "$n" -le "$PR_DESC_MAX" ] \
+    || { echo "azure-devops: $1 refuses a description of $n characters — Azure DevOps allows $PR_DESC_MAX. Nothing sent." >&2; exit 2; }
+}
+
+# One normaliser for a pull request, shared by pr-list and pr-view: the API answers a REST url, so
+# the web URL is built; branches lose their refs/heads/ prefix; status maps to open|merged|closed.
+PR_JQ='def pr($base; $repo):
+  { number: .pullRequestId, title, body: (.description // ""),
+    url: "\($base)/\(.repository.project.name // $project)/_git/\(.repository.name // $repo)/pullrequest/\(.pullRequestId)",
+    state: ({"active":"open","completed":"merged","abandoned":"closed"}[.status // ""] // .status),
+    isDraft: (.isDraft // false),
+    headBranch: ((.sourceRefName // "") | sub("^refs/heads/"; "")),
+    baseBranch: ((.targetRefName // "") | sub("^refs/heads/"; "")),
+    headSha: (.lastMergeSourceCommit.commitId // null),
+    author: (.createdBy.uniqueName // null),
+    mergedAt: (if .status == "completed" then (.closedDate // null) else null end) };'
+
 case "$VERB" in
 
   # ------------------------------------------------------------------- read verbs
@@ -174,16 +215,8 @@ case "$VERB" in
     ;;
 
   repo)
-    REPO_NAME=""
-    if origin=$(git remote get-url origin 2>/dev/null); then
-      case "$origin" in
-        *dev.azure.com/*/_git/*)
-          REPO_NAME="${origin##*/_git/}"; REPO_NAME="${REPO_NAME%.git}" ;;
-        *ssh.dev.azure.com:v3/*)
-          REPO_NAME="${origin##*/}"; REPO_NAME="${REPO_NAME%.git}" ;;
-      esac
-    fi
-    [ -n "$REPO_NAME" ] || REPO_NAME="$PROJECT"
+    origin=$(git remote get-url origin 2>/dev/null) || origin=""
+    REPO_NAME=$(_repo_name)
     out=$(az repos show --org "$(_base_url)" --project "$PROJECT" --repository "$REPO_NAME" -o json) \
       || { echo "azure-devops: repo: cannot read '$REPO_NAME' in $ORG/$PROJECT" >&2; exit 1; }
     printf '%s' "$out" | jq -c --arg origin "${origin:-}" \
@@ -534,6 +567,139 @@ PY
       [ -n "$st" ] && ! _is_closed_state "$st" && count=$((count + 1))
     done
     printf '%s\n' "$count"
+    ;;
+
+  # The six PR verbs (#751). Writes build their JSON with `jq -n --rawfile` into a temp file sent
+  # with --in-file — never a body on the command line. A draft is the PR's own isDraft flag.
+  pr-create)
+    BASE=""; HEAD=""; TITLE=""; BODY_FILE=""; DRAFT=false; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --base)      BASE="${2-}"; shift 2 ;;
+        --head)      HEAD="${2-}"; shift 2 ;;
+        --title)     TITLE="${2-}"; shift 2 ;;
+        --body-file) BODY_FILE="${2-}"; shift 2 ;;
+        --draft)     DRAFT=true; shift ;;
+        --dry-run)   DRY=1; shift ;;
+        *) echo "azure-devops: pr-create: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -n "$BASE" ] && [ -n "$HEAD" ] && [ -n "$TITLE" ] \
+      || { echo "azure-devops: pr-create needs --base, --head and --title" >&2; exit 2; }
+    _body_ok pr-create "$BODY_FILE"
+    REPO_NAME=$(_repo_name)
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN az devops invoke --area git --resource pullRequests POST $ORG/$PROJECT/$REPO_NAME refs/heads/$HEAD -> refs/heads/$BASE isDraft=$DRAFT"
+      exit 0
+    fi
+    IN_FILE=$(mktemp)
+    jq -n --rawfile d "$BODY_FILE" --arg s "refs/heads/$HEAD" --arg t "refs/heads/$BASE" \
+      --arg title "$TITLE" --argjson draft "$DRAFT" \
+      '{sourceRefName: $s, targetRefName: $t, title: $title, description: $d, isDraft: $draft}' > "$IN_FILE"
+    rc=0
+    out=$(_invoke "pr-create" --area git --resource pullRequests \
+      --route-parameters project="$PROJECT" repositoryId="$REPO_NAME" \
+      --http-method POST --api-version 7.1 --in-file "$IN_FILE") || rc=1
+    rm -f "$IN_FILE"
+    [ "$rc" -eq 0 ] || exit 1
+    printf '%s' "$out" | jq -c --arg base "$(_base_url)" --arg project "$PROJECT" --arg repo "$REPO_NAME" \
+      "$PR_JQ"' pr($base; $repo) | {number, url}'
+    ;;
+
+  pr-list)
+    # `az repos pr list` truncates each description, so a --search re-reads every candidate's full
+    # description through `az repos pr show` before matching it — one call per open PR, only then.
+    HEAD=""; Q=""; ST=""; LIM=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --head)   HEAD="${2-}"; shift 2 ;;
+        --search) Q="${2-}"; shift 2 ;;
+        --state)  ST="${2-}"; shift 2 ;;
+        --limit)  LIM="${2-}"; shift 2 ;;
+        *) echo "azure-devops: pr-list: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$ST" in
+      ""|open) STATUS=active ;;
+      merged)  STATUS=completed ;;
+      *) echo "azure-devops: pr-list: --state is open or merged" >&2; exit 2 ;;
+    esac
+    REPO_NAME=$(_repo_name)
+    ARGS=(repos pr list --org "$(_base_url)" --project "$PROJECT" --repository "$REPO_NAME" --status "$STATUS")
+    [ -n "$HEAD" ] && ARGS+=(--source-branch "$HEAD")
+    [ -n "$LIM" ] && ARGS+=(--top "$LIM")
+    out=$(az "${ARGS[@]}" -o json) || { echo "azure-devops: pr-list: az repos pr list failed" >&2; exit 1; }
+    if [ -n "$Q" ]; then
+      full="["; sep=""
+      for id in $(printf '%s' "$out" | jq -r '.[].pullRequestId'); do
+        one=$(az repos pr show --org "$(_base_url)" --id "$id" -o json) \
+          || { echo "azure-devops: pr-list: az repos pr show --id $id failed" >&2; exit 1; }
+        full="$full$sep$one"; sep=","
+      done
+      out=$(printf '%s]' "$full" | jq -c --arg q "$Q" '[.[] | select((.description // "") | contains($q))]')
+    fi
+    printf '%s' "$out" | jq -c --arg base "$(_base_url)" --arg project "$PROJECT" --arg repo "$REPO_NAME" \
+      "$PR_JQ"' [.[] | pr($base; $repo) | {number, title, url, state, isDraft, headBranch, body, mergedAt}]'
+    ;;
+
+  pr-view)
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: pr-view needs a pull request id" >&2; exit 2; }
+    out=$(az repos pr show --org "$(_base_url)" --id "$n" -o json) \
+      || { echo "azure-devops: pr-view: az repos pr show --id $n failed" >&2; exit 1; }
+    printf '%s' "$out" | jq -c --arg base "$(_base_url)" --arg project "$PROJECT" --arg repo "$(_repo_name)" \
+      "$PR_JQ"' pr($base; $repo) | {number, title, url, state, isDraft, body, headBranch, baseBranch, headSha, author}'
+    ;;
+
+  pr-edit-body)
+    n="${1-}"; shift || true
+    BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift 2 ;;
+        --dry-run)   DRY=1; shift ;;
+        *) echo "azure-devops: pr-edit-body: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "azure-devops: pr-edit-body needs a pull request id" >&2; exit 2; }
+    _body_ok pr-edit-body "$BODY_FILE"
+    REPO_NAME=$(_repo_name)
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN az devops invoke --area git --resource pullRequests PATCH $ORG/$PROJECT/$REPO_NAME #$n {description}"
+      exit 0
+    fi
+    IN_FILE=$(mktemp)
+    jq -n --rawfile d "$BODY_FILE" '{description: $d}' > "$IN_FILE"
+    rc=0
+    _invoke "pr-edit-body" --area git --resource pullRequests \
+      --route-parameters project="$PROJECT" repositoryId="$REPO_NAME" pullRequestId="$n" \
+      --http-method PATCH --api-version 7.1 --in-file "$IN_FILE" > /dev/null || rc=1
+    rm -f "$IN_FILE"
+    exit "$rc"
+    ;;
+
+  pr-ready)
+    n=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "azure-devops: pr-ready: unknown option: $a" >&2; exit 2 ;;
+        *) n="$a" ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "azure-devops: pr-ready needs a pull request id" >&2; exit 2; }
+    if [ "$DRY" -eq 1 ]; then echo "DRY-RUN az repos pr update --id $n --draft false"; exit 0; fi
+    az repos pr update --id "$n" --draft false --org "$(_base_url)" -o json > /dev/null \
+      || { echo "azure-devops: pr-ready: az repos pr update --id $n failed" >&2; exit 1; }
+    ;;
+
+  pr-commits)
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: pr-commits needs a pull request id" >&2; exit 2; }
+    out=$(_invoke "pr-commits" --area git --resource pullRequestCommits \
+      --route-parameters project="$PROJECT" repositoryId="$(_repo_name)" pullRequestId="$n" \
+      --http-method GET --api-version 7.1) || exit 1
+    printf '%s' "$out" | jq -c '[.value[].commitId]'
     ;;
 
   *)

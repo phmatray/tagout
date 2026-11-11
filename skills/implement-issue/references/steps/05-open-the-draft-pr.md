@@ -7,7 +7,7 @@ guard exists to prevent. Go straight to Step 6.
 Otherwise: the PR should be visible as a **draft before** the implementation loop. A PR needs the
 branch ahead of `main`, so land an empty scaffold commit, push, then open it through
 [`../_shared/open-pr.md`](../../../_shared/open-pr.md) — the title rules, the gate dry-run and
-`gh pr create` live there, never a copy here.
+the tracker contract's `pr-create` call live there, never a copy here.
 
 Every commit and push **in Steps 5–9** goes through the guards in `scripts/` — never a bare
 `git commit` or `git push`. They take `$BRANCH` explicitly, refuse (exit 2) when HEAD is anything else
