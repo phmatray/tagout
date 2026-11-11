@@ -1602,8 +1602,14 @@ if len(_steps) < 3:
 for _n, _s in enumerate(_steps, 1):
     if not str(_s.get("url", "")).startswith("https://github.com/phmatray/tagout/"):
         print("FAIL: docs/_data/demo.yml step " + str(_n) + " has no proof link into phmatray/tagout"); sys.exit(1)
+# The repository's own figures (#788): docs/_data/figures.yml is their one home, written by the script.
+if "site.data.figures" not in itext:
+    print("FAIL: docs/index.md does not read site.data.figures — the repository's figures have one home, docs/_data/figures.yml, written by scripts/site-figures.py"); sys.exit(1)
+_fig = yaml.safe_load((docs / "_data" / "figures.yml").read_text(encoding="utf-8")) or {}
+if not all(k in _fig for k in ("as_of", "prs_merged", "issues_delivered", "median_issue_to_merge_hours")):
+    print("FAIL: docs/_data/figures.yml is missing a key"); sys.exit(1)
 _product = (root / "PRODUCT.md").read_text(encoding="utf-8")
-_users = _product.split("## Users", 1)[1].split("\n## ", 1)[0]
+_users =_product.split("## Users", 1)[1].split("\n## ", 1)[0]
 if "undecided" not in _users:
     print("FAIL: PRODUCT.md § Users does not name the undecided visitor — the home page is designed for them since 2026-11-11"); sys.exit(1)
 # ...and every command on those pages comes from the table too: a command typed into a page goes

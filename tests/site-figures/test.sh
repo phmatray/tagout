@@ -41,10 +41,10 @@ rc=0
 out=$(PATH="$WORK/bin:$PATH" GH_PRS_FIXTURE="$PRS" GH_ISSUES_FIXTURE="$ISSUES" "$PY" "$SCRIPT" 2>"$WORK/err") || rc=$?
 [ "$rc" = 0 ] || fail "happy case exited $rc: $(cat "$WORK/err")"
 for want in "prs_merged: 3" "issues_delivered: 2" "median_issue_to_merge_hours: 15.0"; do
-  printf '%s\n' "$out" | grep -qx "$want" || fail "happy case: stdout lacks '$want'"
+  grep -qx "$want" <<<"$out" || fail "happy case: stdout lacks '$want'"
 done
-printf '%s\n' "$out" | grep -q '^as_of: [0-9]\{4\}-[0-9][0-9]-[0-9][0-9]$' || fail "happy case: no as_of line"
-[ "$(printf '%s\n' "$out" | head -1)" = "# Written by scripts/site-figures.py — never edited by hand." ] || fail "happy case: first line is not the script comment"
+grep -q '^as_of: [0-9]\{4\}-[0-9][0-9]-[0-9][0-9]$' <<<"$out" || fail "happy case: no as_of line"
+[ "${out%%$'\n'*}" = "# Written by scripts/site-figures.py — never edited by hand." ] || fail "happy case: first line is not the script comment"
 
 # refusal: an existing --out file stays byte-identical
 printf 'keep me\n' > "$WORK/figures.yml"

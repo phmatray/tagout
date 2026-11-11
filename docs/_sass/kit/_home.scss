@@ -359,6 +359,45 @@
   color: var(--ink-soft);
 }
 
+// This repository's own figures (#788): three numbers in the display face, side by side, stacked on a phone.
+.kit-figures-list {
+  margin: 0 0 calc(var(--unit) * 3);
+  padding: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: calc(var(--unit) * 3);
+}
+
+@media (min-width: 48rem) {
+  .kit-figures-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kit-figures-list div {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: var(--unit);
+  padding-top: calc(var(--unit) * 2);
+  border-top: 1.5px solid var(--rule-strong);
+}
+
+.kit-figures-list dd {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2.5rem, 5vw, 3.5rem);
+  line-height: 0.9;
+}
+
+.kit-figures-list dt {
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+}
+
 .kit-record {
   width: 100%;
   border-collapse: collapse;

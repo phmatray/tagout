@@ -76,6 +76,16 @@ nav_order: 1
 </ol>
 </section>
 
+<section class="kit-section kit-figures" aria-labelledby="kit-figures-title">
+<div class="kit-section-head"><h2 id="kit-figures-title" class="kit-section-title">The lifecycle, on this repository</h2><p>Tagout is built with Tagout. Read from this repository's tracker on {{ site.data.figures.as_of }} by <code>scripts/site-figures.py</code>.</p></div>
+<dl class="kit-figures-list">
+<div><dt>pull requests merged</dt><dd>{{ site.data.figures.prs_merged }}</dd></div>
+<div><dt>issues delivered</dt><dd>{{ site.data.figures.issues_delivered }}</dd></div>
+<div><dt>hours, issue filed to merged, median</dt><dd>{{ site.data.figures.median_issue_to_merge_hours }}</dd></div>
+</dl>
+<p markdown="span">[The auto-dev case study of this repository](case-studies/auto-dev/2026-10-28-tagout.md).</p>
+</section>
+
 <section class="kit-section" aria-labelledby="kit-refusals-title">
 <div class="kit-section-head"><h2 id="kit-refusals-title" class="kit-section-title">What the gates refuse</h2><p>Three ways an agent-driven change goes wrong without anyone noticing, and the lock that stops each one.</p></div>
 <ul class="kit-refusals">
