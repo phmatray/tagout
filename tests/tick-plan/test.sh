@@ -321,14 +321,17 @@ echo "  ok: bounded-match — bounded at 2s, verdict from the read-back (${ELAPS
 
 # 11. Bounded, but GitHub holds something else → the existing ALERT, exit 1. A killed call must
 #     never be allowed to launder a mismatch into success.
+#     2s, not 1s: the read-back now goes through tracker.sh (#751) — a few more process starts — and
+#     a 1s deadline cut it short under a parallel suite run, turning this case into "read-back
+#     bounded" instead of "body differs". The PATCH still sleeps 6s, so `-lt 6` still proves it was cut.
 export GH_MANGLE_STORE=1
-run_bounded bounded-differs 1 "$TICK" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md"
+run_bounded bounded-differs 2 "$TICK" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md"
 unset GH_MANGLE_STORE
 [ "$RC" -eq 1 ] || { echo "FAIL [bounded-differs]: expected exit 1, got $RC"
                      cat "$WORK/out.bounded-differs"; exit 1; }
 grep -q 'ALERT' "$WORK/out.bounded-differs" \
   || { echo "FAIL [bounded-differs]: no ALERT on a mismatched body"; cat "$WORK/out.bounded-differs"; exit 1; }
-[ "$ELAPSED" -lt 5 ] || { echo "FAIL [bounded-differs]: took ${ELAPSED}s — the PATCH was not bounded"; exit 1; }
+[ "$ELAPSED" -lt 6 ] || { echo "FAIL [bounded-differs]: took ${ELAPSED}s — the PATCH was not bounded"; exit 1; }
 # ...and it must NOT tell the reader to restore. After a cut-short PATCH the write most likely never
 # landed, so restoring is either a no-op or it un-ticks a write that arrives a moment later.
 grep -q 'Do NOT restore' "$WORK/out.bounded-differs" \
