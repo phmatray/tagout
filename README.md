@@ -2,20 +2,26 @@
 
 # Tagout
 
-**The gate-verified issue → pull request lifecycle for coding agents: no green tag, no merge.** An
-idea becomes a planned issue, the issue becomes a pull request, the pull request lands — and every
-destructive step runs behind a gate that refuses by name, saying who locked it and what clears it.
-Add `tagout-migrate` when the thing to upgrade is a legacy .NET application.
+**Tagout takes an idea to a merged pull request while you do something else.** Say what you want;
+your coding agent files the issue with a plan, builds it on a branch, opens the pull request, waits
+for CI and merges it. Every step is checked by a script that stops the agent when something is wrong
+and says what to fix. No green tag, no merge.
 
-Two plugins, one marketplace — install the first everywhere, the second only for .NET:
+## One run, start to finish
 
-| Plugin | What it contains | Who installs it | Install (Claude Code) |
-|---|---|---|---|
-| **`tagout`** | The issue → PR lifecycle: `create-issue`, `implement-issue`, `create-pr`, `merge-pr`, `deliver-issue`, `auto-dev`, `triage-backlog`, `debug-issue` and their siblings, with the git write-gate and the auto-dev Stop gate. No .NET, no MCP server. | Anyone with a GitHub repository, in any language. | `claude plugin install tagout@tagout-marketplace` |
-| **`tagout-migrate`** | The .NET migration add-on: the seven-phase `/migrate` pipeline (`/migrate-assess`, `/migrate-audit`, `/migrate-verify`, `/migrate-followups`), the roseline `Read` gate, and the RoselineMCP and AdrMcp servers. | A team upgrading a legacy .NET application. Needs the .NET 10 SDK — RoselineMCP starts with `dnx`. | `claude plugin install tagout-migrate@tagout-marketplace` |
+| Skill | Left behind | When (UTC) |
+|---|---|---|
+| `create-issue` | [Issue #762, with a brainstorm, a spec and a plan](https://github.com/phmatray/tagout/issues/762) | 2026-11-10 13:17 |
+| `implement-issue #762` | [Pull request #779: 2 commits, +95 −40](https://github.com/phmatray/tagout/pull/779) | 2026-11-11 12:07 |
+| `merge-pr #779` | [CI green, squash-merged, issue closed](https://github.com/phmatray/tagout/commit/e2a8964) | 2026-11-11 12:24 |
 
-Add the marketplace once first — `claude plugin marketplace add phmatray/tagout`. Every other host
-is under [Install](#install).
+```bash
+claude plugin marketplace add phmatray/tagout
+claude plugin install tagout@tagout-marketplace
+claude plugin install tagout-migrate@tagout-marketplace   # only for a legacy .NET application
+```
+
+Every other host, the method and the proof: https://phmatray.github.io/tagout/
 
 <!-- portfolio-badges:start -->
 <!-- Identity -->
@@ -30,6 +36,17 @@ is under [Install](#install).
 [![Pull requests](https://img.shields.io/github/issues-pr/phmatray/tagout)](https://github.com/phmatray/tagout/pulls)
 [![Last commit](https://img.shields.io/github/last-commit/phmatray/tagout)](https://github.com/phmatray/tagout/commits)
 <!-- portfolio-badges:end -->
+
+## Two plugins
+
+Two plugins, one marketplace — install the first everywhere, the second only for .NET:
+
+| Plugin | What it contains | Who installs it | Install (Claude Code) |
+|---|---|---|---|
+| **`tagout`** | The issue → PR lifecycle: `create-issue`, `implement-issue`, `create-pr`, `merge-pr`, `deliver-issue`, `auto-dev`, `triage-backlog`, `debug-issue` and their siblings, with the git write-gate and the auto-dev Stop gate. No .NET, no MCP server. | Anyone with a GitHub repository, in any language. | `claude plugin install tagout@tagout-marketplace` |
+| **`tagout-migrate`** | The .NET migration add-on: the seven-phase `/migrate` pipeline (`/migrate-assess`, `/migrate-audit`, `/migrate-verify`, `/migrate-followups`), the roseline `Read` gate, and the RoselineMCP and AdrMcp servers. | A team upgrading a legacy .NET application. Needs the .NET 10 SDK — RoselineMCP starts with `dnx`. | `claude plugin install tagout-migrate@tagout-marketplace` |
+
+Every other host is under [Install](#install).
 
 <!-- portfolio-toc:start -->
 

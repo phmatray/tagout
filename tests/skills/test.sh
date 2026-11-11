@@ -1713,6 +1713,16 @@ _red_docs gets
 sed 's/, hooks: "yes"//' "$KIT_ROOT/docs/_data/hosts.yml" > "$_pscratch/gets/docs/_data/hosts.yml"
 _red_refused gets "claude-code gets" "a host row missing a capability"
 
+# README.md opens on the pitch, one real run and the install (#790), not on the jargon lead: the
+# first screen carries a proof link and the first command.
+echo "== README.md's first screen carries a proof link and the install command (#790) =="
+_first=$(head -40 "$KIT_ROOT/README.md")
+if [[ "$_first" == *"https://github.com/phmatray/tagout/pull/"* && "$_first" == *"claude plugin marketplace add phmatray/tagout"* ]]; then
+  echo "ok   README.md's first 40 lines link a real pull request and carry the install command"
+else
+  echo "FAIL: README.md's first screen carries no proof link and no install command — it opens on the pitch, the run and the install since the home-page job"; exit 1
+fi
+
 # ---------------------------------------------------------------------------------------------
 # docs/journal/ is a Journal section (#443): one article per published release, rendered as a
 # just-the-docs child section, and held to the journal's two prose rules by a gate rather than by
