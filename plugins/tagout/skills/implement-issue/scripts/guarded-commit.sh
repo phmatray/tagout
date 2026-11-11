@@ -36,7 +36,6 @@
 #   <expected-branch>  the branch this task owns, spelled out by the caller
 #   --              everything after it goes to `git commit` verbatim (e.g. -am "msg")
 #                   Refused (exit 2) instead of failing in git: a leading `commit`, `-A`, `-c`, `-C`.
-#                   Refused (exit 2) instead of failing in git: a leading `commit`, `-A`, `-c`, `-C`.
 #
 # Exit codes:
 #   0  committed on <expected-branch>; prints <branch>@<short-sha>
@@ -123,17 +122,6 @@ done
 
 [ -n "$EXPECTED" ] || refuse "$TOOL" "an expected branch name is required: guarded-commit.sh [-C <path>] <branch> -- <git commit args…>"
 [ $# -gt 0 ]       || refuse "$TOOL" "no git commit arguments given (expected: -- -am 'message')"
-
-# The post-`--` side is opaque to the parser above, so the three measured misshapes are caught here
-# (#765): each is a plausible transfer from plain git that would otherwise fail INSIDE git with
-# exit 1 — the code this guard documents as "git commit itself failed". Exact tokens only.
-[ "$1" != commit ] || refuse "$TOOL" "'commit' after -- is passed to git as a pathspec; drop it (expected: -- -am 'message')"
-for _a in "$@"; do
-  case "$_a" in
-    -A)    refuse "$TOOL" "git commit has no -A; stage first with git -C <repo> add -A, then -- -m 'message'" ;;
-    -c|-C) refuse "$TOOL" "-c/-C after -- is git commit's reuse-message flag; put -c <key>=<value> before <expected-branch>" ;;
-  esac
-done
 
 # The post-`--` side is opaque to the parser above, so the three measured misshapes are caught here
 # (#765): each is a plausible transfer from plain git that would otherwise fail INSIDE git with
