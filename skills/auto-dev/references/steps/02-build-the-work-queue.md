@@ -82,7 +82,7 @@ contend for one path. Keep it small and current:
 ```markdown
 # auto-dev state — <repo>, N=<concurrency> · counts: scripts/fleet-counters.sh <this file> summary
 ## In flight
-- Slot A → #<n> (<area>) — <phase: implementing / PARTIAL ×<k> → resumed / PR #<pr> ready→merging / merged>
+- Slot A → #<n> (<area>) — <phase: implementing / PARTIAL ×<k> → resumed / PR #<pr> ready→merging>
 - Slot B → ...
 ## Queue — SMALL (then MEDIUM), eligible & area-tagged
 <#n (area), ...>
@@ -101,3 +101,5 @@ contend for one path. Keep it small and current:
 ## Skipped (ineligible: no-plan / manual-QA)
 - #<n> — <reason>
 ```
+
+A slot that lands moves to `## Completed`; notes never go under `## In flight` — the Stop gate counts the `- Slot` lines there.
