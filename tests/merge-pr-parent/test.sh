@@ -333,6 +333,23 @@ if [ "$(cat "$STATE_BODY")" != "$(printf '## Destination\n\nShip the epic.')" ];
   echo "FAIL: [$CASE] the parent body was mutated despite the PR lookup failing"; fails=$((fails + 1))
 fi
 
+# ------------------------------- cross-repository parent is refused, never read by number (#781)
+printf '## Destination\n\nShip the epic.\n' > "$STATE_BODY"
+GH_PARENT_REST_JSON='{"number":100,"title":"Elsewhere","html_url":"https://github.com/other/repo/issues/100","repository_url":"https://api.github.com/repos/other/repo"}' \
+  GH_PR_JSON='{"title":"feat(x): slice (#42) (#76)","url":"https://github.com/o/r/pull/76"}' \
+  run_case "cross-repo-parent" 42 76 "$REPO"
+expect_rc 1 && expect_stderr_contains "cross-repository parent" \
+  && { ! grep -q -- '--json body' "$GH_CALL_LOG" || { echo "FAIL: [$CASE] read the parent body"; fails=$((fails + 1)); false; }; } \
+  && ok "a parent in another repository is refused by name, its body never read"
+
+# A GHES repository_url (https://<host>/api/v3/repos/<o>/<r>) naming THIS repo passes (#781).
+printf '## Destination\n\nShip the epic.\n' > "$STATE_BODY"
+GH_PARENT_REST_JSON='{"number":100,"repository_url":"https://ghe.example.com/api/v3/repos/o/r"}' \
+  GH_PR_JSON='{"title":"feat(x): slice (#42) (#76)","url":"https://example.com/o/r/pull/76"}' \
+  run_case "ghes-same-repo-parent" 42 76 "$REPO"
+expect_rc 0 && expect_body_contains "- #42 — feat(x): slice" \
+  && ok "a GHES-shaped repository_url naming this repository is not refused"
+
 # ------------------------------------------------------------ 8. the repository's own host (#514)
 #
 # `gh -R OWNER/REPO` takes gh's DEFAULT host, even inside a GitHub Enterprise checkout, so on a GHE

@@ -165,6 +165,24 @@ if [ -z "$PARENT" ]; then
 fi
 is_number "$PARENT" || fail "#$CHILD's parent resolved to '$PARENT', which is not an issue number"
 
+# A parent in another repository must never be read by number in this one (#781). The REST payload
+# is the parent issue itself: its `repository_url` (else `html_url`) names its repository. A payload
+# with neither is the same-repository shape and passes.
+PARENT_URL=$(printf '%s' "$parent_json" | jq -r '.repository_url // empty')
+if [ -n "$PARENT_URL" ]; then
+  # api host: https://api.<host>/repos/<o>/<r>; GHES: https://<host>/api/v3/repos/<o>/<r>
+  PARENT_SLUG=$(printf '%s' "$PARENT_URL" | sed -E 's#^.*/repos/([^/]+/[^/]+)/?$#\1#')
+else
+  PARENT_URL=$(printf '%s' "$parent_json" | jq -r '.html_url // empty')
+  PARENT_SLUG=""
+  [ -z "$PARENT_URL" ] || PARENT_SLUG=$(printf '%s' "$PARENT_URL" | sed -E 's#^https?://[^/]+/([^/]+/[^/]+)(/.*)?$#\1#')
+fi
+if [ -n "$PARENT_URL" ]; then
+  if [ "$(printf '%s' "$PARENT_SLUG" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" ]; then
+    fail "#$CHILD's parent #$PARENT lives in '$PARENT_SLUG', not '$REPO' — refusing a cross-repository parent (note it there by hand)"
+  fi
+fi
+
 # ---------------------------------------------------------------------- 2. the PR's title + url
 
 pr_json=$(gh pr view "$PR" -R "$REPO" --json title,url 2>&1) \
