@@ -53,7 +53,7 @@ same merge work inside phase 1's context ran at ~247K tokens/turn; here it runs 
 that). Protect that advantage:
 
 - **Orient in ONE batched turn.** Get PR state, diff stat, and branch state together, e.g.
-  `gh pr view $1 --json number,title,isDraft,mergeStateStatus,headRefName && gh pr diff $1 --stat && git -C <worktree> log --oneline -5`.
+  `"<kit>/scripts/tracker.sh" pr-view $1 && "<kit>/scripts/tracker.sh" pr-merge-state $1 && git -C <worktree> diff --stat origin/<base>...HEAD && git -C <worktree> log --oneline -5`.
   Do not make a series of single lookups.
 - **Never read the whole diff into context** unless a conflict actually requires it — `--stat` first,
   then only the conflicting files.

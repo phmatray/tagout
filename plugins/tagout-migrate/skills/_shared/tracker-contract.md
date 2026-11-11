@@ -108,6 +108,15 @@ fallback (#479, a GitHub Enterprise workaround) and `base-run-followup.sh`'s `gh
 skipped on any other tracker (they check `tracker.sh state merge-pr | jq -r .tracker`); and
 `gh pr checks --watch` as a human-facing view.
 
+`auto-dev` is the fourth (#753). It drives the other three, so `skills.auto-dev` is their union plus
+two verbs of its own: `issue-list`, which `survey.sh` reads the open backlog through (labels as bare
+names, every edge a `{nodes, totalCount}` connection so a truncated one still holds its row), and
+`issue-assign`, because Step 4 holds a `BLOCKED_BY: replan` issue by assigning it and no other verb
+writes an assignee. The union is deliberate: `capable` for auto-dev then implies `capable` for every
+skill it dispatches, and `tests/tracker/test.sh` asserts the superset, so a verb added to one of
+them later cannot leave auto-dev unlocked on a host that lacks it. `release-branch.sh` and the Stop
+gate read only git and the fleet's state file, and need no verb.
+
 Until step 2 happens for a skill, it is `missing` on every non-GitHub host — which is the honest
 answer, not a gap: nothing has established which verbs it needs there.
 

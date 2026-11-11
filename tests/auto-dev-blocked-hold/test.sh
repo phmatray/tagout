@@ -108,7 +108,7 @@ grep -qF 'writes it back as a hold instead of a blind re-dispatch' "$PLAN_MD" \
 
 door=$(sed -n '/<!-- one-way-door-hold:start -->/,/<!-- one-way-door-hold:end -->/p' "$SKILL_MD")
 [ -n "$door" ] || fail "AC3: SKILL.md carries no one-way-door-hold block"
-for want in 'gh pr view' '### One-way door' 'no phase-2 dispatch' 'retire the slot' '## Held for owner' '/merge-pr #'; do
+for want in 'tracker.sh" pr-view' '### One-way door' 'no phase-2 dispatch' 'retire the slot' '## Held for owner' '/merge-pr #'; do
   grep -qF -- "$want" <<<"$door" || fail "AC3: one-way-door-hold block does not name: $want"
 done
 grep -qF '## Held for owner' <<<"$(sed -n '/^```markdown/,/^```/p' "$SKILL_MD")" \

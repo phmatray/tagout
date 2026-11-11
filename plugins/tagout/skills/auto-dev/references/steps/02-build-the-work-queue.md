@@ -1,7 +1,7 @@
 ## Step 2 — Build the work queue
 
 The survey (list issues → check each for a plan → classify effort → drop manual-QA → order small-first)
-is deterministic, so **run `scripts/survey.sh`** instead of re-deriving it (one `gh issue list` + jq;
+is deterministic, so **run `scripts/survey.sh`** instead of re-deriving it (one `"<kit>/scripts/tracker.sh" issue-list` + jq;
 fewer turns = less cache re-read). It prints one bucketed, ordered row per issue:
 
 ```

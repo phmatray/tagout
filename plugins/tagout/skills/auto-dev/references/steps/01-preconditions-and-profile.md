@@ -1,6 +1,12 @@
 ## Step 1 — Preconditions & profile
 
-Confirm `gh api user` succeeds and you're in the target repo. **Load the repo profile** via the
+Confirm `"<kit>/scripts/tracker.sh" auth` prints your login and you're in the target repo, then ask whether auto-dev can run on this repository's tracker — the registered decision every lifecycle skill's Step 1 asks ([`preconditions.md`](../../../_shared/preconditions.md)):
+
+```bash
+"<kit>/scripts/tracker.sh" state auto-dev | "<kit>/scripts/decide.sh" tracker.capable
+```
+
+Proceed only on `capable`; on any other answer stop with the one sentence `preconditions.md` prescribes (*`auto-dev` cannot run here: `tracker.capable` answered `<verdict>`*). `capable` for auto-dev implies `capable` for every skill it drives (#753). **Load the repo profile** via the
 `init` skill — auto-dev reads every repo-specific fact from it (the effort/priority
 **labels** for ordering, the **area** conventions for conflict-avoidance, commit identity, CI gates).
 You mainly need its *Labels* and *Architecture grain* sections.

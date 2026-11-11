@@ -1230,6 +1230,62 @@ else
   ok "D3 real tree — no direct gh tracker call in merge-pr's migrated scripts or wait-ci.sh"
 fi
 
+echo "== C4. contract coverage over auto-dev's prose and its commands (#753)"
+
+AD_TREE="$WORK/auto-dev-tree"
+mkdir -p "$AD_TREE"
+cp -R "$KIT_ROOT/skills/auto-dev" "$AD_TREE/"
+cp "$KIT_ROOT"/commands/auto-dev-*.md "$AD_TREE/"
+FIXTURE_AD="$WORK/auto-dev-fixture"
+mkdir -p "$FIXTURE_AD"
+cp "$KIT_ROOT/skills/auto-dev/references/steps/04-supervise.md" "$FIXTURE_AD/"
+printf '\n"<kit>/scripts/tracker.sh" issue-frobnicate 5\n' >> "$FIXTURE_AD/04-supervise.md"
+fixture_out=$(check_coverage "$FIXTURE_AD" auto-dev)
+if ! grep -Fq 'issue-frobnicate' <<<"$fixture_out"; then
+  note_fail "C4 fixture — a verb absent from the contract was not named: '$fixture_out'"
+else
+  ok "C4 fixture — a verb absent from the contract fails coverage, named"
+fi
+real_out=$(check_coverage "$AD_TREE" auto-dev)
+missing_spelled=""
+for v in auth state issue-list pr-list pr-view pr-merge-state pr-checks issue-view issue-assign; do
+  collect_verbs "$AD_TREE" | grep -Fxq "$v" || missing_spelled="$missing_spelled $v"
+done
+# `state` is the dispatcher's own report, not a verb on the table — strip it before judging gaps.
+real_out=$(grep -v 'gap: state ' <<<"$real_out" || true)
+if [ -n "$real_out" ]; then
+  note_fail "C4 real tree — coverage reported gaps:
+      $real_out"
+elif [ -n "$missing_spelled" ]; then
+  note_fail "C4 real tree — auto-dev's prose never spells these through \"<kit>/scripts/tracker.sh\":$missing_spelled"
+else
+  ok "C4 real tree — every tracker.sh verb auto-dev's prose and commands invoke is on skills.auto-dev, and each migrated call site spells one"
+fi
+
+echo "== D4. no direct gh tracker call in survey.sh or reconcile.sh (#753)"
+
+GUARD_PATTERN_AD='\bgh (issue|label|repo|pr)\b'
+d4_grep() {
+  grep -nE "$GUARD_PATTERN_AD" "$@" 2>/dev/null | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' || true
+}
+FIXTURE_GH_AD="$WORK/auto-dev-gh-fixture"
+mkdir -p "$FIXTURE_GH_AD"
+cp "$KIT_ROOT/skills/auto-dev/scripts/reconcile.sh" "$FIXTURE_GH_AD/"
+printf '\ngh pr list --state open --json number\n' >> "$FIXTURE_GH_AD/reconcile.sh"
+fixture_gh_out=$(d4_grep "$FIXTURE_GH_AD/reconcile.sh" /dev/null)
+if ! grep -Fq 'reconcile.sh' <<<"$fixture_gh_out"; then
+  note_fail "D4 fixture — a reintroduced 'gh pr list' line was not named: '$fixture_gh_out'"
+else
+  ok "D4 fixture — a direct gh pr list reintroduced into reconcile.sh fails the guard, named"
+fi
+real_gh_out=$(d4_grep "$KIT_ROOT/skills/auto-dev/scripts/survey.sh" "$KIT_ROOT/skills/auto-dev/scripts/reconcile.sh")
+if [ -n "$real_gh_out" ]; then
+  note_fail "D4 real tree — a direct gh call survives:
+      $real_gh_out"
+else
+  ok "D4 real tree — no gh issue|label|repo|pr outside comments in survey.sh or reconcile.sh"
+fi
+
 echo "== E. the gitlab backend (#508)"
 
 # A fixture repository carrying a committed profile whose Tracker line names gitlab.

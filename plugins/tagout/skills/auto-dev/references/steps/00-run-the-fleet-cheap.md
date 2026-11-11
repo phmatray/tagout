@@ -35,7 +35,7 @@ PR; phase 2 (`/auto-dev-merge <PR>`) lands it in a fresh context.
 
 Near-identical turn counts, so per-turn context is the whole difference: **−74% on the merge phase**,
 ≈11% of total worker spend. Pass the PR number between phases via a file the phase-1 prompt names
-(fall back to parsing the report line, then `gh pr list --head`). Bonus: both post-completion wedges
+(fall back to parsing the report line, then `"<kit>/scripts/tracker.sh" pr-list --head <branch>`). Bonus: both post-completion wedges
 observed in the baseline run happened in the *late* turns of a long session — shorter sessions wedge
 less.
 
