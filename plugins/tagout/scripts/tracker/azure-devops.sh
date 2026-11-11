@@ -590,8 +590,11 @@ PY
 
   # auto-dev's two verbs (#753). issue-list reads the open set by WIQL, then the work items with
   # their relations in batches of up to 200 (workitemsbatch's own ceiling). A relation's linked item
-  # carries no state in this read, so every node prints `state: null`; survey.sh resolves it against
-  # this same open set, which is exact because the list is the full open set (#367).
+  # carries no state in this read, so each edge's state is resolved here (#811): an id in the open
+  # set is open; any other is read back in one more batch (System.State only). A row with an edge
+  # that read cannot answer (deleted, no access) is held — left out — never read as closed. The
+  # description is HTML, so it is flattened to the Markdown the survey parses (#811): the survey
+  # stays backend-neutral.
   issue-list)
     ST=""; LIM=""
     while [ $# -gt 0 ]; do
@@ -622,18 +625,42 @@ PY
       items=$(printf '%s\n%s' "$items" "$page" | jq -sc '.[0] + (.[1].value // [])') || { rm -f "$BATCH_FILE"; exit 1; }
       off=$((off + 200))
     done
+    # Linked ids outside the open set, whose state this read does not carry.
+    extra=$(printf '%s' "$items" | jq -c --argjson open "$ids" '
+      [.[] | (.relations // [])[]
+       | select(.rel | IN("System.LinkTypes.Dependency-Reverse","System.LinkTypes.Dependency-Forward","System.LinkTypes.Hierarchy-Forward"))
+       | (.url | split("/") | last | tonumber)] | unique - $open') || { rm -f "$BATCH_FILE"; exit 1; }
+    states='[]'; off=0; total=$(printf '%s' "$extra" | jq length)
+    while [ "$off" -lt "$total" ]; do
+      jq -n --argjson ids "$extra" --argjson o "$off" '{ids: $ids[$o:$o + 200], fields: ["System.State"], errorPolicy: "Omit"}' > "$BATCH_FILE"
+      page=$(_invoke "issue-list: edge states" --area wit --resource workitemsbatch \
+        --route-parameters project="$PROJECT" --http-method POST --api-version 7.1 \
+        --in-file "$BATCH_FILE") || { rm -f "$BATCH_FILE"; exit 1; }
+      states=$(printf '%s\n%s' "$states" "$page" | jq -sc '.[0] + [(.[1].value // [])[] | select(. != null)
+        | {key: (.id | tostring), value: (if (.fields."System.State" | IN("Closed","Done","Removed")) then "closed" else "open" end)}]') \
+        || { rm -f "$BATCH_FILE"; exit 1; }
+      off=$((off + 200))
+    done
     rm -f "$BATCH_FILE"
-    printf '%s' "$items" | jq -c '
-      def conn($r): [(.relations // [])[] | select(.rel == $r) | {number: (.url | split("/") | last | tonumber), state: null}]
+    printf '%s' "$items" | jq -c --argjson open "$ids" --argjson st "$(printf '%s' "$states" | jq -c 'from_entries')" '
+      def md: if type == "string" and test("<[a-zA-Z/]") then
+          gsub("\r"; "") | gsub("<br[^>]*>"; "\n"; "i") | gsub("<li[^>]*>"; "- "; "i")
+          | gsub("</(p|div|li|ul|ol|h[1-6]|tr)>"; "\n"; "i") | gsub("<[^>]*>"; "")
+          | gsub("&nbsp;"; " ") | gsub("&lt;"; "<") | gsub("&gt;"; ">") | gsub("&quot;"; "\"") | gsub("&#39;"; ([39] | implode)) | gsub("&amp;"; "&")
+          | gsub("\n{3,}"; "\n\n") | sub("^\\s+"; "") | sub("\\s+$"; "")
+        else . end;
+      def conn($r): [(.relations // [])[] | select(.rel == $r) | (.url | split("/") | last | tonumber) as $n
+                     | {number: $n, state: (if ($open | index($n)) != null then "open" else $st[$n | tostring] end)}]
                     | {nodes: ., totalCount: length};
       [.[] | .fields as $f
        | {number: .id, title: $f."System.Title",
           labels: (($f."System.Tags" // "") | if . == "" then [] else split("; ") end),
-          body: ($f."System.Description" // ""), comments: null, createdAt: ($f."System.CreatedDate" // null),
+          body: (($f."System.Description" // "") | md), comments: null, createdAt: ($f."System.CreatedDate" // null),
           blockedBy: conn("System.LinkTypes.Dependency-Reverse"),
           blocking: conn("System.LinkTypes.Dependency-Forward"),
           subIssues: conn("System.LinkTypes.Hierarchy-Forward"),
           assignees: (if $f."System.AssignedTo".uniqueName then [$f."System.AssignedTo".uniqueName] else [] end)}]
+      | map(select([.blockedBy, .blocking, .subIssues | .nodes[].state] | all(. != null)))
       | sort_by(.number)'
     ;;
 
