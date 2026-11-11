@@ -224,9 +224,9 @@ fi
 if [ "$flipped" -eq 0 ]; then
   echo "$TOOL: tick: Task $TASK has no unticked box — already ticked"
 else
-  ( cd "$WORKTREE" 2>/dev/null || true
-    "$HERE/tick-plan.sh" --repo "$REPO" --issue "$ISSUE" ${COMMENT_ID:+--comment-id "$COMMENT_ID"} \
-      --before "$WORK/plan.orig.md" --after "$WORK/plan.md" ) \
+  # The tracker resolved above is handed down with the worktree, so a close resolves it once (#794).
+  "$HERE/tick-plan.sh" -C "$WORKTREE" --tracker "$TRACKER_NAME" --repo "$REPO" --issue "$ISSUE" \
+    ${COMMENT_ID:+--comment-id "$COMMENT_ID"} --before "$WORK/plan.orig.md" --after "$WORK/plan.md" \
     || { rc=$?; echo "$TOOL: tick: tick-plan.sh exited $rc" >&2; exit "$rc"; }
 fi
 

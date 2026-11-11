@@ -50,7 +50,7 @@
 #
 # Usage:
 #   tick-plan.sh --repo <[host/]owner/repo> --issue <n> --before <file> --after <file>
-#                [--comment-id <id>] [--dry-run]
+#                [--comment-id <id>] [-C <worktree>] [--tracker <name>] [--dry-run]
 #
 #   --repo     OWNER/REPO, or HOST/OWNER/REPO to name a GitHub Enterprise host outright. Otherwise
 #              skills/_shared/scripts/_gh-host.sh resolves the host (#514); its one gh call,
@@ -58,6 +58,10 @@
 #   --before   the body exactly as fetched, before any flip (the restore copy)
 #   --after    the same body with this task's boxes flipped
 #   --comment-id  plan lives in a comment (numeric REST id) instead of the issue description
+#   -C         the worktree this tick acts on: the script works from there, so the repository's own
+#              profile, not the caller's cwd, names the tracker and the host (#794)
+#   --tracker  the tracker name the caller already resolved (finish-task.sh), so a task close
+#              resolves it once; omitted → resolved here, from -C or the cwd
 #   --dry-run  validate and print the payload; touch nothing on GitHub
 #
 #   TICK_PLAN_PATCH_TIMEOUT  seconds any single `gh` call may run before it is bounded (default 60).
@@ -74,7 +78,7 @@ die() { printf 'tick-plan: REFUSED — %s\n' "$*" >&2; exit 1; }
 # usage text the next time a paragraph is added above it. The header ends at the first blank line.
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; }
 
-REPO=""; ISSUE=""; COMMENT_ID=""; BEFORE=""; AFTER=""; DRY_RUN=0
+REPO=""; ISSUE=""; COMMENT_ID=""; BEFORE=""; AFTER=""; DRY_RUN=0; WORKTREE=""; TRACKER_NAME=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -83,6 +87,8 @@ while [ $# -gt 0 ]; do
     --comment-id) COMMENT_ID="${2:-}"; shift 2 ;;
     --before)     BEFORE="${2:-}";     shift 2 ;;
     --after)      AFTER="${2:-}";      shift 2 ;;
+    -C)           WORKTREE="${2:-}";   shift 2 ;;
+    --tracker)    TRACKER_NAME="${2:-}"; shift 2 ;;
     --dry-run)    DRY_RUN=1;           shift ;;
     -h|--help)    usage; exit 0 ;;
     *)            die "unknown argument: $1" ;;
@@ -93,6 +99,27 @@ done
 [ -n "$ISSUE" ]  || die "--issue <n> is required"
 [ -n "$BEFORE" ] || die "--before <file> is required (the pre-edit copy is the restore path)"
 [ -n "$AFTER" ]  || die "--after <file> is required"
+
+# $0 through any symlinks first, as guarded-commit.sh does: `pwd -P` canonicalizes the directory,
+# not the link, and macOS's readlink has no -f.
+SELF="${BASH_SOURCE[0]}"
+while [ -L "$SELF" ]; do
+  _link=$(readlink -- "$SELF") || break
+  case "$_link" in
+    /*) SELF="$_link" ;;
+    *)  SELF="$(dirname -- "$SELF")/$_link" ;;
+  esac
+done
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P) || SCRIPT_DIR=$(dirname -- "$SELF")
+# -C (#794): work from the worktree being ticked, so every resolution below (tracker, host, `gh`'s
+# own origin lookup) reads that repository, never the caller's cwd. The file arguments are made
+# absolute first — they were written relative to the caller.
+if [ -n "$WORKTREE" ]; then
+  [ -d "$WORKTREE" ] || die "-C is not a directory: $WORKTREE"
+  case "$BEFORE" in /*) ;; *) BEFORE="$PWD/$BEFORE" ;; esac
+  case "$AFTER" in /*) ;; *) AFTER="$PWD/$AFTER" ;; esac
+  cd "$WORKTREE" || die "cannot enter -C $WORKTREE"
+fi
 
 # How long the PATCH may run before it is bounded (see the write block). Checked here, next to the
 # other arguments, so a junk value is caught long before anything could be sent.
@@ -193,17 +220,6 @@ printf '%s' "$payload" | jq --rawfile after "$AFTER" -e '.body == $after' >/dev/
 # check above, so a refusal there still means gh was never called, and BEFORE the endpoint, so the
 # endpoint and the dry run both name the normalised OWNER/REPO.
 #
-# $0 through any symlinks first, as guarded-commit.sh does: `pwd -P` canonicalizes the directory,
-# not the link, and macOS's readlink has no -f.
-SELF="${BASH_SOURCE[0]}"
-while [ -L "$SELF" ]; do
-  _link=$(readlink -- "$SELF") || break
-  case "$_link" in
-    /*) SELF="$_link" ;;
-    *)  SELF="$(dirname -- "$SELF")/$_link" ;;
-  esac
-done
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$SELF")" && pwd -P) || SCRIPT_DIR=$(dirname -- "$SELF")
 GH_HOST_LIB="$SCRIPT_DIR/../../_shared/scripts/_gh-host.sh"
 # CALLABLE, not merely readable: an empty or truncated helper sources cleanly and defines nothing.
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
@@ -214,7 +230,9 @@ command -v gh_host_resolve >/dev/null 2>&1 || die "cannot load $GH_HOST_LIB; rei
 # network — `state` reads the committed profile only.
 TRACKER_SH="$SCRIPT_DIR/../../../scripts/tracker.sh"
 [ -x "$TRACKER_SH" ] || die "cannot find $TRACKER_SH; reinstall the kit"
-TRACKER_NAME=$("$TRACKER_SH" state implement-issue 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+if [ -z "$TRACKER_NAME" ]; then
+  TRACKER_NAME=$("$TRACKER_SH" state implement-issue 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+fi
 [ -n "$TRACKER_NAME" ] || die "tracker.sh state could not name this repository's tracker"
 
 REPO_ARG="$REPO"
