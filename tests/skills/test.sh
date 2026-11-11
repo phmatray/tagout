@@ -1514,7 +1514,15 @@ if not re.search(r"^title:", itext, re.M) or "nav_order: 1" not in itext or "](m
     print("FAIL: docs/index.md must carry title:, nav_order: 1 and link methodology.md"); sys.exit(1)
 if re.search(r"\]\([^)]*\.html\)", itext):
     print("FAIL: docs/index.md links .html pages — link the .md source, which renders on GitHub and on Pages"); sys.exit(1)
-globs = [e for e in cfg.get("exclude", []) if any(ch in e for ch in "*?[")]
+# The home page sells the lifecycle alone (#787): the .NET migration proof lives on its own page.
+_migrate = docs / "migrate.md"
+if not _migrate.exists() or not re.search(r"^title:\s*\S", _migrate.read_text(encoding="utf-8"), re.M):
+    print("FAIL: docs/migrate.md is missing or untitled — the .NET add-on has its own page"); sys.exit(1)
+if "](migrate.md)" not in itext:
+    print("FAIL: docs/index.md does not link migrate.md"); sys.exit(1)
+if "kit-hasp" in itext or "kit-record" in itext:
+    print("FAIL: docs/index.md still carries the migration proof (kit-hasp / kit-record) — it lives on docs/migrate.md"); sys.exit(1)
+globs =[e for e in cfg.get("exclude", []) if any(ch in e for ch in "*?[")]
 if globs:
     print("FAIL: docs/_config.yml excludes by glob (" + ", ".join(globs) + ") — Jekyll 3 applies exclude to the layouts too, so a bare glob unpublishes every layout; name the file by path"); sys.exit(1)
 excluded = [e.rstrip("/") for e in cfg.get("exclude", [])]
