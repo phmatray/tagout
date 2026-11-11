@@ -167,7 +167,7 @@ command -v gh_host_resolve > /dev/null 2>&1 \
 # reads `commit-checks` on every tracker; the host resolution and the workflow-runs fallback below
 # are GitHub's alone, so they run only there.
 [ -x "$TRACKER_SH" ] || { echo "$TOOL: REFUSED — cannot find $TRACKER_SH; reinstall the kit" >&2; exit 64; }
-TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+TRACKER_NAME=$("$KIT_ROOT/scripts/tracker-name.sh" ${REPO:+-R "$REPO"}) || TRACKER_NAME=""
 [ -n "$TRACKER_NAME" ] \
   || { echo "$TOOL: REFUSED — tracker.sh state could not name this repository's tracker" >&2; exit 64; }
 

@@ -1352,6 +1352,19 @@ else
   ok "AC1 merge-pr on gitlab — every verb the skill needs is on gitlab.sh's verbs list"
 fi
 
+# #805: -R names the repository the caller targets. A GitLab-profiled checkout reaching a GitHub
+# repository gets the GitHub backend; with no -R, or -R at the checkout's own host, it keeps GitLab.
+# scripts/tracker-name.sh is the one probe the five merge-pr scripts share.
+NAMER="$(dirname "$TRACKER")/tracker-name.sh"
+for tc in "|gitlab" "-R acme/widgets|gitlab" "-R github.com/acme/widgets|github" \
+          "-R gitlab.com/acme/widgets|gitlab" "-R grp/sub/proj|gitlab" "-R grp/sub.v2/proj/leaf|gitlab"; do
+  args=${tc%|*}; want=${tc#*|}
+  got=$(cd "$GITLAB_PROFILED" && "$NAMER" $args 2>/dev/null)
+  [ "$got" = "$want" ] \
+    && ok "#805 tracker-name.sh ${args:-(no -R)} on a gitlab-profiled checkout — $want" \
+    || note_fail "#805 tracker-name.sh ${args:-(no -R)} — want $want, got '$got'"
+done
+
 # ------------------------------------------------------------------------------------------- repo
 run_tracker "$GITLAB_PROFILED" --tracker gitlab repo
 if [ "$RC" -ne 0 ]; then

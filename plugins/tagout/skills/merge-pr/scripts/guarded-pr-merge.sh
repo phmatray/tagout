@@ -163,7 +163,7 @@ command -v jq > /dev/null 2>&1 || refuse "jq is missing — it is a \`required\`
 GH_HOST_LIB="$KIT_ROOT/skills/_shared/scripts/_gh-host.sh"
 if [ -r "$GH_HOST_LIB" ]; then . "$GH_HOST_LIB" || true; fi
 command -v gh_host_resolve > /dev/null 2>&1 || refuse "cannot load $GH_HOST_LIB; reinstall the kit"
-TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+TRACKER_NAME=$("$KIT_ROOT/scripts/tracker-name.sh" ${REPO:+-R "$REPO"}) || TRACKER_NAME=""
 [ -n "$TRACKER_NAME" ] || refuse "tracker.sh state could not name this repository's tracker"
 if [ "$TRACKER_NAME" = github ]; then
   gh_host_resolve "$REPO" || exit 64

@@ -126,6 +126,23 @@ resolve_tracker() {
             "That is not \"no profile\" — $PROFILE_SH could not answer at all."
       ;;
   esac
+  # `-R` names the repository the caller targets (#805). Only a slug that CARRIES a host can name a
+  # tracker other than the profile's: a host-less owner/repo or group/sub/proj names none, so it
+  # stays on the checkout's profile (a GitLab profile + bare -R stays GitLab).
+  if [ -n "$TRACKER_REPO_ARG" ] && [ "$TRACKER" != github ]; then
+    local h="${TRACKER_REPO_ARG%%/*}" env_host
+    env_host=$(printf '%s' "${GITLAB_HOST:-}" | tr '[:upper:]' '[:lower:]')
+    case "$TRACKER_REPO_ARG" in */*) ;; *) return 0 ;; esac
+    if [ "$h" = "${DETAIL%%/*}" ] && [ -n "$DETAIL" ]; then return 0; fi   # the profile's own host
+    case "$h" in
+      gitlab.com)    TRACKER=gitlab ;;
+      dev.azure.com) TRACKER=azure-devops ;;
+      *)  if [ -n "$env_host" ] && [ "$h" = "$env_host" ]; then TRACKER=gitlab
+          elif [[ "$h" == *.* ]]; then TRACKER=github   # any other dotted host (github.com, GHE)
+          else return 0; fi ;;
+    esac
+    DETAIL=""
+  fi
 }
 
 # --------------------------------------------------------------------- 4. `state` — a report
