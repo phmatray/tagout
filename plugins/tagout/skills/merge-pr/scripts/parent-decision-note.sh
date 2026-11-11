@@ -154,6 +154,16 @@ if [ -z "$PARENT" ]; then
 fi
 is_number "$PARENT" || fail "#$CHILD's parent resolved to '$PARENT', which is not an issue number"
 
+# A parent in another repository must never be read by number in this one (#781). The parent's
+# `url` names its repository; a payload without one is the same-repository shape and passes.
+PARENT_URL=$(printf '%s' "$parent_json" | jq -r '.parent.url // empty')
+if [ -n "$PARENT_URL" ]; then
+  PARENT_SLUG=$(printf '%s' "$PARENT_URL" | sed -E 's#^https?://[^/]+/([^/]+/[^/]+)/issues/[0-9]+.*$#\1#')
+  if [ "$(printf '%s' "$PARENT_SLUG" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$REPO" | tr '[:upper:]' '[:lower:]')" ]; then
+    fail "#$CHILD's parent #$PARENT lives in '$PARENT_SLUG', not '$REPO' — refusing a cross-repository parent (note it there by hand)"
+  fi
+fi
+
 # ---------------------------------------------------------------------- 2. the PR's title + url
 
 pr_json=$(gh pr view "$PR" -R "$REPO" --json title,url 2>&1) \
