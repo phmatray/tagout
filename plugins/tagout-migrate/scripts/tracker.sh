@@ -126,6 +126,31 @@ resolve_tracker() {
             "That is not \"no profile\" — $PROFILE_SH could not answer at all."
       ;;
   esac
+  # `-R` names the repository the caller targets (#805). The profile describes THIS checkout, so a
+  # repository that is not the checkout's own is not on the profile's tracker.
+  if [ -n "$TRACKER_REPO_ARG" ] && [ "$TRACKER" != github ] && ! repo_is_checkouts_own; then
+    case "${TRACKER_REPO_ARG%%/*}" in
+      gitlab.com)    TRACKER=gitlab ;;
+      dev.azure.com) TRACKER=azure-devops ;;
+      *)             TRACKER=github ;;   # a bare owner/repo is gh's own spelling
+    esac
+    DETAIL=""
+  fi
+}
+
+# True when -R names the checkout's own repository: its host is the profile's host, or (a bare
+# owner/repo, which carries no host) it is the path of the origin remote.
+repo_is_checkouts_own() {
+  local slug="${TRACKER_REPO_ARG%.git}" path
+  case "$slug" in
+    *.*/*/*) [ "${slug%%/*}" = "${DETAIL%%/*}" ] ;;   # a dotted first segment is a host
+    */*/*) return 0 ;;   # a hostless group/sub/proj cannot be GitHub's two-segment owner/repo
+    *)
+      path=$(git remote get-url origin 2>/dev/null | sed -E \
+        -e 's#^[a-z+]+://[^/]+/##' -e 's#^[^@/]+@[^:]+:##' -e 's#\.git$##') || path=""
+      [ "$slug" = "$path" ]
+      ;;
+  esac
 }
 
 # --------------------------------------------------------------------- 4. `state` — a report

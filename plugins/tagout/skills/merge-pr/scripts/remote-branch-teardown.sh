@@ -90,7 +90,7 @@ TRACKER_SH="$KIT_ROOT/scripts/tracker.sh"
   echo "remote-branch-teardown: REFUSED — cannot find $TRACKER_SH; reinstall the kit" >&2
   exit 2
 }
-TRACKER_NAME=$("$TRACKER_SH" state merge-pr 2>/dev/null | jq -r '.tracker // empty') || TRACKER_NAME=""
+TRACKER_NAME=$("$KIT_ROOT/scripts/tracker-name.sh" ${REPO:+-R "$REPO"}) || TRACKER_NAME=""
 [ -n "$TRACKER_NAME" ] || {
   echo "remote-branch-teardown: REFUSED — tracker.sh state could not name this repository's tracker" >&2
   exit 2
