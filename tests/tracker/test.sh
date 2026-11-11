@@ -929,7 +929,7 @@ else
   note_fail "skills.auto-dev is missing a verb of a skill it drives (or is absent)"
 fi
 
-for host_want in github:capable/github-reference gitlab:missing/verb-not-implemented; do
+for host_want in github:capable/github-reference azure-devops:missing/verb-not-implemented; do
   run_tracker "$PROFILED" --tracker "${host_want%%:*}" state auto-dev
   got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
   [ "$got" = "${host_want#*:}" ] \
@@ -1944,6 +1944,55 @@ else
 fi
 out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
 [ "$out" = capable ] || note_fail "gitlab state implement-issue — expected 'capable' still, got '$out'"
+
+echo "== E4. the auto-dev verbs on gitlab (#753)"
+
+PR_TRACKER=gitlab; PR_DIR="$GITLAB_PROFILED"; PR_LOG="$GLAB_CALL_LOG"
+# Two pages of open issues (glab --paginate prints one array per page), each issue's links read.
+export GLAB_SEARCH_JSON='[{"iid":3,"title":"t3","labels":["effort: small"],"description":"b3","created_at":"2026-11-01T00:00:00Z","assignees":[{"username":"ann"}]},{"iid":4,"title":"t4","labels":[],"description":"b4","created_at":"2026-11-02T00:00:00Z","assignees":[]}]
+[{"iid":5,"title":"t5","labels":[],"description":"b5","created_at":"2026-11-03T00:00:00Z","assignees":[]},{"iid":6,"title":"t6","labels":[],"description":"b6","created_at":"2026-11-04T00:00:00Z","assignees":[]},{"iid":7,"title":"t7","labels":[],"description":"b7","created_at":"2026-11-05T00:00:00Z","assignees":[]}]'
+export GLAB_LINKS_JSON='[{"iid":2,"state":"opened","link_type":"is_blocked_by"},{"iid":9,"state":"closed","link_type":"blocks"},{"iid":8,"state":"opened","link_type":"relates_to"}]'
+pr_case "gitlab issue-list — every page, state=opened, links read per issue" 0 - \
+  "api --paginate projects/:id/issues?state=opened" -- issue-list --state open --limit 10
+got=$(printf '%s' "$OUT" | jq -c '.[0]' 2>/dev/null)
+want='{"number":3,"title":"t3","labels":["effort: small"],"body":"b3","comments":null,"createdAt":"2026-11-01T00:00:00Z","blockedBy":{"nodes":[{"number":2,"state":"OPEN"}],"totalCount":1},"blocking":{"nodes":[{"number":9,"state":"CLOSED"}],"totalCount":1},"subIssues":null,"assignees":["ann"]}'
+[ "$got" = "$want" ] && ok "gitlab issue-list — iid→number, description→body, usernames, null comments and subIssues, link edges" \
+  || note_fail "gitlab issue-list — wrong row
+      want: $want
+      got:  $got"
+[ "$(printf '%s' "$OUT" | jq length)" = 5 ] && ok "gitlab issue-list — both pages joined" \
+  || note_fail "gitlab issue-list — pages not joined: $OUT"
+[ "$(grep -c '/links' "$GLAB_CALL_LOG")" = 5 ] && ok "gitlab issue-list — one links read per issue" \
+  || note_fail "gitlab issue-list — links reads: $(grep -c '/links' "$GLAB_CALL_LOG")"
+pr_case "gitlab issue-list --limit 3 — three of five" 0 - - -- issue-list --state open --limit 3
+[ "$(printf '%s' "$OUT" | jq -c 'map(.number)')" = '[3,4,5]' ] && ok "gitlab issue-list --limit 3 — cut to three" \
+  || note_fail "gitlab issue-list --limit 3 — got $OUT"
+
+export GLAB_LINKS_STATUS=403
+pr_case "gitlab issue-list — a 403 on links is null edges, not a failure" 0 - - -- issue-list --state open
+[ "$(printf '%s' "$OUT" | jq -c '[.[] | [.blockedBy, .blocking]] | unique')" = '[[null,null]]' ] \
+  && ok "gitlab issue-list — every row's edges null under a 403" || note_fail "gitlab issue-list 403 — got $OUT"
+[ "$(printf '%s\n' "$ERR" | grep -c 'HTTP 403')" = 1 ] && ok "gitlab issue-list — the 403 is said once on stderr" \
+  || note_fail "gitlab issue-list 403 — stderr: $ERR"
+export GLAB_LINKS_STATUS=500
+pr_case "gitlab issue-list — a 500 on links exits 1 with empty stdout" 1 '' - -- issue-list --state open
+unset GLAB_LINKS_STATUS GLAB_LINKS_JSON GLAB_SEARCH_JSON
+
+export GLAB_ISSUE_JSON='{"iid":9,"title":"x","state":"opened","assignees":[{"username":"ann"}]}'
+pr_case "gitlab issue-assign — an assigned issue is already-assigned, no PUT" 0 already-assigned - -- issue-assign 9
+grep -q '^api -X PUT' "$GLAB_CALL_LOG" && note_fail "gitlab issue-assign — wrote to an assigned issue: $(cat "$GLAB_CALL_LOG")"
+export GLAB_ISSUE_JSON='{"iid":9,"title":"x","state":"opened","assignees":[]}'
+export GLAB_USER_JSON='{"username":"glab_stub_user","id":77}'
+pr_case "gitlab issue-assign — unassigned: the user's id, then the PUT" 0 ok \
+  "api -X PUT projects/:id/issues/9 -F assignee_id=77" -- issue-assign 9
+grep -qx 'api user' "$GLAB_CALL_LOG" || note_fail "gitlab issue-assign — no user read: $(cat "$GLAB_CALL_LOG")"
+unset GLAB_ISSUE_JSON GLAB_USER_JSON
+pr_case "gitlab issue-assign --dry-run — no glab call" 0 - EMPTY -- issue-assign 9 --dry-run
+[ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" = 1 ] || note_fail "gitlab issue-assign --dry-run — got: $OUT"
+
+out=$(cd "$GITLAB_PROFILED" && PATH="$WORK/bin:$PATH" "$TRACKER" state auto-dev 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] && ok "gitlab state auto-dev — capable once issue-list and issue-assign land" \
+  || note_fail "gitlab state auto-dev — expected 'capable', got '$out'"
 
 echo "== F. the Azure DevOps backend (#509)"
 

@@ -59,7 +59,7 @@ if [ "$VERB" = verbs ]; then
     issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
     pr-create pr-list pr-view pr-edit-body pr-ready pr-commits \
     pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete \
-    issue-parent pr-closing-issues pr-comment
+    issue-parent pr-closing-issues pr-comment issue-list issue-assign
   exit 0
 fi
 
@@ -461,6 +461,78 @@ case "$VERB" in
     else
       echo "gitlab: issue-blocked-by-count: $out" >&2; exit 1
     fi
+    ;;
+
+  # auto-dev's two verbs (#753). GitLab has no sub-issue relation (issue-children answers fallback),
+  # so subIssues is null, and comments are not fetched (#750 keeps comment-hosted plans GitHub-only).
+  issue-list)
+    ST=""; LIM=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --state) ST="${2-}"; shift 2 ;;
+        --limit) LIM="${2-}"; shift 2 ;;
+        *) echo "gitlab: issue-list: unknown option: $1" >&2; exit 2 ;;
+      esac
+    done
+    case "$ST" in ''|open) ;; *) echo "gitlab: issue-list: --state is open" >&2; exit 2 ;; esac
+    case "$LIM" in
+      '') LIM=1000000 ;;
+      *[!0-9]*) echo "gitlab: issue-list: --limit takes a number" >&2; exit 2 ;;
+    esac
+    # ponytail: --paginate reads every open page, then cuts to --limit — stop early with page/per_page if a backlog is ever large enough to matter
+    issues=$(_list "projects/$(_id)/issues?state=opened&per_page=100&order_by=created_at&sort=asc") || exit 1
+    issues=$(printf '%s' "$issues" | jq -c --argjson l "$LIM" '.[:$l]') || exit 1
+    # Edges come from each issue's links: is_blocked_by fills blockedBy, blocks fills blocking. A 403
+    # on the first read is a tier without linked issues (issue-blocked-by-count's rule): every edge
+    # is then null, said once on stderr, never a failed survey.
+    edges='{}'; nolinks=0
+    # ponytail: one links read per open issue — GitLab's list carries no blocked-by edges
+    for n in $(printf '%s' "$issues" | jq -r '.[].iid'); do
+      if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
+        edges=$(jq -c --arg n "$n" --argjson l "$out" '. + {($n): $l}' <<<"$edges") || exit 1
+      elif grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
+        echo "gitlab: issue-list: this tier has no linked issues (HTTP 403 on links) — every edge reads null, so the frontier rule holds nothing" >&2
+        nolinks=1; break
+      else
+        echo "gitlab: issue-list: $out" >&2; exit 1
+      fi
+    done
+    printf '%s' "$issues" | jq -c --argjson e "$edges" --argjson nolinks "$nolinks" '
+      def conn($t): if $nolinks == 1 then null else
+        [.[] | select(.link_type == $t)
+         | {number: .iid, state: ({"opened": "OPEN", "closed": "CLOSED"}[.state] // null)}]
+        | {nodes: ., totalCount: length} end;
+      [.[] | (($e[.iid | tostring]) // []) as $links
+       | {number: .iid, title, labels: (.labels // []), body: .description, comments: null,
+          createdAt: .created_at,
+          blockedBy: ($links | conn("is_blocked_by")), blocking: ($links | conn("blocks")),
+          subIssues: null, assignees: [(.assignees // [])[].username]}]'
+    ;;
+
+  issue-assign)
+    n=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "gitlab: issue-assign: unknown option: $a" >&2; exit 2 ;;
+        *) n="$a" ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "gitlab: issue-assign needs an issue number" >&2; exit 2; }
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN glab api -X PUT projects/$(_id)/issues/$n -F assignee_id=<the authenticated user's id>, unless already assigned"
+      exit 0
+    fi
+    # An assigned issue is left alone: it already holds as deps=assigned, so a replan never needs to
+    # overwrite someone.
+    out=$(_api "projects/$(_id)/issues/$n") || exit 1
+    if [ "$(printf '%s' "$out" | jq '(.assignees // []) | length')" -gt 0 ]; then
+      echo already-assigned; exit 0
+    fi
+    uid=$(_api user | jq -r '.id // empty') || exit 1
+    [ -n "$uid" ] || { echo "gitlab: issue-assign: the user read returned no id" >&2; exit 1; }
+    _api -X PUT "projects/$(_id)/issues/$n" -F "assignee_id=$uid" > /dev/null || exit 1
+    echo ok
     ;;
 
   # The six PR verbs (#751), on merge requests. A draft is GitLab's `Draft: ` title prefix: pr-create
