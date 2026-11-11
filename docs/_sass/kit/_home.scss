@@ -6,16 +6,61 @@
   padding: calc(var(--unit) * 3) calc(var(--unit) * 3) calc(var(--unit) * 8);
 }
 
+// The hero is cut in three: the tag's pitch, the install window, and the rest of the tag (plugins,
+// refusal, actions). Wide, the pitch and the rest join into one tag on the left with the install
+// window beside both; narrow, they stack in DOM order, so the command follows the pitch.
 .kit-hero {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(20rem, 1fr);
-  gap: calc(var(--unit) * 3);
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "tag install" "more install";
+  gap: 0 calc(var(--unit) * 3);
   align-items: stretch;
+}
+
+.kit-hero-tag {
+  grid-area: tag;
+}
+
+.kit-install {
+  grid-area: install;
+}
+
+.kit-hero-more {
+  grid-area: more;
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--unit) * 2.5);
+  padding: 0 calc(var(--unit) * 4) calc(var(--unit) * 3);
+}
+
+@media (min-width: 64.0625rem) {
+  .kit-hero-tag {
+    border-bottom: 0;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .kit-hero .kit-hero-tag .kit-tag-body {
+    padding-bottom: calc(var(--unit) * 2.5);
+  }
+  // The lower half's shadow must not fall back onto the pitch above it: clip it at the seam.
+  .kit-hero-more {
+    border-top: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    clip-path: inset(0 calc(var(--unit) * -4) calc(var(--unit) * -4));
+  }
 }
 
 @media (max-width: 64rem) {
   .kit-hero {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: "tag" "install" "more";
+    gap: calc(var(--unit) * 2);
+  }
+  .kit-hero-more {
+    padding-top: calc(var(--unit) * 3);
   }
 }
 
@@ -36,12 +81,22 @@
 
 @media (max-width: 40rem) {
   .kit-hero-tag .kit-tag-band {
-    padding: calc(var(--unit) * 3) calc(var(--unit) * 2.5) calc(var(--unit) * 2.5) calc(var(--unit) * 5);
+    padding: calc(var(--unit) * 2) calc(var(--unit) * 2.5) calc(var(--unit) * 2) calc(var(--unit) * 5);
   }
   .kit-hero .kit-hero-tag .kit-tag-body,
-  .kit-hero .kit-install .kit-tag-body {
+  .kit-hero .kit-install .kit-tag-body,
+  .kit-hero .kit-hero-more {
     padding-left: calc(var(--unit) * 2.5);
     padding-right: calc(var(--unit) * 2.5);
+  }
+  // On a phone the pitch is short and tight, so the install window starts in the first viewport.
+  .kit-hero .kit-hero-tag .kit-tag-body {
+    padding-top: calc(var(--unit) * 2);
+    padding-bottom: calc(var(--unit) * 2);
+    gap: calc(var(--unit) * 1.5);
+  }
+  .kit-home {
+    padding-top: calc(var(--unit) * 2);
   }
 }
 

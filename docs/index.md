@@ -14,20 +14,6 @@ nav_order: 1
 <div class="kit-tag-body">
 <p class="kit-hero-lead"><strong>Tagout takes an idea to a merged pull request while you do something else.</strong> Say what you want; your coding agent files the issue with a plan, builds it on a branch, opens the pull request, waits for CI and merges it. Every step is checked by a script that stops the agent when something is wrong and says what to fix.</p>
 <p class="kit-hero-tagline">No green tag, no merge.</p>
-<dl class="kit-fields kit-plugins" aria-label="The two plugins">
-<dt><code>tagout</code></dt><dd>The issue → PR lifecycle, for any GitHub repository in any language. No .NET, no MCP server.</dd>
-<dt><code>tagout-migrate</code></dt><dd>The add-on for a legacy .NET application: the seven-phase <code>/migrate</code> pipeline to verified production. Needs RoselineMCP (.NET 10 SDK). <a href="migrate.md">The .NET add-on</a>.</dd>
-</dl>
-<div class="kit-denial" role="group" aria-label="A refusal as the gate writes it">
-<p class="kit-denial-title"><span>Refusal, as written by the gate</span><span>hooks/git-write-gate.sh</span></p>
-<dl class="kit-fields">
-<dt>Locked by</dt><dd><code>git-write-gate.sh</code></dd>
-<dt>On</dt><dd><code>git commit</code>, the raw command</dd>
-<dt>Reason</dt><dd>A bare commit does not check which branch HEAD is on — that is how #26 and #280 landed work on someone else's branch with exit 0.</dd>
-<dt>Use instead</dt><dd><code>guarded-commit.sh -C &lt;worktree&gt; &lt;branch&gt; -- &lt;git commit args&gt;</code></dd>
-</dl>
-</div>
-<p class="kit-hero-actions" markdown="span">[Read the methodology](methodology.md) [Source on GitHub](https://github.com/phmatray/tagout)</p>
 </div>
 </article>
 
@@ -65,6 +51,22 @@ nav_order: 1
 <p class="kit-install-more" markdown="span">Every host, and how to remove it: [Install](install.md). What each one gets: [Platforms](platforms.md).</p>
 </div>
 </aside>
+<div class="kit-tag kit-hero-more">
+<dl class="kit-fields kit-plugins" aria-label="The two plugins">
+<dt><code>tagout</code></dt><dd>The issue → PR lifecycle, for any GitHub repository in any language. No .NET, no MCP server.</dd>
+<dt><code>tagout-migrate</code></dt><dd>The add-on for a legacy .NET application: the seven-phase <code>/migrate</code> pipeline to verified production. Needs RoselineMCP (.NET 10 SDK). <a href="migrate.md">The .NET add-on</a>.</dd>
+</dl>
+<div class="kit-denial" role="group" aria-label="A refusal as the gate writes it">
+<p class="kit-denial-title"><span>Refusal, as written by the gate</span><span>hooks/git-write-gate.sh</span></p>
+<dl class="kit-fields">
+<dt>Locked by</dt><dd><code>git-write-gate.sh</code></dd>
+<dt>On</dt><dd><code>git commit</code>, the raw command</dd>
+<dt>Reason</dt><dd>A bare commit does not check which branch HEAD is on — that is how #26 and #280 landed work on someone else's branch with exit 0.</dd>
+<dt>Use instead</dt><dd><code>guarded-commit.sh -C &lt;worktree&gt; &lt;branch&gt; -- &lt;git commit args&gt;</code></dd>
+</dl>
+</div>
+<p class="kit-hero-actions" markdown="span">[Read the methodology](methodology.md) [Source on GitHub](https://github.com/phmatray/tagout)</p>
+</div>
 </section>
 
 <section class="kit-section kit-run" aria-labelledby="kit-run-title">
