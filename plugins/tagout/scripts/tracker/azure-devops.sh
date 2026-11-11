@@ -32,7 +32,9 @@ if [ "$VERB" = verbs ]; then
     issue-search issue-comments issue-create issue-edit-body \
     issue-add-labels issue-remove-labels issue-reopen issue-comment label-list label-create \
     issue-link-parent issue-link-blocked-by issue-children issue-blocked-by-count \
-    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits
+    pr-create pr-list pr-view pr-edit-body pr-ready pr-commits \
+    pr-merge-state pr-checks commit-checks pr-threads pr-thread-resolve pr-merge branch-delete \
+    issue-parent pr-closing-issues pr-comment
   exit 0
 fi
 
@@ -200,7 +202,29 @@ PR_JQ='def pr($base; $repo):
     baseBranch: ((.targetRefName // "") | sub("^refs/heads/"; "")),
     headSha: (.lastMergeSourceCommit.commitId // null),
     author: (.createdBy.uniqueName // null),
-    mergedAt: (if .status == "completed" then (.closedDate // null) else null end) };'
+    mergedAt: (if .status == "completed" then (.closedDate // null) else null end),
+    mergeSha: (if .status == "completed" then (.lastMergeCommit.commitId // null) else null end) };'
+
+# The live text threads of PR $1, as the contract's pr-threads array — the one read pr-threads and
+# pr-merge-state both answer from (github.sh's `_threads`). A system thread (a policy or vote note)
+# is not a review thread; anything but active/pending (fixed, closed, wontFix, byDesign) is resolved.
+_threads() {
+  _invoke "$2" --area git --resource pullRequestThreads \
+    --route-parameters project="$PROJECT" repositoryId="$(_repo_name)" pullRequestId="$1" \
+    --http-method GET --api-version 7.1 | jq -c \
+    '[.value[]? | select(.isDeleted != true and .comments[0].commentType == "text")
+      | {id, path: (.threadContext.filePath | if . then ltrimstr("/") else null end),
+         line: (.threadContext.rightFileStart.line // null), body: .comments[0].content,
+         isResolved: ((.status // "") | IN("active", "pending") | not)}]'
+}
+
+# github.sh's bucket rule over the check-run words commit-checks maps to: anything unrecognised —
+# UNKNOWN included — is pending, so an unmapped state waits and never reads as clear.
+JQ_BUCKET='def bucket: if . == "success" then "pass"
+  elif . == "skipped" or . == "neutral" then "skipping"
+  elif . == "cancelled" then "cancel"
+  elif . == "failure" then "fail"
+  else "pending" end;'
 
 case "$VERB" in
 
@@ -648,7 +672,7 @@ PY
     out=$(az repos pr show --org "$(_base_url)" --id "$n" -o json) \
       || { echo "azure-devops: pr-view: az repos pr show --id $n failed" >&2; exit 1; }
     printf '%s' "$out" | jq -c --arg base "$(_base_url)" --arg project "$PROJECT" --arg repo "$(_repo_name)" \
-      "$PR_JQ"' pr($base; $repo) | {number, title, url, state, isDraft, body, headBranch, baseBranch, headSha, author}'
+      "$PR_JQ"' pr($base; $repo) | {number, title, url, state, isDraft, body, headBranch, baseBranch, headSha, author, mergedAt, mergeSha}'
     ;;
 
   pr-edit-body)
@@ -700,6 +724,251 @@ PY
       --route-parameters project="$PROJECT" repositoryId="$(_repo_name)" pullRequestId="$n" \
       --http-method GET --api-version 7.1) || exit 1
     printf '%s' "$out" | jq -c '[.value[].commitId]'
+    ;;
+
+  # The ten merge-pr verbs (#752), mapped as the Spec's Azure DevOps column says. Auto-complete is
+  # never set: pr-merge completes now or fails.
+  pr-merge-state)
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: pr-merge-state needs a pull request id" >&2; exit 2; }
+    # Every read lands in a variable before anything prints: a failed read is exit 1 with an EMPTY
+    # stdout, never a partial state a caller could hand to merge.step4.
+    pr=$(az repos pr show --org "$(_base_url)" --id "$n" -o json) \
+      || { echo "azure-devops: pr-merge-state: az repos pr show --id $n failed" >&2; exit 1; }
+    pol=$(az repos pr policy list --id "$n" --org "$(_base_url)" -o json) \
+      || { echo "azure-devops: pr-merge-state: az repos pr policy list --id $n failed" >&2; exit 1; }
+    head=$(printf '%s' "$pr" | jq -r '(.sourceRefName // "") | sub("^refs/heads/"; "")')
+    base=$(printf '%s' "$pr" | jq -r '(.targetRefName // "") | sub("^refs/heads/"; "")')
+    stats=$(_invoke "pr-merge-state: branch stats" --area git --resource branchStats \
+      --route-parameters project="$PROJECT" repositoryId="$(_repo_name)" \
+      --query-parameters "name=$head" "baseVersionDescriptor.version=$base" "baseVersionDescriptor.versionType=branch" \
+      --http-method GET --api-version 7.1) || exit 1
+    behind=$(printf '%s' "$stats" | jq -r '.behindCount // empty')
+    case "$behind" in
+      ''|*[!0-9]*) echo "azure-devops: pr-merge-state: branch stats answered behindCount '$behind'" >&2; exit 1 ;;
+    esac
+    threads=$(_threads "$n" "pr-merge-state: threads") || {
+      echo "azure-devops: pr-merge-state: the threads read failed — an unanswered read is not 'no threads'" >&2
+      exit 1; }
+    # CLEAN only on `succeeded` with every blocking policy approved/notApplicable; anything not in
+    # this table (queued, notSet, failure, a policy still running) is UNKNOWN, which merge.step4 waits on.
+    printf '%s' "$pr" | jq -c --argjson b "$behind" --argjson t "$threads" --argjson pol "$pol" '
+      ([$pol[] | select(.configuration.isBlocking == true) | .status]) as $blk
+      | .mergeStatus as $m | (.reviewers // []) as $r
+      | {behind_by: $b,
+         mergeStateStatus: (
+           if .isDraft == true then "DRAFT"
+           elif $m == "conflicts" then "DIRTY"
+           elif $m == "rejectedByPolicy" or ($blk | any(. == "rejected" or . == "broken")) then "BLOCKED"
+           elif $m == "succeeded" and ($blk | all(. == "approved" or . == "notApplicable")) then "CLEAN"
+           else "UNKNOWN" end),
+         isDraft: (.isDraft // false),
+         reviewDecision: (
+           if ($r | any(.vote == -10 or .vote == -5)) then "CHANGES_REQUESTED"
+           elif ($r | any(.isRequired == true and (.vote // 0) == 0)) then "REVIEW_REQUIRED"
+           elif ($r | any(.isRequired == true)) then "APPROVED"
+           else null end),
+         unresolved_threads: [$t[] | select(.isResolved == false) | .path // "(pr-level)"]}'
+    ;;
+
+  pr-threads)
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: pr-threads needs a pull request id" >&2; exit 2; }
+    threads=$(_threads "$n" "pr-threads") || {
+      echo "azure-devops: pr-threads: the threads read failed — an unanswered read is not 'no threads'" >&2
+      exit 1; }
+    printf '%s\n' "$threads"
+    ;;
+
+  pr-checks)
+    # The PR's policy evaluations are its checks: a build validation, a required reviewer, a status.
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: pr-checks needs a pull request id" >&2; exit 2; }
+    out=$(az repos pr policy list --id "$n" --org "$(_base_url)" -o json) \
+      || { echo "azure-devops: pr-checks: az repos pr policy list --id $n failed" >&2; exit 1; }
+    printf '%s' "$out" | jq -c '[.[] | {
+      name: (.configuration.settings.displayName // .configuration.type.displayName), state: .status,
+      bucket: (if .status == "approved" then "pass"
+               elif .status == "rejected" or .status == "broken" then "fail"
+               elif .status == "notApplicable" then "skipping"
+               else "pending" end)}]'
+    ;;
+
+  commit-checks)
+    sha="${1-}"
+    [ -n "$sha" ] || { echo "azure-devops: commit-checks needs a commit sha" >&2; exit 2; }
+    # ponytail: the project's 100 most recent runs, filtered here — the runs API cannot filter on a
+    # commit. A sha whose runs fell out of that window reads as no runs; page with --skip if it bites.
+    out=$(az pipelines runs list --top 100 --org "$(_base_url)" --project "$PROJECT" -o json) \
+      || { echo "azure-devops: commit-checks: az pipelines runs list failed" >&2; exit 1; }
+    printf '%s' "$out" | jq -c --arg sha "$sha" "$JQ_BUCKET"'
+      [.[] | select(.sourceVersion == $sha) | .status as $st | .result as $r
+       | (if $st == "notStarted" then "queued"
+          elif $st == "inProgress" or $st == "cancelling" then "in_progress"
+          elif $st == "postponed" then "waiting"
+          elif $st == "completed" then
+            (if $r == "succeeded" then "success"
+             elif $r == "failed" or $r == "partiallySucceeded" then "failure"
+             elif $r == "canceled" then "cancelled"
+             else "UNKNOWN" end)
+          else "UNKNOWN" end) as $s
+       | {name: .definition.name, state: $s, bucket: ($s | bucket), id, app: null,
+          html_url: (._links.web.href // null)}]'
+    ;;
+
+  pr-thread-resolve)
+    POS=(); BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "azure-devops: pr-thread-resolve: unknown option: $1" >&2; exit 2 ;;
+        *)  POS+=("$1"); shift ;;
+      esac
+    done
+    n="${POS[0]-}"; tid="${POS[1]-}"
+    [ -n "$n" ] && [ -n "$tid" ] \
+      || { echo "azure-devops: pr-thread-resolve needs <pr-id> <thread-id>" >&2; exit 2; }
+    # The reply is REQUIRED (merge-mechanics.md §6: never resolve silently). Reply first, close second.
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "azure-devops: pr-thread-resolve refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    REPO_NAME=$(_repo_name)
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN az devops invoke --area git POST pullRequestThreadComments $ORG/$PROJECT/$REPO_NAME #$n thread $tid, then PATCH pullRequestThreads {status: closed}"
+      exit 0
+    fi
+    IN_FILE=$(mktemp); trap 'rm -f "$IN_FILE"' EXIT
+    jq -n --rawfile c "$BODY_FILE" '{parentCommentId: 1, content: $c, commentType: 1}' > "$IN_FILE"
+    _invoke "pr-thread-resolve: reply" --area git --resource pullRequestThreadComments \
+      --route-parameters project="$PROJECT" repositoryId="$REPO_NAME" pullRequestId="$n" threadId="$tid" \
+      --http-method POST --api-version 7.1 --in-file "$IN_FILE" > /dev/null || exit 1
+    jq -n '{status: "closed"}' > "$IN_FILE"
+    _invoke "pr-thread-resolve: close" --area git --resource pullRequestThreads \
+      --route-parameters project="$PROJECT" repositoryId="$REPO_NAME" pullRequestId="$n" threadId="$tid" \
+      --http-method PATCH --api-version 7.1 --in-file "$IN_FILE" > /dev/null || exit 1
+    ;;
+
+  pr-merge)
+    n=""; SUBJECT=""; BODY_FILE=""; HAS_BODY=0; DRY=0; SQUASH=0; DEL=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --squash)        SQUASH=1; shift ;;
+        --delete-branch) DEL=1; shift ;;
+        --subject)   [ $# -ge 2 ] || { echo "azure-devops: pr-merge: --subject needs a value" >&2; exit 2; }
+                     SUBJECT="$2"; shift 2 ;;
+        --body-file) HAS_BODY=1; BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "azure-devops: pr-merge: unknown option: $1 (only --squash, --delete-branch, --subject, --body-file)" >&2; exit 2 ;;
+        *)  [ -z "$n" ] || { echo "azure-devops: pr-merge: unexpected argument: $1" >&2; exit 2; }
+            n="$1"; shift ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "azure-devops: pr-merge needs a pull request id" >&2; exit 2; }
+    if [ "$HAS_BODY" -eq 1 ]; then
+      [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+        || { echo "azure-devops: pr-merge refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    fi
+    ARGS=(repos pr update --id "$n" --status completed)
+    [ "$SQUASH" -eq 1 ] && ARGS+=(--squash true)
+    [ "$DEL" -eq 1 ] && ARGS+=(--delete-source-branch true)
+    HAS_MSG=0; { [ -n "$SUBJECT" ] || [ "$HAS_BODY" -eq 1 ]; } && HAS_MSG=1
+    if [ "$DRY" -eq 1 ]; then
+      if [ "$HAS_MSG" -eq 1 ]; then
+        echo "DRY-RUN az ${ARGS[*]} --merge-commit-message @<subject, a blank line, the body file>"
+      else
+        echo "DRY-RUN az ${ARGS[*]}"
+      fi
+      exit 0
+    fi
+    if [ "$HAS_MSG" -eq 1 ]; then
+      # The message goes through a file (az reads `@<file>`), never an argument: subject, blank line, body.
+      msgf=$(mktemp "${TMPDIR:-/tmp}/azure-merge-msg.XXXXXX") || exit 1
+      trap 'rm -f "$msgf"' EXIT
+      if [ -n "$SUBJECT" ] && [ "$HAS_BODY" -eq 1 ]; then
+        { printf '%s\n\n' "$SUBJECT"; cat "$BODY_FILE"; } > "$msgf"
+      elif [ -n "$SUBJECT" ]; then
+        printf '%s\n' "$SUBJECT" > "$msgf"
+      else
+        cat "$BODY_FILE" > "$msgf"
+      fi
+      ARGS+=(--merge-commit-message "@$msgf")
+    fi
+    # Completion is asynchronous and the exit code is a hint, never the verdict — the caller reads
+    # the outcome back through pr-view, which may still answer open while the merge is queued.
+    az "${ARGS[@]}" --org "$(_base_url)" -o json > /dev/null \
+      || { echo "azure-devops: pr-merge: az repos pr update --id $n --status completed failed" >&2; exit 1; }
+    ;;
+
+  branch-delete)
+    b=""; DRY=0
+    for a in "$@"; do
+      case "$a" in
+        --dry-run) DRY=1 ;;
+        -*) echo "azure-devops: branch-delete: unknown option: $a" >&2; exit 2 ;;
+        *)  b="$a" ;;
+      esac
+    done
+    [ -n "$b" ] || { echo "azure-devops: branch-delete needs a branch name" >&2; exit 2; }
+    REPO_NAME=$(_repo_name)
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN az repos ref delete --name heads/$b --object-id <its objectId> --repository $REPO_NAME ($ORG/$PROJECT)"
+      exit 0
+    fi
+    refs=$(az repos ref list --filter "heads/$b" --repository "$REPO_NAME" --org "$(_base_url)" --project "$PROJECT" -o json) \
+      || { echo "azure-devops: branch-delete: az repos ref list failed" >&2; exit 1; }
+    # --filter is a prefix match (heads/feature/x also finds heads/feature/xy): keep the exact ref only.
+    oid=$(printf '%s' "$refs" | jq -r --arg r "refs/heads/$b" '[.[] | select(.name == $r)][0].objectId // empty')
+    [ -n "$oid" ] || { echo gone; exit 0; }
+    res=$(az repos ref delete --name "heads/$b" --object-id "$oid" --repository "$REPO_NAME" \
+      --org "$(_base_url)" --project "$PROJECT" -o json) \
+      || { echo "azure-devops: branch-delete: failed to delete $b" >&2; exit 1; }
+    printf '%s' "$res" | jq -e '.success != false' > /dev/null \
+      || { echo "azure-devops: branch-delete: the host refused to delete $b: $res" >&2; exit 1; }
+    echo ok
+    ;;
+
+  issue-parent)
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: issue-parent needs a work-item number" >&2; exit 2; }
+    out=$(az boards work-item show --id "$n" --expand relations --org "$(_base_url)" -o json) \
+      || { echo "azure-devops: issue-parent: az boards work-item show --id $n failed" >&2; exit 1; }
+    printf '%s' "$out" | jq -r \
+      '[.relations[]? | select(.rel == "System.LinkTypes.Hierarchy-Reverse") | .url | split("/") | last][0] // "none"'
+    ;;
+
+  pr-closing-issues)
+    n="${1-}"
+    [ -n "$n" ] || { echo "azure-devops: pr-closing-issues needs a pull request id" >&2; exit 2; }
+    out=$(az repos pr work-item list --id "$n" --org "$(_base_url)" -o json) \
+      || { echo "azure-devops: pr-closing-issues: az repos pr work-item list --id $n failed" >&2; exit 1; }
+    printf '%s' "$out" | jq -c '[.[].id | tonumber]'
+    ;;
+
+  pr-comment)
+    n=""; BODY_FILE=""; DRY=0
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --body-file) BODY_FILE="${2-}"; shift; shift || true ;;
+        --dry-run)   DRY=1; shift ;;
+        -*) echo "azure-devops: pr-comment: unknown option: $1" >&2; exit 2 ;;
+        *)  n="$1"; shift ;;
+      esac
+    done
+    [ -n "$n" ] || { echo "azure-devops: pr-comment needs a pull request id" >&2; exit 2; }
+    [ -n "$BODY_FILE" ] && [ -s "$BODY_FILE" ] \
+      || { echo "azure-devops: pr-comment refuses a missing or empty --body-file. Nothing sent." >&2; exit 2; }
+    REPO_NAME=$(_repo_name)
+    if [ "$DRY" -eq 1 ]; then
+      echo "DRY-RUN az devops invoke --area git --resource pullRequestThreads POST $ORG/$PROJECT/$REPO_NAME #$n {one comment, status: closed}"
+      exit 0
+    fi
+    # A closed one-comment thread: an observation on the PR, not a review thread awaiting resolution.
+    IN_FILE=$(mktemp); trap 'rm -f "$IN_FILE"' EXIT
+    jq -n --rawfile c "$BODY_FILE" \
+      '{comments: [{parentCommentId: 0, content: $c, commentType: 1}], status: "closed"}' > "$IN_FILE"
+    _invoke "pr-comment" --area git --resource pullRequestThreads \
+      --route-parameters project="$PROJECT" repositoryId="$REPO_NAME" pullRequestId="$n" \
+      --http-method POST --api-version 7.1 --in-file "$IN_FILE" > /dev/null || exit 1
     ;;
 
   *)

@@ -848,12 +848,14 @@ for dry in "pr-merge 7 --squash --delete-branch --dry-run" "pr-thread-resolve 7 
 done
 
 # merge-pr is on the contract now, so a host whose backend lacks its verbs is missing for THAT
-# reason — not because the skill is absent from the contract.
+# reason — not because the skill is absent from the contract. Every real backend answers all ten
+# since #752, so the report is azure-devops' own with one merge verb struck from `implements`.
 run_tracker "$PROFILED" --tracker azure-devops state merge-pr
-got=$(printf '%s' "$OUT" | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
+got=$(printf '%s' "$OUT" | jq -c '.implements -= ["pr-merge"]' \
+  | "$DECIDE" tracker.capable --json 2>&1 | jq -r '"\(.verdict)/\(.rule)"' 2>/dev/null) || got="<unparseable>"
 [ "$got" = missing/verb-not-implemented ] \
-  && ok "state merge-pr on azure-devops — missing/verb-not-implemented" \
-  || note_fail "state merge-pr on azure-devops — want missing/verb-not-implemented, got $got"
+  && ok "state merge-pr, a backend lacking pr-merge — missing/verb-not-implemented" \
+  || note_fail "state merge-pr, a backend lacking pr-merge — want missing/verb-not-implemented, got $got"
 
 echo "== B. the state report, and the tracker.capable verdict"
 
@@ -1820,6 +1822,14 @@ fi
 default_pr='{"pullRequestId":9,"title":"x","status":"active","isDraft":true,"description":"Closes #7","sourceRefName":"refs/heads/feat/7-x","targetRefName":"refs/heads/main","lastMergeSourceCommit":{"commitId":"abc123"},"createdBy":{"uniqueName":"me@acme.example"},"repository":{"name":"widgets","project":{"name":"Shop"}}}'
 default_pr_list='[{"pullRequestId":9,"title":"x","status":"completed","isDraft":false,"sourceRefName":"refs/heads/feat/7-x","description":"Closes #7","closedDate":"2026-11-01T00:00:00Z","repository":{"name":"widgets","project":{"name":"Shop"}}}]'
 default_pr_create='{"pullRequestId":9,"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+# #752: pr-merge's message travels as `@<file>`; copy it to $AZ_MSG_CAPTURE when set.
+if [ -n "${AZ_MSG_CAPTURE:-}" ]; then
+  prev=""
+  for a in "$@"; do [ "$prev" = --merge-commit-message ] && cp "${a#@}" "$AZ_MSG_CAPTURE"; prev="$a"; done
+fi
+default_threads='{"value":[{"id":1,"status":"active","threadContext":{"filePath":"/src/a.sh","rightFileStart":{"line":3}},"comments":[{"id":1,"content":"fix this","commentType":"text"}]},{"id":2,"status":"fixed","threadContext":{"filePath":"/b.sh","rightFileStart":{"line":9}},"comments":[{"id":1,"content":"done","commentType":"text"}]},{"id":3,"status":"pending","threadContext":null,"comments":[{"id":1,"content":"overall","commentType":"text"}]},{"id":4,"status":"active","comments":[{"id":1,"content":"Policy updated","commentType":"system"}]},{"id":5,"status":"active","isDeleted":true,"comments":[{"id":1,"content":"gone","commentType":"text"}]}]}'
+default_wi_show='{"id":5,"relations":[]}'
+default_branch_stats='{"behindCount":0}'
 
 # Pull the flags every dispatch below needs, regardless of position.
 resource=""; http_method="GET"; route_id=""; route_type=""; capture=0
@@ -1855,8 +1865,26 @@ case "${1-} ${2-}" in
       list)   printf '%s' "${AZ_PR_LIST_JSON:-$default_pr_list}" ;;
       show)   printf '%s' "${AZ_PR_JSON:-$default_pr}" ;;
       update) printf '{}' ;;
+      policy)
+        [ -z "${AZ_POLICY_FAIL:-}" ] || { echo "az stub: policy list failed" >&2; exit 1; }
+        printf '%s' "${AZ_POLICY_JSON:-[]}" ;;
+      work-item) printf '%s' "${AZ_PR_WI_JSON:-[]}" ;;
       *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
     esac
+    exit 0 ;;
+  "repos ref")
+    case "${3-}" in
+      list)   printf '%s' "${AZ_REF_JSON:-[]}" ;;
+      delete) printf '{"success":true}' ;;
+      *) echo "az stub: unsupported call: $*" >&2; exit 1 ;;
+    esac
+    exit 0 ;;
+  "pipelines runs")
+    [ -z "${AZ_RUNS_FAIL:-}" ] || { echo "az stub: runs list failed" >&2; exit 1; }
+    printf '%s' "${AZ_RUNS_JSON:-[]}"
+    exit 0 ;;
+  "boards work-item")
+    printf '%s' "${AZ_WI_SHOW_JSON:-$default_wi_show}"
     exit 0 ;;
   "devops invoke") : ;;
   "devops project")
@@ -1902,6 +1930,11 @@ case "$resource $http_method" in
   "pullRequests POST") printf '%s' "$default_pr_create" ;;
   "pullRequests PATCH") printf '{}' ;;
   "pullRequestCommits GET") printf '%s' '{"value":[{"commitId":"aaa"},{"commitId":"bbb"}]}' ;;
+  "branchStats GET") printf '%s' "${AZ_BRANCH_STATS_JSON:-$default_branch_stats}" ;;
+  "pullRequestThreads GET")
+    s="${AZ_THREADS_STATUS:-200}"
+    case "$s" in 2??) printf '%s' "${AZ_THREADS_JSON:-$default_threads}" ;; *) fail "$s" "threads" ;; esac ;;
+  "pullRequestThreads POST"|"pullRequestThreads PATCH"|"pullRequestThreadComments POST") printf '{}' ;;
   *) echo "az stub: unsupported invoke: resource=$resource method=$http_method" >&2; exit 1 ;;
 esac
 AZSTUB
@@ -2316,7 +2349,7 @@ pr_case "azure pr-list --search — re-reads each candidate's full description" 
 [ "$(printf '%s' "$OUT" | jq -r '.[0].body' 2>/dev/null)" = "Closes #7" ] \
   || note_fail "azure pr-list --search — the matching PR was not returned: $OUT"
 pr_case "azure pr-view — refs/heads/ stripped, web URL built, author a login" 0 \
-  '{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"me@acme.example"}' \
+  '{"number":9,"title":"x","url":"https://dev.azure.com/acme/Shop/_git/widgets/pullrequest/9","state":"open","isDraft":true,"body":"Closes #7","headBranch":"feat/7-x","baseBranch":"main","headSha":"abc123","author":"me@acme.example","mergedAt":null,"mergeSha":null}' \
   "repos pr show" -- pr-view 9
 pr_case "azure pr-commits — an array of SHAs" 0 '["aaa","bbb"]' "pullRequestCommits" -- pr-commits 9
 pr_case "azure pr-edit-body — PATCH {description} through --in-file" 0 '' "pullRequestId=9" -- \
@@ -2341,8 +2374,153 @@ if [ "$out" != capable ]; then
 else
   ok "azure state implement-issue — capable once the six PR verbs land"
 fi
+
+echo "== F3. the merge verbs on Azure DevOps (#752)"
+
+# Same pr_case seam as F2: tracker.sh's stdout and exit code, and AZ_CALL_LOG. Each case feeds a raw
+# Azure DevOps reply through the stub and asserts the normalised stdout, never azure-devops.sh's jq.
+PR_TRACKER=azure-devops; PR_DIR="$AZFIX"; PR_LOG="$AZ_CALL_LOG"
+AZ_PR_TMPL='{"pullRequestId":9,"status":"active","isDraft":DRAFT,"mergeStatus":"MS","sourceRefName":"refs/heads/feat/7-x","targetRefName":"refs/heads/main","reviewers":[{"vote":10,"isRequired":true}],"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+POL_OK='[{"status":"approved","configuration":{"isBlocking":true,"type":{"displayName":"Build"},"settings":{"displayName":"CI build"}}},{"status":"notApplicable","configuration":{"isBlocking":true,"type":{"displayName":"Work item linking"}}},{"status":"rejected","configuration":{"isBlocking":false,"type":{"displayName":"Comment requirements"}}}]'
+POL_REJ='[{"status":"rejected","configuration":{"isBlocking":true,"type":{"displayName":"Build"}}}]'
+POL_RUN='[{"status":"running","configuration":{"isBlocking":true,"type":{"displayName":"Build"}}}]'
+
+# mergeStatus + blocking policies → mergeStateStatus. CLEAN only on `succeeded` with every blocking
+# policy approved/notApplicable (a non-blocking rejection does not count); anything else is UNKNOWN.
+for c in "false:succeeded:OK:CLEAN" "false:conflicts:OK:DIRTY" "false:succeeded:REJ:BLOCKED" \
+         "false:rejectedByPolicy:OK:BLOCKED" "false:queued:OK:UNKNOWN" "false:succeeded:RUN:UNKNOWN" \
+         "false:someNewWord:OK:UNKNOWN" "true:succeeded:OK:DRAFT"; do
+  IFS=: read -r d ms pol want <<<"$c"
+  pj=$(printf '%s' "$AZ_PR_TMPL" | sed "s/DRAFT/$d/; s/\"MS\"/\"$ms\"/")
+  case "$pol" in OK) pv="$POL_OK" ;; REJ) pv="$POL_REJ" ;; RUN) pv="$POL_RUN" ;; esac
+  export AZ_PR_JSON="$pj" AZ_POLICY_JSON="$pv"
+  pr_case "azure pr-merge-state — draft=$d $ms + $pol policies is $want" 0 - "repos pr policy list --id 9" -- pr-merge-state 9
+  got=$(printf '%s' "$OUT" | jq -r .mergeStateStatus 2>/dev/null)
+  [ "$got" = "$want" ] || note_fail "azure pr-merge-state draft=$d $ms/$pol — want $want, got '$got' ($OUT)"
+done
+AZ_PR_JSON=$(printf '%s' "$AZ_PR_TMPL" | sed 's/DRAFT/false/; s/"MS"/"succeeded"/'); export AZ_PR_JSON
+export AZ_POLICY_JSON="$POL_OK" AZ_BRANCH_STATS_JSON='{"name":"feat/7-x","aheadCount":2,"behindCount":3}'
+pr_case "azure pr-merge-state — behindCount is behind_by, active text threads' paths without the leading /" 0 \
+  '{"behind_by":3,"mergeStateStatus":"CLEAN","isDraft":false,"reviewDecision":"APPROVED","unresolved_threads":["src/a.sh","(pr-level)"]}' \
+  "branchStats" -- pr-merge-state 9
+for want in "name=feat/7-x" "baseVersionDescriptor.version=main"; do
+  grep -Fq -- "$want" "$AZ_CALL_LOG" || note_fail "azure pr-merge-state — branch stats not asked for '$want': $(cat "$AZ_CALL_LOG")"
+done
+unset AZ_BRANCH_STATS_JSON
+for c in "-10:true:CHANGES_REQUESTED" "-5:false:CHANGES_REQUESTED" "0:true:REVIEW_REQUIRED" "10:false:null"; do
+  IFS=: read -r v req want <<<"$c"
+  AZ_PR_JSON=$(printf '%s' "$AZ_PR_JSON" | jq -c --argjson v "$v" --argjson r "$req" '.reviewers = [{vote: $v, isRequired: $r}]')
+  pr_case "azure pr-merge-state — a vote of $v (required=$req) is reviewDecision $want" 0 - - -- pr-merge-state 9
+  got=$(printf '%s' "$OUT" | jq -r .reviewDecision 2>/dev/null)
+  [ "$got" = "$want" ] || note_fail "azure pr-merge-state vote $v/$req — want $want, got '$got' ($OUT)"
+done
+export AZ_THREADS_STATUS=500
+pr_case "azure pr-merge-state — a failed threads read exits 1 and prints nothing" 1 '' - -- pr-merge-state 9
+pr_case "azure pr-threads — a failed threads read is exit 1, never []" 1 '' - -- pr-threads 9
+unset AZ_THREADS_STATUS
+export AZ_POLICY_FAIL=1
+pr_case "azure pr-merge-state — a failed policy read exits 1 and prints nothing" 1 '' - -- pr-merge-state 9
+pr_case "azure pr-checks — a failed policy read is exit 1, never []" 1 '' - -- pr-checks 9
+unset AZ_POLICY_FAIL
+pr_case "azure pr-threads — live text threads only, path without the leading /, resolved off active/pending" 0 \
+  '[{"id":1,"path":"src/a.sh","line":3,"body":"fix this","isResolved":false},{"id":2,"path":"b.sh","line":9,"body":"done","isResolved":true},{"id":3,"path":null,"line":null,"body":"overall","isResolved":false}]' \
+  "pullRequestThreads" -- pr-threads 9
+
+pr_case "azure pr-checks — the PR's policies, by display name, bucketed" 0 \
+  '[{"name":"CI build","state":"approved","bucket":"pass"},{"name":"Work item linking","state":"notApplicable","bucket":"skipping"},{"name":"Comment requirements","state":"rejected","bucket":"fail"}]' \
+  "repos pr policy list --id 9" -- pr-checks 9
+export AZ_POLICY_JSON='[{"status":"queued","configuration":{"isBlocking":true,"type":{"displayName":"Build"}}},{"status":"broken","configuration":{"isBlocking":true,"type":{"displayName":"Status"}}}]'
+pr_case "azure pr-checks — broken is fail, anything else pending" 0 \
+  '[{"name":"Build","state":"queued","bucket":"pending"},{"name":"Status","state":"broken","bucket":"fail"}]' - -- pr-checks 9
+unset AZ_POLICY_JSON
+pr_case "azure pr-checks — no policies is [] and exit 0" 0 '[]' - -- pr-checks 9
+unset AZ_PR_JSON
+
+# Pipeline runs → check-run words, filtered to the sha: every run on it, unreduced.
+export AZ_RUNS_JSON='[{"id":1,"sourceVersion":"abc123","status":"completed","result":"succeeded","definition":{"name":"build"},"_links":{"web":{"href":"https://dev.azure.com/acme/Shop/_build/results?buildId=1"}}},{"id":2,"sourceVersion":"abc123","status":"completed","result":"partiallySucceeded","definition":{"name":"test"}},{"id":3,"sourceVersion":"other","status":"completed","result":"failed","definition":{"name":"build"}},{"id":4,"sourceVersion":"abc123","status":"inProgress","definition":{"name":"lint"}},{"id":5,"sourceVersion":"abc123","status":"completed","result":"none","definition":{"name":"odd"}},{"id":6,"sourceVersion":"abc123","status":"notStarted","definition":{"name":"e2e"}},{"id":7,"sourceVersion":"abc123","status":"completed","result":"canceled","definition":{"name":"old"}},{"id":8,"sourceVersion":"abc123","status":"postponed","definition":{"name":"later"}}]'
+pr_case "azure commit-checks — runs on the sha only, partiallySucceeded is failure, unknown is UNKNOWN" 0 \
+  '[{"name":"build","state":"success","bucket":"pass","id":1,"app":null,"html_url":"https://dev.azure.com/acme/Shop/_build/results?buildId=1"},{"name":"test","state":"failure","bucket":"fail","id":2,"app":null,"html_url":null},{"name":"lint","state":"in_progress","bucket":"pending","id":4,"app":null,"html_url":null},{"name":"odd","state":"UNKNOWN","bucket":"pending","id":5,"app":null,"html_url":null},{"name":"e2e","state":"queued","bucket":"pending","id":6,"app":null,"html_url":null},{"name":"old","state":"cancelled","bucket":"cancel","id":7,"app":null,"html_url":null},{"name":"later","state":"waiting","bucket":"pending","id":8,"app":null,"html_url":null}]' \
+  "pipelines runs list" -- commit-checks abc123
+grep -Fq -- "--top 100" "$AZ_CALL_LOG" || note_fail "azure commit-checks — runs list without --top 100: $(cat "$AZ_CALL_LOG")"
+unset AZ_RUNS_JSON
+export AZ_RUNS_FAIL=1
+pr_case "azure commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
+unset AZ_RUNS_FAIL
+
+AZ_INFILE_CAPTURE="$WORK/az-infile.json"; export AZ_INFILE_CAPTURE
+pr_case "azure pr-thread-resolve — replies, then closes the thread" 0 '' "pullRequestThreads" -- \
+  pr-thread-resolve 9 1 --body-file "$PR_BODY"
+reply_at=$(grep -n -- '--resource pullRequestThreadComments' "$AZ_CALL_LOG" | grep -- 'POST' | head -1 | cut -d: -f1)
+close_at=$(grep -n -- '--resource pullRequestThreads ' "$AZ_CALL_LOG" | grep -- 'PATCH' | head -1 | cut -d: -f1)
+if [ -z "$reply_at" ] || [ -z "$close_at" ] || [ "$reply_at" -ge "$close_at" ]; then
+  note_fail "azure pr-thread-resolve — the comment POST must be logged before the thread PATCH: $(cat "$AZ_CALL_LOG")"
+fi
+[ "$(jq -c . "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '{"status":"closed"}' ] \
+  || note_fail "azure pr-thread-resolve — the PATCH does not close the thread: $(cat "$AZ_INFILE_CAPTURE")"
+
+MERGE_BODY="$WORK/merge-body.md"; printf 'the body\n' > "$MERGE_BODY"
+AZ_MSG_CAPTURE="$WORK/az-merge-msg.txt"; export AZ_MSG_CAPTURE; rm -f "$AZ_MSG_CAPTURE"
+pr_case "azure pr-merge --squash --delete-branch --subject — completes with squash and branch deletion" 0 '' \
+  "repos pr update --id 9 --status completed --squash true --delete-source-branch true" -- \
+  pr-merge 9 --delete-branch --squash --subject s --body-file "$MERGE_BODY"
+grep -q -- '--auto-complete' "$AZ_CALL_LOG" && note_fail "azure pr-merge — set auto-complete: $(cat "$AZ_CALL_LOG")"
+[ "$(cat "$AZ_MSG_CAPTURE" 2>/dev/null)" = "$(printf 's\n\nthe body')" ] \
+  || note_fail "azure pr-merge — the message is not '<subject>, blank line, body': $(cat "$AZ_MSG_CAPTURE" 2>/dev/null)"
+unset AZ_MSG_CAPTURE
+pr_case "azure pr-merge — a flag outside the four is exit 2, no az call" 2 - EMPTY -- pr-merge 9 --admin
+
+export AZ_REF_JSON='[{"name":"refs/heads/feature/xy","objectId":"111"}]'
+pr_case "azure branch-delete — no exact ref is gone, and no delete call" 0 gone "repos ref list" -- branch-delete feature/x
+grep -q 'repos ref delete' "$AZ_CALL_LOG" && note_fail "azure branch-delete — deleted with no ref: $(cat "$AZ_CALL_LOG")"
+export AZ_REF_JSON='[{"name":"refs/heads/feature/x","objectId":"abc"},{"name":"refs/heads/feature/xy","objectId":"111"}]'
+pr_case "azure branch-delete — deletes the exact ref by its objectId, ok" 0 ok \
+  "repos ref delete --name heads/feature/x --object-id abc" -- branch-delete feature/x
+unset AZ_REF_JSON
+
+export AZ_WI_SHOW_JSON='{"id":5,"relations":[{"rel":"System.LinkTypes.Related","url":"https://dev.azure.com/acme/_apis/wit/workItems/99"},{"rel":"System.LinkTypes.Hierarchy-Reverse","url":"https://dev.azure.com/acme/_apis/wit/workItems/40"}]}'
+pr_case "azure issue-parent — the Hierarchy-Reverse id" 0 40 "boards work-item show --id 5" -- issue-parent 5
+grep -Fq -- "--expand relations" "$AZ_CALL_LOG" || note_fail "azure issue-parent — no --expand relations: $(cat "$AZ_CALL_LOG")"
+unset AZ_WI_SHOW_JSON
+pr_case "azure issue-parent — no parent relation is none" 0 none - -- issue-parent 5
+export AZ_PR_WI_JSON='[{"id":"12","url":"https://dev.azure.com/acme/_apis/wit/workItems/12"},{"id":"13","url":"x"}]'
+pr_case "azure pr-closing-issues — the linked work items' ids" 0 '[12,13]' "repos pr work-item list --id 9" -- pr-closing-issues 9
+unset AZ_PR_WI_JSON
+pr_case "azure pr-comment — POST a closed one-comment thread from the file" 0 '' "pullRequestThreads" -- \
+  pr-comment 9 --body-file "$PR_BODY"
+[ "$(jq -c '[.status, (.comments|length), .comments[0].content]' "$AZ_INFILE_CAPTURE" 2>/dev/null)" = '["closed",1,"Closes #7\n"]' ] \
+  || note_fail "azure pr-comment — wrong thread body: $(cat "$AZ_INFILE_CAPTURE")"
+unset AZ_INFILE_CAPTURE
+
+for refusal in "pr-thread-resolve 9 1 --body-file $PR_EMPTY" "pr-thread-resolve 9 1" \
+               "pr-comment 9 --body-file $PR_EMPTY" "pr-comment 9 --body-file $WORK/no-such-file" \
+               "pr-merge 9 --squash --body-file $PR_EMPTY"; do
+  # shellcheck disable=SC2086  # word-split on purpose: each entry is one argv
+  pr_case "azure ${refusal%% *} — refuses a missing or empty --body-file, exit 2, no az call" 2 - EMPTY -- $refusal
+done
+for dry in "pr-merge 9 --squash --delete-branch --subject s --dry-run" \
+           "pr-thread-resolve 9 1 --body-file $PR_BODY --dry-run" \
+           "pr-comment 9 --body-file $PR_BODY --dry-run" "branch-delete feature/x --dry-run"; do
+  # shellcheck disable=SC2086
+  pr_case "azure ${dry%% *} --dry-run — no az call" 0 - EMPTY -- $dry
+  if [ "$(printf '%s\n' "$OUT" | grep -c '^DRY-RUN ')" != 1 ] || [ "$(printf '%s\n' "$OUT" | wc -l | tr -d ' ')" != 1 ]; then
+    note_fail "azure ${dry%% *} --dry-run — expected exactly one DRY-RUN line, got: $OUT"
+  fi
+done
+
+export AZ_PR_JSON='{"pullRequestId":51,"status":"completed","closedDate":"2026-11-11T10:00:00Z","lastMergeCommit":{"commitId":"sq123"},"repository":{"name":"widgets","project":{"name":"Shop"}}}'
+pr_case "azure pr-view — mergedAt from closedDate, mergeSha from lastMergeCommit" 0 - - -- pr-view 51
+[ "$(printf '%s' "$OUT" | jq -c '[.state, .mergedAt, .mergeSha]' 2>/dev/null)" = '["merged","2026-11-11T10:00:00Z","sq123"]' ] \
+  || note_fail "azure pr-view — merged fields wrong: $OUT"
+unset AZ_PR_JSON
+
 out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state merge-pr 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
-[ "$out" = missing ] || note_fail "azure state merge-pr — expected 'missing', got '$out'"
+if [ "$out" = capable ]; then
+  ok "azure state merge-pr — capable once the ten merge verbs land"
+else
+  note_fail "azure state merge-pr — expected 'capable', got '$out'"
+fi
+out=$(cd "$AZFIX" && PATH="$WORK/bin:$PATH" "$TRACKER" state implement-issue 2>/dev/null | "$DECIDE" tracker.capable 2>&1)
+[ "$out" = capable ] || note_fail "azure state implement-issue — expected 'capable' still, got '$out'"
 
 if [ "$FAILED" -ne 0 ]; then
   echo
