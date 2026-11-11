@@ -79,7 +79,7 @@
     },
     "pr-list": {
       "args": "[--head <branch>] [--search <text>] [--state open|merged] [--limit <n>]",
-      "stdout": "[{\"number\",\"title\",\"url\",\"state\",\"isDraft\",\"headBranch\",\"body\",\"mergedAt\"}] — state lower-cased open|closed|merged, headBranch a bare name, mergedAt null until the PR merges; --search matches the PR body"
+      "stdout": "[{\"number\",\"title\",\"url\",\"state\",\"isDraft\",\"headBranch\",\"body\",\"mergedAt\",\"mergeStateStatus\"}] — state lower-cased open|closed|merged, headBranch a bare name, mergedAt null until the PR merges; mergeStateStatus is pr-merge-state's word for the PR (null where the host does not answer it in a list: callers fall back to pr-merge-state); --search matches the PR body"
     },
     "pr-view": {
       "args": "<number>",

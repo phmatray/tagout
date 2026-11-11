@@ -36,7 +36,7 @@ case "$1 $2" in
       *"--state open"*)
         [ -z "${GH_OPEN_FAIL:-}" ] || { echo "HTTP 502" >&2; exit 1; }
         payload='[{"number":9,"title":"u","url":"x","state":"OPEN","isDraft":true,"headRefName":"feat/y","body":"","mergedAt":null},
-                  {"number":7,"title":"t","url":"x","state":"OPEN","isDraft":false,"headRefName":"feat/x","body":"","mergedAt":null},
+                  {"number":7,"title":"t","url":"x","state":"OPEN","isDraft":false,"headRefName":"feat/x","body":"","mergedAt":null,"mergeStateStatus":"CLEAN"},
                   {"number":8,"title":"v","url":"x","state":"OPEN","isDraft":false,"headRefName":"feat/z","body":"","mergedAt":null}]' ;;
       *"--state merged"*)
         [ -z "${GH_MERGED_FAIL:-}" ] || { echo "HTTP 502" >&2; exit 1; }
@@ -66,6 +66,8 @@ $OUT"
 grep -Fxq "#9${TAB}DRAFT${TAB}DRAFT${TAB}feat/y${TAB}u" <<<"$OUT" \
   && ok "a draft prints DRAFT in the merge-state column" || fail "draft row missing:
 $OUT"
+if grep -q '^pr view 7' "$GH_CALL_LOG"; then fail "a PR whose pr-list carries mergeStateStatus cost a merge-state call: $(cat "$GH_CALL_LOG")"
+else ok "a PR whose pr-list carries mergeStateStatus makes no merge-state call"; fi
 if grep -q '^pr view 9' "$GH_CALL_LOG"; then fail "a draft cost a merge-state call: $(cat "$GH_CALL_LOG")"
 else ok "a draft makes no merge-state call"; fi
 grep -Fxq "#8${TAB}READY${TAB}UNKNOWN${TAB}feat/z${TAB}v" <<<"$OUT" \

@@ -232,6 +232,20 @@ _threads() {
          body: $n.body, isResolved: ($n.resolved == true)}]'
 }
 
+# GitLab's detailed_merge_status -> the contract's mergeStateStatus, one table for pr-list and
+# pr-merge-state. CLEAN only on GitLab's own `mergeable`; a word not in it (checking,
+# ci_still_running, one GitLab adds tomorrow) is UNKNOWN, which merge.step4 waits on.
+JQ_MERGE_STATE='def mstate($s):
+  if $s == "mergeable" then "CLEAN"
+  elif $s == "need_rebase" then "BEHIND"
+  elif $s == "conflict" or $s == "broken_status" then "DIRTY"
+  elif $s == "draft_status" then "DRAFT"
+  elif (["not_approved", "requested_changes", "discussions_not_resolved", "blocked_status",
+         "external_status_checks", "jira_association_missing", "security_policy_violations",
+         "locked_paths", "locked_lfs_files", "title_regex", "merge_request_blocked"]
+        | any(. == $s)) then "BLOCKED"
+  else "UNKNOWN" end;'
+
 # The `commit-checks` bucket rule lives once, in _bucket.sh (#807).
 . "$(dirname -- "${BASH_SOURCE[0]}")/_bucket.sh"
 
@@ -449,7 +463,7 @@ case "$VERB" in
   issue-blocked-by-count)
     n="${1-}"
     [ -n "$n" ] || { echo "gitlab: issue-blocked-by-count needs an issue number" >&2; exit 2; }
-    if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
+    if out=$(_list "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
       printf '%s' "$out" | jq -c '[.[] | select(.link_type == "is_blocked_by" and .state == "opened")] | length'
     elif grep -qE '\(HTTP 403\)|^glab: HTTP 403$' <<<"$out"; then
       printf 'n/a\n'
@@ -483,7 +497,7 @@ case "$VERB" in
     edges='{}'; nolinks=0; first=1
     # ponytail: one links read per open issue — GitLab's list carries no blocked-by edges
     for n in $(printf '%s' "$issues" | jq -r '.[].iid'); do
-      if out=$(_api "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
+      if out=$(_list "projects/$(_id)/issues/$n/links?per_page=100" 2>&1); then
         # Kept to the three fields read below: a link carries the whole linked issue, description too.
         edges=$(printf '%s\n%s' "$edges" "$out" | jq -sc --arg n "$n" \
           '.[0] + {($n): [.[1][] | {iid, state, link_type}]}') || exit 1
@@ -591,8 +605,8 @@ case "$VERB" in
     ep="projects/$(_id)/merge_requests"
     [ "${#qp[@]}" -gt 0 ] && ep="$ep?$(_join_amp "${qp[@]}")"
     out=$(_api "$ep") || exit 1
-    printf '%s' "$out" | jq -c --arg q "$Q" '[.[] | select((.description // "") | contains($q))]
-      | [.[] | {number: .iid, title, url: .web_url,
+    printf '%s' "$out" | jq -c --arg q "$Q" "$JQ_MERGE_STATE"'[.[] | select((.description // "") | contains($q))]
+      | [.[] | {number: .iid, title, url: .web_url, mergeStateStatus: mstate(.detailed_merge_status),
       state: (if .state == "opened" then "open" else .state end),
       isDraft: (.draft // .work_in_progress // false), headBranch: .source_branch,
       body: .description, mergedAt: (.merged_at // null)}]'
@@ -672,21 +686,10 @@ case "$VERB" in
     threads=$(_threads "$n") || {
       echo "gitlab: pr-merge-state: the discussions read failed — an unanswered read is not 'no threads'" >&2
       exit 1; }
-    # CLEAN only on GitLab's own `mergeable`; a word not in this table (checking, ci_still_running,
-    # one GitLab adds tomorrow) is UNKNOWN, which merge.step4 waits on.
-    printf '%s' "$view" | jq -c --argjson b "$behind" --argjson t "$threads" '
+    printf '%s' "$view" | jq -c --argjson b "$behind" --argjson t "$threads" "$JQ_MERGE_STATE"'
       .detailed_merge_status as $s
       | {behind_by: $b,
-         mergeStateStatus: (
-           if $s == "mergeable" then "CLEAN"
-           elif $s == "need_rebase" then "BEHIND"
-           elif $s == "conflict" or $s == "broken_status" then "DIRTY"
-           elif $s == "draft_status" then "DRAFT"
-           elif (["not_approved", "requested_changes", "discussions_not_resolved", "blocked_status",
-                  "external_status_checks", "jira_association_missing", "security_policy_violations",
-                  "locked_paths", "locked_lfs_files", "title_regex", "merge_request_blocked"]
-                 | any(. == $s)) then "BLOCKED"
-           else "UNKNOWN" end),
+         mergeStateStatus: mstate($s),
          isDraft: (.draft // .work_in_progress // false),
          reviewDecision: (if $s == "requested_changes" then "CHANGES_REQUESTED"
                           elif $s == "not_approved" then "REVIEW_REQUIRED" else null end),
