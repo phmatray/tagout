@@ -194,10 +194,16 @@ def never_wait_phrases(kit_root):
     return found, ("kit" if found else "none")
 
 
+def encode_project_dir(path):
+    # Claude Code folds every non-alphanumeric character of the cwd to '-' (Windows `C:\x` too).
+    # Twin: skills/auto-dev/scripts/usage_report.py (each skill ships self-contained).
+    return re.sub(r"[^A-Za-z0-9]", "-", path)
+
+
 def default_project_dirs(kit_name):
     home = os.path.expanduser("~")
     base = os.path.join(home, ".claude", "projects")
-    enc = os.getcwd().replace("/", "-").replace(".", "-")
+    enc = encode_project_dir(os.getcwd())
     # A worktree session encodes `<repo>--claude-worktrees-<name>`; strip our own suffix so the
     # repo directory and every worktree sibling are found from either kind of cwd.
     stem = enc.split("--claude-worktrees-")[0]

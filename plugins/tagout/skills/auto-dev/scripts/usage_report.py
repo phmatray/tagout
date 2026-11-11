@@ -41,7 +41,7 @@ from on-disk token counts. On a Max/Pro subscription your marginal cash cost is 
 The authoritative cash number for the CURRENT session is the built-in `/cost` command;
 this script is more complete because it also sees the worker sub-agents /cost can't.
 """
-import json, glob, os, sys
+import json, glob, os, re, sys
 
 # Per-model pricing, $ / 1M tokens: (input, output, cache_write_5m, cache_read).
 # Keyed by a substring of the model id. Update when rates change.
@@ -59,10 +59,14 @@ def rate_for(model):
                 return r, key
     return DEFAULT, "?"
 
+def encode_project_dir(path):
+    # Claude Code names the project dir after the cwd: every non-alphanumeric character → '-'.
+    # Twin: skills/review-sessions/scripts/harvest.py (each skill ships self-contained).
+    return re.sub(r"[^A-Za-z0-9]", "-", path)
+
 def detect_project_dir():
-    # Claude encodes the cwd as the project-dir name: '/' and '.' → '-'.
     home = os.path.expanduser("~")
-    enc = os.getcwd().replace("/", "-").replace(".", "-")
+    enc = encode_project_dir(os.getcwd())
     cand = os.path.join(home, ".claude", "projects", enc)
     if os.path.isdir(cand):
         return cand

@@ -21,6 +21,7 @@ PHASE2="$KIT/skills/auto-dev/scripts/measure_phase2.py"
 . "$KIT/tests/_lib.sh" || {
   echo "FAIL: cannot source $KIT/tests/_lib.sh — refusing to run unguarded"; exit 1; }
 kit_init "$KIT"
+kit_source "$KIT/tests/_lib/py.sh"
 
 # ------------------------------------------------------------------------------- fixture builders
 #
@@ -266,6 +267,16 @@ if grep -q 'pre-2.0' "$OUT4"; then
 fi
 echo "ok: 2.0 fleet — orchestrator is the only top-level transcript, both phase sub-agents count as workers, and measure_phase2.py pairs them by issue"
 
+# ------------------------------------------------- the cwd encodes the way Claude Code does (#766)
+py_module "$SCRIPT" <<'PY'
+import sys
+got = (mod.encode_project_dir(r"C:\work\repo\.claude\worktrees\x"),
+       mod.encode_project_dir("/home/u/repo/.claude/worktrees/x"))
+if got != ("C--work-repo--claude-worktrees-x", "-home-u-repo--claude-worktrees-x"):
+    print("FAIL: encode_project_dir ->", got); sys.exit(1)
+PY
+echo "ok   encode_project_dir folds every non-alphanumeric character, Windows and POSIX"
+
 # ------------------------------------------------------------- the no-positional forms (#354)
 #
 # The docstring's `--main <sid>` and `--top N` invocations, PROJECT_DIR auto-detected from $PWD:
@@ -273,7 +284,7 @@ echo "ok: 2.0 fleet — orchestrator is the only top-level transcript, both phas
 # project dir and the documented form failed with "project dir not found: <sid>". The fixture sits
 # under a fake HOME at the encoded path of THIS cwd, which is what detect_project_dir() computes.
 FAKEHOME=$(kit_scratch)
-PROJ4="$FAKEHOME/.claude/projects/$(pwd | tr '/.' '--')"
+PROJ4="$FAKEHOME/.claude/projects/$(pwd | sed 's/[^A-Za-z0-9]/-/g')"
 mkdir -p "$PROJ4"
 write_usage_line "$PROJ4/sess-main.jsonl" "$MODEL" 1000 200 50 10
 write_usage_line "$PROJ4/sess-w1.jsonl"   "$MODEL" 300  60  0  0

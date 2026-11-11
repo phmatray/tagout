@@ -351,6 +351,25 @@ printf 'not json at all\n' >> "$T"
 write_line "$T" assistant "2026-08-01T09:00:00.000Z" "$(tool_use t8 Bash '{"command":"./skills/auto-dev/scripts/survey.sh"}')"
 write_line "$T" user "2026-08-01T09:00:00.000Z" "$(tool_result t8 'survey.sh: jq: parse error' true)"
 
+# ------------------------------------------------- the cwd encodes the way Claude Code does (#766)
+py_module "$SCRIPT" <<'PY'
+import os, sys, tempfile
+h = mod
+win, posix = r"C:\work\repo\.claude\worktrees\x", "/home/u/repo/.claude/worktrees/x"
+got = (h.encode_project_dir(win), h.encode_project_dir(posix))
+if got != ("C--work-repo--claude-worktrees-x", "-home-u-repo--claude-worktrees-x"):
+    print("FAIL: encode_project_dir ->", got); sys.exit(1)
+home = tempfile.mkdtemp()
+for d in ("C--work-repo", "C--work-repo--claude-worktrees-x", "D--other"):
+    os.makedirs(os.path.join(home, ".claude", "projects", d))
+os.getcwd = lambda: win
+os.path.expanduser = lambda p: home
+found = [os.path.basename(d) for d in h.default_project_dirs("tagout")]
+if found != ["C--work-repo", "C--work-repo--claude-worktrees-x"]:
+    print("FAIL: default_project_dirs on a Windows cwd ->", found); sys.exit(1)
+PY
+echo "ok   a Windows cwd encodes and resolves to the repo dir plus its worktree siblings"
+
 # ------------------------------------------------------- a bare `init` is Claude Code's, not the kit's (#712)
 py_module "$SCRIPT" <<'PY'
 import sys
