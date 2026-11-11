@@ -126,35 +126,23 @@ resolve_tracker() {
             "That is not \"no profile\" — $PROFILE_SH could not answer at all."
       ;;
   esac
-  # `-R` names the repository the caller targets (#805). The profile describes THIS checkout, so a
-  # repository that is not the checkout's own is not on the profile's tracker.
-  if [ -n "$TRACKER_REPO_ARG" ] && [ "$TRACKER" != github ] && ! repo_is_checkouts_own; then
-    case "${TRACKER_REPO_ARG%%/*}" in
+  # `-R` names the repository the caller targets (#805). Only a slug that CARRIES a host can name a
+  # tracker other than the profile's: a host-less owner/repo or group/sub/proj names none, so it
+  # stays on the checkout's profile (a GitLab profile + bare -R stays GitLab).
+  if [ -n "$TRACKER_REPO_ARG" ] && [ "$TRACKER" != github ]; then
+    local h="${TRACKER_REPO_ARG%%/*}" env_host
+    env_host=$(printf '%s' "${GITLAB_HOST:-}" | tr '[:upper:]' '[:lower:]')
+    case "$TRACKER_REPO_ARG" in */*) ;; *) return 0 ;; esac
+    if [ "$h" = "${DETAIL%%/*}" ] && [ -n "$DETAIL" ]; then return 0; fi   # the profile's own host
+    case "$h" in
       gitlab.com)    TRACKER=gitlab ;;
       dev.azure.com) TRACKER=azure-devops ;;
-      *)             TRACKER=github ;;   # a bare owner/repo is gh's own spelling
+      *)  if [ -n "$env_host" ] && [ "$h" = "$env_host" ]; then TRACKER=gitlab
+          elif [[ "$h" == *.* ]]; then TRACKER=github   # any other dotted host (github.com, GHE)
+          else return 0; fi ;;
     esac
     DETAIL=""
   fi
-}
-
-# True when -R names the checkout's own repository: its host is the profile's host, or (a bare
-# owner/repo, which carries no host) it is the path of the origin remote.
-repo_is_checkouts_own() {
-  local slug="${TRACKER_REPO_ARG%.git}" path
-  case "$slug" in
-    */*/*)
-      # A dotted first segment is a host; a hostless group/sub/proj cannot be GitHub's owner/repo.
-      case "${slug%%/*}" in
-        *.*) [ "${slug%%/*}" = "${DETAIL%%/*}" ] ;;
-        *)   return 0 ;;
-      esac ;;
-    *)
-      path=$(git remote get-url origin 2>/dev/null | sed -E \
-        -e 's#^[a-z+]+://[^/]+/##' -e 's#^[^@/]+@[^:]+:##' -e 's#\.git$##') || path=""
-      [ "$slug" = "$path" ]
-      ;;
-  esac
 }
 
 # --------------------------------------------------------------------- 4. `state` — a report
