@@ -644,7 +644,7 @@ PY
     rm -f "$BATCH_FILE"
     printf '%s' "$items" | jq -c --argjson open "$ids" --argjson st "$(printf '%s' "$states" | jq -c 'from_entries')" '
       def md: if type == "string" and test("<[a-zA-Z/]") then
-          gsub("\r"; "") | gsub("<br[^>]*>"; "\n"; "i") | gsub("<li[^>]*>"; "- "; "i")
+          gsub("\r"; "") | gsub("<br[^>]*>"; "\n"; "i") | gsub("<li[^>]*>"; "- "; "i") | gsub("</?(b|strong)( [^>]*)?>"; "**"; "i")
           | gsub("</(p|div|li|ul|ol|h[1-6]|tr)>"; "\n"; "i") | gsub("<[^>]*>"; "")
           | gsub("&nbsp;"; " ") | gsub("&lt;"; "<") | gsub("&gt;"; ">") | gsub("&quot;"; "\"") | gsub("&#39;"; ([39] | implode)) | gsub("&amp;"; "&")
           | gsub("\n{3,}"; "\n\n") | sub("^\\s+"; "") | sub("\\s+$"; "")
