@@ -1176,6 +1176,21 @@ run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/subgroup/project re
   && ok "--repo (3 segments, dotless first) — a subgroup project path, fully encoded, no host (#795)" \
   || note_fail "--repo (subgroup) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
 
+# A dotless host on a subgroup slug (#801): ambiguous with a subgroup, so it is named by GITLAB_HOST.
+: > "$GLAB_CALL_LOG"
+GITLAB_HOST=localhost run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo localhost/group/sub/proj repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsub%2Fproj' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '--hostname localhost' "$GLAB_CALL_LOG" \
+  && ok "--repo (dotless host named by GITLAB_HOST) — host split off, subgroup path kept (#801)" \
+  || note_fail "--repo (dotless host) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+GITLAB_HOST=localhost run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/sub/proj repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsub%2Fproj' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '--hostname localhost' "$GLAB_CALL_LOG" \
+  && ok "--repo (subgroup slug, GITLAB_HOST set) — whole slug stays the project path on that host (#801)" \
+  || note_fail "--repo (subgroup, GITLAB_HOST) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
 : > "$GLAB_CALL_LOG"
 run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo gitlab.example.com/a/b/c/d repo
 [ "$RC" -eq 0 ] && grep -Fq -- 'projects/a%2Fb%2Fc%2Fd' "$GLAB_CALL_LOG" \

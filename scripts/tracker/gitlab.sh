@@ -34,7 +34,8 @@
 # TRACKER_REPO carries `[host/]owner[/subgroup…]/repo` (tracker.sh's `--repo`/`-R`, #668, #795): a
 # leading segment with a dot is the host when there are 3+ segments (`host.tld/owner/repo`,
 # `host.tld/group/subgroup/project`); otherwise the whole slug is the project path, so
-# `group/subgroup/project` addresses a project under a subgroup. Empty is the common case: create-issue runs inside
+# `group/subgroup/project` addresses a project under a subgroup. A dotless host (`localhost`) is
+# named by exporting `GITLAB_HOST=localhost`; a leading segment equal to it is then the host (#801). Empty is the common case: create-issue runs inside
 # the project's own checkout, and `:id`/`glab`'s own default host cover it with no extra call.
 #
 # Exit codes (the dispatcher passes them through), matching github.sh's:
@@ -69,7 +70,9 @@ command -v glab > /dev/null 2>&1 || {
 #
 # Sets GITLAB_HOST (empty = let `glab` pick its own default) and PROJECT_PATH (empty = let `:id`
 # resolve from the current directory). Mirrors _gh-host.sh's 2-vs-3-segment split; see the header.
-GITLAB_HOST=""
+# An inherited GITLAB_HOST (glab's own variable) is kept: it is the one route to a dotless host
+# (localhost) on a subgroup slug, which the dot rule below cannot tell from a subgroup (#801).
+GITLAB_HOST="${GITLAB_HOST:-}"
 PROJECT_PATH=""
 if [ -n "${TRACKER_REPO:-}" ]; then
   _slug="$TRACKER_REPO"
@@ -86,11 +89,12 @@ if [ -n "${TRACKER_REPO:-}" ]; then
   done
   # 2 segments: owner/repo. 3 or more: a leading segment with a dot is the host (host/owner/repo,
   # host/group/subgroup/project); without one the whole slug is a project path under subgroups.
-  # ponytail: a dotless host (localhost) cannot be named through --repo with 3+ segments.
+  # A dotless host (localhost) is indistinguishable from a subgroup, so it is named by exporting
+  # GITLAB_HOST=localhost: a leading segment equal to it is then split off like a dotted host.
   _first="${_slug%%/*}"
   if [ "$_segments" -lt 2 ]; then
     echo "gitlab: malformed repository slug '$_slug' — expected [HOST/]OWNER[/SUBGROUP…]/REPO" >&2; exit 2
-  elif [ "$_segments" -ge 3 ] && case "$_first" in *.*) true ;; *) false ;; esac; then
+  elif [ "$_segments" -ge 3 ] && case "$_first" in *.*) true ;; "${GITLAB_HOST:-}") [ -n "$_first" ] ;; *) false ;; esac; then
     GITLAB_HOST=$(printf '%s' "$_first" | tr '[:upper:]' '[:lower:]')
     PROJECT_PATH="${_slug#*/}"
   else
