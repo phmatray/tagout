@@ -1568,6 +1568,8 @@ if 'class="kit-scheme-toggle"' not in topbar:
 # The topbar names four product entries; the kit's internal record (journal, platforms) stays in the side navigation.
 if not all(x in topbar for x in ("/install.html", "/methodology.html#", "/migrate.html", "github.com/phmatray/tagout")) or "/journal/" in topbar or "/platforms.html" in topbar:
     print("FAIL: docs/_includes/topbar.html must link install, the commands table, the .NET add-on and the repository, and nothing from the kit's internals"); sys.exit(1)
+if "kit-star" not in topbar or "https://github.com/phmatray/tagout" not in topbar:
+    print("FAIL: docs/_includes/topbar.html carries no kit-star link to the repository"); sys.exit(1)
 if not sitejs.exists() or "kit-scheme-toggle" not in sitejs.read_text(encoding="utf-8"):
     print("FAIL: docs/assets/js/site.js does not wire the kit-scheme-toggle"); sys.exit(1)
 # The side navigation reads one front-matter key to put the internal record under its own group.
@@ -1704,6 +1706,9 @@ _red_refused card "differs from .github/banner.png" "a share card that drifted f
 _red_docs noimage
 grep -v 'image: /assets/og.png' "$KIT_ROOT/docs/_config.yml" > "$_pscratch/noimage/docs/_config.yml"
 _red_refused noimage "sets no default image" "a docs/_config.yml with no default share image"
+_red_docs nostar
+sed 's/kit-star//g' "$KIT_ROOT/docs/_includes/topbar.html" > "$_pscratch/nostar/docs/_includes/topbar.html"
+_red_refused nostar "carries no kit-star link" "a topbar with no star button"
 _red_docs gets
 sed 's/, hooks: "yes"//' "$KIT_ROOT/docs/_data/hosts.yml" > "$_pscratch/gets/docs/_data/hosts.yml"
 _red_refused gets "claude-code gets" "a host row missing a capability"

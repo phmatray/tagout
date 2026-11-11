@@ -68,6 +68,26 @@
   display: none;
 }
 
+// The star button: the scheme toggle's small bordered tag, in the tag red.
+.kit-topnav a.kit-star {
+  border: 1.5px solid var(--red);
+  border-radius: var(--radius);
+  background: var(--card);
+  font-family: var(--font-type);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: calc(var(--unit) * 0.5) var(--unit);
+  line-height: 1.4;
+}
+
+.kit-topnav a.kit-star:hover {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
 @media (max-width: 48rem) {
   .kit-topbar-inner {
     padding: 0 calc(var(--unit) * 2);
@@ -86,7 +106,8 @@
   .kit-topnav .kit-topnav-docs {
     display: inline-block;
   }
-  .kit-scheme-toggle .kit-scheme-word {
+  .kit-scheme-toggle .kit-scheme-word,
+  .kit-star .kit-star-word {
     display: none;
   }
 }
