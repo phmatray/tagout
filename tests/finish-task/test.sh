@@ -276,4 +276,25 @@ grep -qF 'a plan hosted in a comment is a GitHub-only shape (#750)' <<<"$out" ||
 [ ! -s "$GH_LOG" ] && [ ! -s "$GLAB_LOG" ] || fail gitlab-comment-call "a host was called: $(cat "$GH_LOG" "$GLAB_LOG")"
 echo "  ok: refused by name, no gh call, no glab call"
 
+echo "== 16. a task close resolves the tracker once (#794) =="
+# A copy of the scripts under a kit root whose tracker.sh logs each call, then execs the real one.
+CK="$WORK/countkit"
+mkdir -p "$CK/skills/implement-issue" "$CK/skills/_shared" "$CK/scripts"
+cp -R "$KIT_ROOT/skills/implement-issue/scripts" "$CK/skills/implement-issue/scripts"
+cp -R "$KIT_ROOT/skills/_shared/scripts" "$CK/skills/_shared/scripts"
+printf '#!/usr/bin/env bash\necho "$*" >> "$TRACKER_CALLS"\nexec "%s/scripts/tracker.sh" "$@"\n' "$KIT_ROOT" > "$CK/scripts/tracker.sh"
+chmod +x "$CK/scripts/tracker.sh"
+export TRACKER_CALLS="$WORK/tracker-calls.log"
+# A fresh task with boxes still to tick, so the close really runs tick-plan.sh.
+printf '\n### Task 3: the third slice\n\n**Files:** create `c.txt`.\n\n- [ ] **Step 1:** Commit: `feat(x): third slice`\n' >> "$GH_ISSUE"
+echo c > "$WT/c.txt"
+: > "$TRACKER_CALLS"; : > "$GH_LOG"
+rc=0; out=$("$CK/skills/implement-issue/scripts/finish-task.sh" --repo acme/widgets --issue 42 --task 3 \
+  --worktree "$WT" --branch fix/42 2>&1) || rc=$?
+[ "$rc" -eq 0 ] || fail resolve-once-run "the close failed ($rc): $out"
+grep -qF 'ticked (1 box(es))' <<<"$out" || fail resolve-once-tick "the close must really tick through tick-plan.sh: $out"
+n=$(grep -c '^state ' "$TRACKER_CALLS" || true)
+[ "$n" = 1 ] || fail resolve-once "expected one tracker resolution (state), saw $n: $(cat "$TRACKER_CALLS")"
+echo "  ok: one resolution per close"
+
 echo "finish-task golden test: all cases behaved as specified"

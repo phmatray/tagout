@@ -768,6 +768,19 @@ RC=0
 [ ! -s "$GLAB_CALL_LOG" ] || { echo "FAIL [gitlab-refuse]: glab was called"; cat "$GLAB_CALL_LOG"; exit 1; }
 echo "  ok: gitlab-refuse — a non-checkbox edit is REFUSED with an empty glab log"
 
+# 24b. -C <worktree> (#794): run from a directory with NO GitLab profile (the caller's cwd is the kit,
+#      which names GitHub), `-C` still reaches the backend the worktree's own profile names.
+cp "$BEFORE" "$GLAB_STORE"
+fresh_log gitlab-dash-c; : > "$GLAB_CALL_LOG"
+( cd "$WORK" && cp "$BEFORE" rel-before.md && cp "$WORK/ticked.md" rel-after.md \
+    && "$KIT_ROOT/$TICK" -C "$CO_GL" --repo g/p --issue 42 --before rel-before.md --after rel-after.md \
+    > "$WORK/out.gitlab-dash-c" 2>&1 ) \
+  || { echo "FAIL [gitlab-dash-c]: -C <gitlab worktree> tick was refused"; cat "$WORK/out.gitlab-dash-c"; exit 1; }
+grep -q -- '-X PUT projects/g%2Fp/issues/42 -F description=@' "$GLAB_CALL_LOG" \
+  || { echo "FAIL [gitlab-dash-c]: the worktree's backend (GitLab) was not reached"; cat "$GLAB_CALL_LOG" "$GH_CALL_LOG"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] || { echo "FAIL [gitlab-dash-c]: gh was called — the caller's cwd picked the backend"; cat "$GH_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-dash-c — -C resolves the tracker from the worktree, whatever the caller's cwd"
+
 # 25. The body path on Azure DevOps (#751): the PATCH sets the description AND its Markdown format,
 #     the tick is read back through issue-view and verified; a non-checkbox edit is REFUSED with no
 #     az call. A stateful az stub: the workitems PATCH stores the patch, the GET serves it back.
