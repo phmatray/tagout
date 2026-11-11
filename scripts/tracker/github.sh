@@ -204,15 +204,8 @@ _threads() {
     | jq -sc .
 }
 
-# gh's own `pr checks` bucket rule, applied to a check-run's lower-cased conclusion // status so
-# commit-checks carries the same buckets pr-checks does. Anything unrecognised — UNKNOWN included —
-# is pending: an unmapped state waits, it never reads as clear.
-JQ_BUCKET='def bucket: if . == "success" then "pass"
-  elif . == "skipped" or . == "neutral" then "skipping"
-  elif . == "cancelled" then "cancel"
-  elif . == "failure" or . == "timed_out" or . == "action_required" or . == "startup_failure"
-       or . == "error" then "fail"
-  else "pending" end;'
+# The `commit-checks` bucket rule lives once, in _bucket.sh (#807).
+. "$(dirname -- "${BASH_SOURCE[0]}")/_bucket.sh"
 
 case "$VERB" in
   auth)

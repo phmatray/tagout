@@ -732,6 +732,19 @@ for line in "RED (base-run)" "green (base-run)" "unverified (no-run-yet)"; do
 done
 echo "  ok: fallback-grammar — the three fallback tokens match ^(green|RED|unverified) \\([a-z-]+\\)$"
 
+# The fallback's list is commit-checks' normalised shape (#807): the bucket comes from the one shared
+# rule, never null. The runs the verdict prints strip `bucket`, so pin the source and the rule itself.
+grep -q 'bucket: null' skills/merge-pr/scripts/base-run-verdict.sh \
+  && { echo "FAIL [fallback-bucket]: the fallback maps bucket: null again"; exit 1; }
+grep -q 'bucket: (\$s | bucket)' skills/merge-pr/scripts/base-run-verdict.sh \
+  || { echo "FAIL [fallback-bucket]: the fallback does not bucket through the shared rule"; exit 1; }
+if grep -l "^JQ_BUCKET=" scripts/tracker/*.sh | grep -qv '/_bucket.sh$'; then
+  echo "FAIL [fallback-bucket]: JQ_BUCKET is defined outside scripts/tracker/_bucket.sh"; exit 1; fi
+got=$(. scripts/tracker/_bucket.sh; printf '%s' '["success","failure","in_progress","cancelled"]' \
+  | jq -c "$JQ_BUCKET"'map(bucket)')
+[ "$got" = '["pass","fail","pending","cancel"]' ] || { echo "FAIL [fallback-bucket]: shared rule gave $got"; exit 1; }
+echo "  ok: fallback-bucket — one JQ_BUCKET definition; the fallback buckets through it, not null (#807)"
+
 # ---------------------------------------------------------------- 21. the repository's own host (#514)
 #
 # `gh api` never infers a host, so on a GitHub Enterprise checkout both reads — check-runs and the

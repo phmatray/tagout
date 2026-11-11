@@ -738,6 +738,13 @@ pr_dry_runs() {
   done
 }
 
+# base_verdict <dir> <sha> — base-run-verdict.sh's one-line verdict for a post-merge sha (#807), read
+# through the real dispatcher and the stubbed host: mapping, ci.verdict and the verdict mapping together.
+base_verdict() {
+  (cd "$1" && PATH="$WORK/bin:$PATH" "$KIT_ROOT/skills/merge-pr/scripts/base-run-verdict.sh" "$2" \
+    --report-line --timeout 5 --poll-seconds 0 2>"$WORK/base.err") || echo "<exit $?: $(cat "$WORK/base.err")>"
+}
+
 PR_BODY="$WORK/pr-body.md"; printf 'Closes #7\n' > "$PR_BODY"
 PR_EMPTY="$WORK/pr-empty.md"; : > "$PR_EMPTY"
 
@@ -1741,6 +1748,13 @@ export GLAB_STATUSES_JSON='[{"id":1,"name":"build","status":"success","allow_fai
 pr_case "gitlab commit-checks — failed+allow_failure is neutral, unknown is UNKNOWN, app null, html_url from target_url" 0 \
   '[{"name":"build","state":"success","bucket":"pass","id":1,"app":null,"html_url":"https://ci.invalid/1"},{"name":"lint","state":"neutral","bucket":"skipping","id":2,"app":null,"html_url":"https://ci.invalid/2"},{"name":"test","state":"failure","bucket":"fail","id":3,"app":null,"html_url":null},{"name":"deploy","state":"waiting","bucket":"pending","id":4,"app":null,"html_url":null},{"name":"e2e","state":"in_progress","bucket":"pending","id":5,"app":null,"html_url":null},{"name":"odd","state":"UNKNOWN","bucket":"pending","id":6,"app":null,"html_url":null}]' \
   "repository/commits/abc123/statuses?all=true" -- commit-checks abc123
+# The post-merge base run (#807): a green and a red run on the merge sha, end to end.
+export GLAB_STATUSES_JSON='[{"id":1,"name":"build","status":"success","allow_failure":false,"target_url":"https://ci.invalid/1"}]'
+got=$(base_verdict "$GITLAB_PROFILED" abc123)
+[ "$got" = "green (clear)" ] && ok "gitlab base run — a passing status on the sha is 'green (clear)'" || note_fail "gitlab green base run — got '$got'"
+export GLAB_STATUSES_JSON='[{"id":1,"name":"build","status":"success","allow_failure":false,"target_url":"https://ci.invalid/1"},{"id":2,"name":"test","status":"failed","allow_failure":false,"target_url":"https://ci.invalid/2"}]'
+got=$(base_verdict "$GITLAB_PROFILED" abc123)
+[ "$got" = "RED (failed)" ] && ok "gitlab base run — a failed status on the sha is 'RED (failed)'" || note_fail "gitlab red base run — got '$got'"
 unset GLAB_STATUSES_JSON
 export GLAB_STATUSES_STATUS=502
 pr_case "gitlab commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
@@ -2500,6 +2514,15 @@ pr_case "azure commit-checks — a sha outside a full 100-run window is UNKNOWN 
   - -- commit-checks abc123
 export AZ_RUNS_JSON='[{"id":1,"sourceVersion":"other","status":"completed","result":"succeeded","definition":{"name":"build"}}]'
 pr_case "azure commit-checks — a short window with no run on the sha is still []" 0 '[]' - -- commit-checks abc123
+unset AZ_RUNS_JSON
+# The post-merge base run (#807): a green and a red run on the merge sha, end to end.
+az_run() { printf '{"id":%s,"sourceVersion":"abc123","status":"completed","result":"%s","definition":{"name":"%s"}}' "$1" "$2" "$3"; }
+export AZ_RUNS_JSON="[$(az_run 1 succeeded build)]"
+got=$(base_verdict "$AZFIX" abc123)
+[ "$got" = "green (clear)" ] && ok "azure base run — a succeeded run on the sha is 'green (clear)'" || note_fail "azure green base run — got '$got'"
+export AZ_RUNS_JSON="[$(az_run 1 succeeded build),$(az_run 2 failed test)]"
+got=$(base_verdict "$AZFIX" abc123)
+[ "$got" = "RED (failed)" ] && ok "azure base run — a failed run on the sha is 'RED (failed)'" || note_fail "azure red base run — got '$got'"
 unset AZ_RUNS_JSON
 export AZ_RUNS_FAIL=1
 pr_case "azure commit-checks — a host error is exit 1, never []" 1 '' - -- commit-checks abc123
