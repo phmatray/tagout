@@ -48,14 +48,20 @@ if [ "${1:-}" = auth ] && [ "${2:-}" = token ]; then
   case " ${GH_STUB_HOSTS:-} " in *" $host "*) echo "gho_stub_token_for_$host"; exit 0 ;; esac
   exit 1
 fi
-if [[ "$*" == *PATCH* ]]; then
+# The write is either the comment path's `api … -X PATCH --input <json>` or the body path's
+# `issue edit <n> --body-file <raw body>` that the tracker contract's github backend sends (#751).
+# Either way $GH_PAYLOAD ends up as the {body} JSON the call carried, so one round-trip check reads both.
+if [[ "$*" == *PATCH* ]] || [ "${1:-} ${2:-}" = "issue edit" ]; then
   input="<none>"; prev=""
   for a in "$@"; do
     [ "$prev" = "--input" ] && input="$a"
+    [ "$prev" = "--body-file" ] && input="$a"
     prev="$a"
   done
   printf '%s\n' "$input" > "$GH_INPUT_PATH"
-  if [ "$input" = "<none>" ] || [ "$input" = "-" ]; then
+  if [ "${1:-} ${2:-}" = "issue edit" ]; then
+    jq -Rs '{body: .}' < "$input" > "$GH_PAYLOAD"
+  elif [ "$input" = "<none>" ] || [ "$input" = "-" ]; then
     cat > "$GH_PAYLOAD"
   else
     cp "$input" "$GH_PAYLOAD"
@@ -97,11 +103,19 @@ else
   # $GH_READBACK_CRLF models a text-mode `gh` stdout on THIS call only (#215 Task 1) — every \n it
   # emits comes back as \r\n, the same class of corruption #199 found in `jq -j`, but here on the
   # leg that reads back what GitHub now holds rather than the local pre-send round-trip.
+  # The body path reads back with `issue view <n> --json …` (#751): the stored body as gh's JSON.
+  emit() {
+    if [ "${1:-} ${2:-}" = "issue view" ]; then
+      [ -f "$GH_STORE" ] && jq -Rs '{number: 42, title: "t", state: "OPEN", url: "u", labels: [], body: .}' < "$GH_STORE"
+    else
+      [ -f "$GH_STORE" ] && cat "$GH_STORE"
+    fi
+  }
   if [ -n "${GH_READBACK_CRLF:-}" ]; then
-    [ -f "$GH_STORE" ] && sed $'s/$/\r/' "$GH_STORE"
+    emit "$@" | sed $'s/$/\r/'
     exit 0
   fi
-  [ -f "$GH_STORE" ] && cat "$GH_STORE"
+  emit "$@"
 fi
 STUB
 chmod +x "$WORK/bin/gh"
@@ -180,10 +194,11 @@ sed 's/^- \[ \] \*\*Task 1/- [x] **Task 1/' "$BEFORE" > "$WORK/ticked.md"
 "$TICK" --repo o/r --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.happy" 2>&1 \
   || { echo "FAIL [happy]: a legitimate tick was refused"; cat "$WORK/out.happy"; exit 1; }
 
-grep -q 'repos/o/r/issues/42' "$GH_CALL_LOG" \
-  || { echo "FAIL [happy]: wrong endpoint"; cat "$GH_CALL_LOG"; exit 1; }
-grep -q 'X PATCH\|-X PATCH' "$GH_CALL_LOG" \
-  || { echo "FAIL [happy]: not a PATCH"; cat "$GH_CALL_LOG"; exit 1; }
+# The body path writes through the tracker contract (#751): `issue edit 42`, and no `api … -X PATCH`.
+grep -q 'ARGS: issue edit 42 --repo o/r --body-file ' "$GH_CALL_LOG" \
+  || { echo "FAIL [happy]: wrong write call"; cat "$GH_CALL_LOG"; exit 1; }
+grep -q 'X PATCH' "$GH_CALL_LOG" \
+  && { echo "FAIL [happy]: the body path still PATCHes through gh api"; cat "$GH_CALL_LOG"; exit 1; }
 
 # The payload must round-trip to the ticked file byte for byte.
 python3 - "$GH_PAYLOAD" "$WORK/ticked.md" <<'PY'
@@ -399,7 +414,7 @@ unset GH_PATCH_FAIL
                      cat "$WORK/out.patch-failed"; exit 1; }
 grep -q 'REFUSED' "$WORK/out.patch-failed" \
   || { echo "FAIL [patch-failed]: no REFUSED"; cat "$WORK/out.patch-failed"; exit 1; }
-grep -q 'jq .body' "$GH_CALL_LOG" \
+grep -qE 'jq .body|issue view' "$GH_CALL_LOG" \
   && { echo "FAIL [patch-failed]: read back a body after a PATCH that never landed"
        cat "$GH_CALL_LOG"; exit 1; }
 echo "  ok: patch-failed — a failing PATCH still REFUSES, with no read-back"
@@ -644,8 +659,8 @@ fresh_log ghe-origin
 ( cd "$CO_GHE" && GH_STUB_HOSTS=ghe.example.com "$KIT_ROOT/$TICK" --repo acme/widgets --issue 42 \
     --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.ghe-origin" 2>&1 ) \
   || { echo "FAIL [ghe-origin]: a legitimate tick was refused"; cat "$WORK/out.ghe-origin"; exit 1; }
-has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 -X PATCH '
-has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 --jq \.body$'
+has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: issue edit 42 --repo acme/widgets --body-file '
+has_call ghe-origin '^GH_HOST=ghe\.example\.com ARGS: issue view 42 --repo acme/widgets --json '
 echo "  ok: ghe-origin — the PATCH and the read-back both ran under GH_HOST=ghe.example.com"
 
 # 20. A HOST/ prefix on --repo names the host outright; it never leaks into the endpoint.
@@ -653,12 +668,12 @@ fresh_log ghe-prefix
 "$TICK" --repo ghe.example.com/acme/widgets --issue 42 --before "$BEFORE" --after "$WORK/ticked.md" \
   > "$WORK/out.ghe-prefix" 2>&1 \
   || { echo "FAIL [ghe-prefix]: a legitimate tick was refused"; cat "$WORK/out.ghe-prefix"; exit 1; }
-has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 -X PATCH '
-has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: api repos/acme/widgets/issues/42 --jq \.body$'
+has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: issue edit 42 --repo acme/widgets --body-file '
+has_call ghe-prefix '^GH_HOST=ghe\.example\.com ARGS: issue view 42 --repo acme/widgets --json '
 if grep -q 'repos/ghe\.example\.com' "$GH_CALL_LOG"; then
   echo "FAIL [ghe-prefix]: the host leaked into the endpoint"; cat "$GH_CALL_LOG"; exit 1
 fi
-echo "  ok: ghe-prefix — endpoint repos/acme/widgets/issues/42, under GH_HOST=ghe.example.com"
+echo "  ok: ghe-prefix — repository acme/widgets, under GH_HOST=ghe.example.com"
 
 # 21. A malformed slug is a usage error: exit 1, the slug named, and gh never called.
 fresh_log malformed-slug
@@ -685,5 +700,26 @@ bash "$NOHELPER/tick-plan.sh" --repo o/r --issue 42 --before "$BEFORE" --after "
 grep -qF '_shared/scripts/_gh-host.sh; reinstall the kit' "$WORK/out.missing-helper" \
   || { echo "FAIL [missing-helper]: stderr does not name the missing helper"; cat "$WORK/out.missing-helper"; exit 1; }
 echo "  ok: missing-helper — exit 1, the missing helper named, no gh call"
+
+# 23. A comment-hosted plan is a GitHub-only shape (#751): on a GitLab-profiled checkout
+#     --comment-id is refused by name before anything is sent — no gh call, no glab call.
+CO_GL="$WORK/co-gitlab"
+mkdir -p "$CO_GL/.claude/skills"
+git init -q "$CO_GL"
+printf '%s\n' '# Repo profile' '' '## Tracker' '- **Tracker:** gitlab (gitlab.com)' \
+  > "$CO_GL/.claude/skills/repo-profile.md"
+GLAB_CALL_LOG="$WORK/glab-calls.log"; export GLAB_CALL_LOG; : > "$GLAB_CALL_LOG"
+printf '#!/usr/bin/env bash\necho "$*" >> "$GLAB_CALL_LOG"\nexit 1\n' > "$WORK/bin/glab"
+chmod +x "$WORK/bin/glab"
+fresh_log gitlab-comment
+RC=0
+( cd "$CO_GL" && "$KIT_ROOT/$TICK" --repo g/p --issue 42 --comment-id 5 \
+    --before "$BEFORE" --after "$WORK/ticked.md" > "$WORK/out.gitlab-comment" 2>&1 ) || RC=$?
+[ "$RC" -ne 0 ] || { echo "FAIL [gitlab-comment]: a comment plan on GitLab was not refused"; exit 1; }
+grep -qF 'a plan hosted in a comment is a GitHub-only shape (#750)' "$WORK/out.gitlab-comment" \
+  || { echo "FAIL [gitlab-comment]: the refusal does not name the GitHub-only shape"; cat "$WORK/out.gitlab-comment"; exit 1; }
+[ ! -s "$GH_CALL_LOG" ] && [ ! -s "$GLAB_CALL_LOG" ] \
+  || { echo "FAIL [gitlab-comment]: a host was called"; cat "$GH_CALL_LOG" "$GLAB_CALL_LOG"; exit 1; }
+echo "  ok: gitlab-comment — --comment-id on GitLab is refused by name, nothing sent"
 
 echo "tick-plan golden test OK"
