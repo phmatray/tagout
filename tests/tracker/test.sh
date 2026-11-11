@@ -26,6 +26,7 @@ set -uo pipefail
 
 KIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TRACKER="$KIT_ROOT/scripts/tracker.sh"
+unset GITLAB_HOST # glab's own variable; gitlab.sh reads it (#801), so the suite pins it empty
 DECIDE="$KIT_ROOT/scripts/decide.sh"
 FIXTURES="$KIT_ROOT/tests/decisions/fixtures/tracker.capable"
 
@@ -1175,6 +1176,21 @@ run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/subgroup/project re
   && ! grep -Fq -- '--hostname' "$GLAB_CALL_LOG" \
   && ok "--repo (3 segments, dotless first) — a subgroup project path, fully encoded, no host (#795)" \
   || note_fail "--repo (subgroup) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+# A dotless host on a subgroup slug (#801; env case-insensitive): ambiguous with a subgroup, so it is named by GITLAB_HOST.
+: > "$GLAB_CALL_LOG"
+GITLAB_HOST=LocalHost run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo localhost/group/sub/proj repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsub%2Fproj' "$GLAB_CALL_LOG" \
+  && grep -Fq -- '--hostname localhost' "$GLAB_CALL_LOG" \
+  && ok "--repo (dotless host named by GITLAB_HOST) — host split off, subgroup path kept (#801)" \
+  || note_fail "--repo (dotless host) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
+
+: > "$GLAB_CALL_LOG"
+GITLAB_HOST=localhost run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo group/sub/proj repo
+[ "$RC" -eq 0 ] && grep -Fq -- 'projects/group%2Fsub%2Fproj' "$GLAB_CALL_LOG" \
+  && ! grep -Fq -- '--hostname' "$GLAB_CALL_LOG" \
+  && ok "--repo (subgroup slug, GITLAB_HOST set) — the env host is not applied to a slug that does not lead with it (#801)" \
+  || note_fail "--repo (subgroup, GITLAB_HOST) — exit $RC, log: $(cat "$GLAB_CALL_LOG")"
 
 : > "$GLAB_CALL_LOG"
 run_tracker "$GITLAB_PROFILED" --tracker gitlab --repo gitlab.example.com/a/b/c/d repo
