@@ -20,7 +20,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: 11.0.x
 
       # Deux plateformes de test coexistent, et elles ne collectent PAS la couverture pareil :
       #   - VSTest (xunit v2, NUnit, MSTest classique) → `--collect:"XPlat Code Coverage"` ;
